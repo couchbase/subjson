@@ -1,0 +1,8 @@
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+INCLUDE_DIRECTORIES(gtest)
+INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/src)
+
+FILE(GLOB T_SUBJS_SRC t_*.cc)
+ADD_EXECUTABLE(subjson-test ${T_SUBJS_SRC} gtest/gtest_main.cc gtest/gtest-all.cc)
+TARGET_LINK_LIBRARIES(subjson-test subjson pthread)
+ADD_TEST(NAME all-tests COMMAND $<TARGET_FILE:subjson-test>)
