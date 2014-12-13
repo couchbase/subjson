@@ -44,7 +44,7 @@ performNewOp(subdoc_OPERATION *op, uint8_t opcode, const char *path, const char 
     return subdoc_op_exec(op, path, strlen(path));
 }
 
-static uint64_t
+static uint16_t
 performArith(subdoc_OPERATION *op, uint8_t opcode, const char *path, uint64_t delta)
 {
     uint64_t ntmp = htonll(delta);
