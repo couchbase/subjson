@@ -39,41 +39,6 @@ typedef enum {
     SUBDOC_STATUS_GLOBAL_EINVAL = 0x04,
 } subdoc_ERRORS;
 
-#if 0
-
-/**
- * Command structure for sub-document manipulation. This is a dummy structure
- * as this does not yet exist on the server
- *
- * [ HEADER ]
- * [ KEY ]
- * [ PATH ]
- * [ ?VALUE ]
- */
-typedef union {
-    struct {
-        protocol_binary_request_header header;
-        struct {
-            /* The length of the path to operate on */
-            uint16_t pathlen;
-            /* The specific subcommand */
-            uint8_t subcmd;
-        } body;
-    } message;
-    uint8_t bytes[24 + 2 + 1]; // i.e. 27 bytes base
-} protocol_binary_request_subdoc;
-
-/**
- * TODO: We might want to allow multiple commands in a single frame. This will
- * not make directly make execution any quicker on the server side (each command
- * is executed individually) but may help save on CAS validation, locking,
- * and network times. For example:
- *
- * 1. Insert a field
- * 2. Update a certain "Last-Update"
- */
-#endif
-
 /**@name Paths
  * A Sub-Document _PATH_ is a path to the container of the item you want to
  * access. Every JSON primitive is stored either as an array element or a
