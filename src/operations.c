@@ -678,9 +678,25 @@ subdoc_OPERATION *
 subdoc_op_alloc(void)
 {
     subdoc_OPERATION *op = calloc(1, sizeof(*op));
+
+    if (op == NULL) {
+        return NULL;
+    }
+
     op->path = subdoc_path_alloc();
     op->jsn = subdoc_jsn_alloc();
     subdoc_string_init(&op->bkbuf_extra);
+
+    if (op->path == NULL || op->jsn == NULL) {
+        if (op->path) {
+            subdoc_path_free(op->path);
+        }
+        if (op->jsn) {
+            subdoc_jsn_free(op->jsn);
+        }
+        free(op);
+        return NULL;
+    }
     return op;
 }
 
