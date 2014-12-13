@@ -42,7 +42,7 @@ static void subdoc_string_release(subdoc_STRING *s) {
     s->base = NULL; s->nalloc = 0; s->nused = 0;
 }
 static void subdoc_string_clear(subdoc_STRING *s) {
-    s->nalloc = 0;
+    s->nused = 0;
 }
 
 static int subdoc_string__reserve(subdoc_STRING *str, size_t size) {
@@ -85,7 +85,6 @@ static int subdoc_string_append(subdoc_STRING *str, const void *data, size_t siz
     if (subdoc_string__reserve(str, size)) {
         return -1;
     }
-
     memcpy(str->base + str->nused, data, size);
     str->nused += size;
     return 0;
