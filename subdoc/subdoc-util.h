@@ -25,6 +25,8 @@ typedef struct {
             #include <endian.h>
             #define ntohll be64toh
             #define htonll htobe64
+        #elif defined(_WIN32)
+            #include <winsock2.h>
         #else
             #error "Missing ntohll implementation!"
         #endif

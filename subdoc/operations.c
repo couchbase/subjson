@@ -4,7 +4,6 @@
 #include "operations.h"
 #include <limits.h>
 #include <errno.h>
-#include <arpa/inet.h>
 #include <inttypes.h>
 
 static subdoc_LOC loc_COMMA = { ",", 1 };

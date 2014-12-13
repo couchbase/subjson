@@ -11,7 +11,13 @@
 #define JSONSL_STATE_USER_FIELDS \
     short mres;
 #ifdef INCLUDE_JSONSL_SRC
+#if defined(__GNUC__) || defined(__clang__)
 #define JSONSL_API __attribute__((unused)) static
+#elif defined(_MSC_VER)
+#define JSONSL_API static
+#else
+#define JSONSL_API static
+#endif
 #endif
 
 #include "contrib/jsonsl/jsonsl.h"

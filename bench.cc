@@ -4,7 +4,6 @@
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
-#include <sys/time.h>
 
 #include <map>
 #include <string>
@@ -92,12 +91,34 @@ public:
     Parser parser;
 };
 
+#ifdef _WIN32
+#include <windows.h>
+static uint64_t
+get_nstime(void) {
+    double ret;
+    static LARGE_INTEGER pf = { 0 };
+    static double freq;
+    LARGE_INTEGER currtime;
+
+    if (pf.QuadPart == 0) {
+        QueryPerformanceFrequency(&pf);
+        freq = 1.0e9 / (double)pf.QuadPart;
+    }
+
+    QueryPerformanceCounter(&currtime);
+
+    ret = (double)currtime.QuadPart * freq ;
+    return (uint64_t)ret;
+}
+#else
+#include <sys/time.h>
 static uint64_t
 get_nstime(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (tv.tv_sec * 1000000000) + (tv.tv_usec * 1000);
 }
+#endif
 
 static void
 execOperation(Options& o)
