@@ -4,8 +4,10 @@
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
+#include <stdexcept>
 
 #include <map>
+#include <vector>
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -23,6 +25,7 @@
 #include "contrib/cliopts/cliopts.h"
 
 using std::string;
+using std::vector;
 using std::map;
 using namespace cliopts;
 
@@ -48,6 +51,7 @@ public:
         parser.addOption(o_jsfile);
         parser.addOption(o_cmd);
 
+        totalBytes = 0;
         // Set the opmap
         initOpmap();
     }
@@ -89,6 +93,7 @@ public:
     StringOption o_cmd;
     map<string,uint8_t> opmap;
     Parser parser;
+    size_t totalBytes;
 };
 
 #ifdef _WIN32
@@ -121,17 +126,47 @@ get_nstime(void) {
 #endif
 
 static void
-execOperation(Options& o)
+readJsonFile(string& name, vector<string>& out)
 {
-    string json;
-    std::ifstream input(o.o_jsfile.result().c_str());
-    if (input.bad()) {
-        throw string("Couldn't open file!");
+    std::ifstream input(name.c_str());
+    if (input.fail()) {
+        throw name + ": " + strerror(errno);
     }
+    fprintf(stderr, "Reading %s\n", name.c_str());
     std::stringstream ss;
     ss << input.rdbuf();
-    json = ss.str();
+    out.push_back(ss.str());
     input.close();
+}
+
+static void
+execOperation(Options& o)
+{
+    vector<string> fileNames;
+    vector<string> inputStrs;
+    string flist = o.o_jsfile.const_result();
+    if (flist.find(',') == string::npos) {
+        fileNames.push_back(flist);
+    } else {
+        while (true) {
+            size_t pos = flist.find_first_of(',');
+            if (pos == string::npos) {
+                fileNames.push_back(flist);
+                break;
+            } else {
+                string curName = flist.substr(0, pos);
+                fileNames.push_back(curName);
+                flist = flist.substr(pos+1);
+            }
+        }
+    }
+    if (fileNames.empty()) {
+        throw string("At least one file must be passed!");
+    }
+    for (size_t ii = 0; ii < fileNames.size(); ii++) {
+        readJsonFile(fileNames[ii], inputStrs);
+        o.totalBytes += inputStrs.back().length();
+    }
 
     const uint8_t opcode = o.opmap[o.o_cmd.const_result()];
     string value = o.o_value.const_result();
@@ -163,8 +198,9 @@ execOperation(Options& o)
     size_t itermax = o.o_iter.result();
     for (size_t ii = 0; ii < itermax; ii++) {
         subdoc_op_clear(op);
+        const string& curInput = inputStrs[ii % inputStrs.size()];
         SUBDOC_OP_SETCODE(op, opcode);
-        SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
+        SUBDOC_OP_SETDOC(op, curInput.c_str(), curInput.size());
         SUBDOC_OP_SETVALUE(op, vbuf, nvbuf);
 
         uint16_t rv = subdoc_op_exec(op, path.c_str(), path.size());
@@ -234,9 +270,12 @@ void runMain(int argc, char **argv)
     // Get the number of seconds:
     double n_seconds = t_total / 1000000000.0;
     double ops_per_sec = (double)o.o_iter.result() / n_seconds;
+    double mb_per_sec = ((double)o.totalBytes * (double)o.o_iter.result()) / n_seconds;
+    mb_per_sec /= (1024 * 1024);
 
     fprintf(stderr, "DURATION=%.2lfs. OPS=%lu\n", n_seconds, o.o_iter.result());
     fprintf(stderr, "%.2lf OPS/s\n",  ops_per_sec);
+    fprintf(stderr, "%.2lf MB/s\n", mb_per_sec);
 }
 
 int main(int argc, char **argv)
