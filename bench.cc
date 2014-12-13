@@ -176,14 +176,14 @@ execOperation(Options& o)
     // Print the result.
     if (opcode == SUBDOC_CMD_GET || opcode == SUBDOC_CMD_EXISTS) {
         string match(op->match.loc_match.at, op->match.loc_match.length);
-        std::cout << match << std::endl;
+        printf("%s\n", match.c_str());
     } else {
         string newdoc;
         for (size_t ii = 0; ii < op->doc_new_len; ii++) {
             const subdoc_LOC *loc = &op->doc_new[ii];
             newdoc.append(loc->at, loc->length);
         }
-        std::cout << newdoc << std::endl;
+        printf("%s\n", newdoc.c_str());
     }
 
     subdoc_op_free(op);
@@ -245,7 +245,7 @@ int main(int argc, char **argv)
         runMain(argc, argv);
         return EXIT_SUCCESS;
     } catch (string& exc) {
-        std::cerr << exc << std::endl;
+        fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
     }
 }
