@@ -1,0 +1,3 @@
+[submodule "contrib/gtest"]
+	path = contrib/gtest
+	url = git://github.com/mnunberg/gtest
