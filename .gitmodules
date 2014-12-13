@@ -1,3 +1,6 @@
 [submodule "contrib/gtest"]
 	path = contrib/gtest
 	url = git://github.com/mnunberg/gtest
+[submodule "contrib/cliopts"]
+	path = contrib/cliopts
+	url = git://github.com/mnunberg/cliopts

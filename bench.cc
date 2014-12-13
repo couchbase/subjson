@@ -4,6 +4,7 @@
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
+#include <sys/time.h>
 
 #include <map>
 #include <string>
@@ -14,7 +15,9 @@
 #include <sstream>
 
 #define CLIOPTS_ENABLE_CXX
+#define INCLUDE_SUBDOC_NTOHLL
 #include "subdoc/subdoc-api.h"
+#include "subdoc/subdoc-util.h"
 #include "subdoc/path.h"
 #include "subdoc/match.h"
 #include "subdoc/operations.h"
@@ -89,6 +92,13 @@ public:
     Parser parser;
 };
 
+static uint64_t
+get_nstime(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000000000) + (tv.tv_usec * 1000);
+}
+
 static void
 execOperation(Options& o)
 {
@@ -137,7 +147,7 @@ execOperation(Options& o)
         SUBDOC_OP_SETVALUE(op, vbuf, nvbuf);
 
         uint16_t rv = subdoc_op_exec(op, path.c_str(), path.size());
-        if (rv != SUBDOC_SUCCESS) {
+        if (rv != SUBDOC_STATUS_SUCCESS) {
             throw string("Operation failed!");
         }
     }
@@ -186,7 +196,7 @@ void runMain(int argc, char **argv)
     // Determine the command
     string cmdStr = o.o_cmd.const_result();
 
-    uint64_t t_begin = lcb_nstime();
+    uint64_t t_begin = get_nstime();
 
     if (o.opmap.find(cmdStr) != o.opmap.end()) {
         if (!o.o_jsfile.passed()) {
@@ -199,7 +209,7 @@ void runMain(int argc, char **argv)
         throw string("Unknown command!");
     }
 
-    uint64_t t_total = lcb_nstime() - t_begin;
+    uint64_t t_total = get_nstime() - t_begin;
     // Get the number of seconds:
     double n_seconds = t_total / 1000000000.0;
     double ops_per_sec = (double)o.o_iter.result() / n_seconds;
