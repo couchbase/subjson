@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
-#include "subdoc/subdoc-api.h"
-#include "subdoc/path.h"
-#include "subdoc/match.h"
-#include "subdoc/operations.h"
+#include "subdoc-api.h"
+#include "path.h"
+#include "match.h"
+#include "operations.h"
 #include <string>
 #include <iostream>
 

@@ -12,31 +12,31 @@ extern "C" {
  */
 
 typedef enum {
-    SUBDOC_SUCCESS = 0x00, /* PROTOCOL_BINARY_RESPONSE_SUCCESS*/
+    SUBDOC_STATUS_SUCCESS = 0x00, /* PROTOCOL_BINARY_RESPONSE_SUCCESS*/
     /** Document exists, but the given path was not found in the document */
-    SUBDOC_PATH_ENOENT = 0x501,
+    SUBDOC_STATUS_PATH_ENOENT = 0x501,
     /** There was a conflict between the data and the path */
-    SUBDOC_PATH_MISMATCH = 0x502,
+    SUBDOC_STATUS_PATH_MISMATCH = 0x502,
     /** The path is not a valid path (i.e. does not parse correctly) */
-    SUBDOC_PATH_EINVAL = 0x503,
+    SUBDOC_STATUS_PATH_EINVAL = 0x503,
     /** The document reference exists, but is not JSON */
-    SUBDOC_DOC_NOTJSON = 0x504,
+    SUBDOC_STATUS_DOC_NOTJSON = 0x504,
     /**The requested operation required the value did not already exist, but it exists */
-    SUBDOC_DOC_EEXISTS = 0x505,
+    SUBDOC_STATUS_DOC_EEXISTS = 0x505,
     /**The path requested is too long/deep to traverse */
-    SUBDOC_PATH_E2BIG = 0x506,
+    SUBDOC_STATUS_PATH_E2BIG = 0x506,
     /**The number to increment was too big (could not fit in an int64_t) */
-    SUBDOC_NUM_E2BIG = 0x507,
+    SUBDOC_STATUS_NUM_E2BIG = 0x507,
     /**Delta is too big (bigger than INT64_MAX) */
-    SUBDOC_DELTA_E2BIG = 0x508,
+    SUBDOC_STATUS_DELTA_E2BIG = 0x508,
     /**Invalid value for insertion. Inserting this value would invalidate
      * the JSON document */
-    SUBDOC_VALUE_CANTINSERT = 0x509,
+    SUBDOC_STATUS_VALUE_CANTINSERT = 0x509,
 
     /* MEMCACHED ERROR CODES */
-    SUBDOC_GLOBAL_ENOMEM = 0x82,
-    SUBDOC_GLOBAL_ENOSUPPORT = 0x83,
-    SUBDOC_GLOBAL_EINVAL = 0x04,
+    SUBDOC_STATUS_GLOBAL_ENOMEM = 0x82,
+    SUBDOC_STATUS_GLOBAL_ENOSUPPORT = 0x83,
+    SUBDOC_STATUS_GLOBAL_EINVAL = 0x04,
 } subdoc_ERRORS;
 
 #if 0
