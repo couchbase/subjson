@@ -230,6 +230,8 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state
 
         /* Zero out the rest of the callbacks */
         jsn->max_callback_level = 1;
+        jsonsl_stop(jsn);
+
         if (state->level == ctx->jpr->ncomponents-1) {
             m->immediate_parent_found = 1;
         }
