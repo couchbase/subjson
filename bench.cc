@@ -29,6 +29,16 @@ using std::vector;
 using std::map;
 using namespace cliopts;
 
+struct OpEntry {
+    uint8_t opcode;
+    const char *description;
+    OpEntry(uint8_t opcode = 0, const char *description = NULL) :
+        opcode(opcode),
+        description(description) {}
+
+    operator uint8_t() const { return opcode; }
+};
+
 class Options {
 public:
     Options() :
@@ -37,19 +47,22 @@ public:
         o_value('v', "value"),
         o_jsfile('f', "json"),
         o_cmd('c', "command"),
+        o_mkdirp('M', "--create-intermediate"),
         parser("subdoc-bench")
     {
         o_iter.description("Number of iterations to run");
-        o_path.description("Document path to manipulate").mandatory();
+        o_path.description("Document path to manipulate");
         o_value.description("Document value to insert");
-        o_jsfile.description("JSON file to operate on");
-        o_cmd.description("Command to use").mandatory();
+        o_jsfile.description("JSON files to operate on. If passing multiple files, each file should be delimited by a comma");
+        o_cmd.description("Command to use. Use -c help to show all the commands").mandatory();
+        o_mkdirp.description("Create intermediate paths for mutation operations");
 
         parser.addOption(o_iter);
         parser.addOption(o_path);
         parser.addOption(o_value);
         parser.addOption(o_jsfile);
         parser.addOption(o_cmd);
+        parser.addOption(o_mkdirp);
 
         totalBytes = 0;
         // Set the opmap
@@ -58,30 +71,24 @@ public:
 
     void initOpmap() {
         // generic ops:
-        opmap["replace"] = SUBDOC_CMD_REPLACE;
-        opmap["delete"] = SUBDOC_CMD_DELETE;
-        opmap["get"] = SUBDOC_CMD_GET;
-        opmap["exists"] = SUBDOC_CMD_EXISTS;
+        opmap["replace"] = OpEntry(SUBDOC_CMD_REPLACE, "Replace a value");
+        opmap["delete"] = OpEntry(SUBDOC_CMD_DELETE, "Delete a value");
+        opmap["get"] = OpEntry(SUBDOC_CMD_GET, "Retrieve a value");
+        opmap["exists"] = OpEntry(SUBDOC_CMD_EXISTS, "Check if a value exists");
 
         // dict ops
-        opmap["add"] = SUBDOC_CMD_DICT_ADD;
-        opmap["upsert"] = SUBDOC_CMD_DICT_UPSERT;
-        opmap["add_p"] = SUBDOC_CMD_DICT_ADD_P;
-        opmap["upsert_p"] = SUBDOC_CMD_DICT_UPSERT_P;
+        opmap["add"] = OpEntry(SUBDOC_CMD_DICT_ADD, "Create a new dictionary value");
+        opmap["upsert"] = OpEntry(SUBDOC_CMD_DICT_UPSERT, "Create or replace a dictionary value");
 
         // list ops
-        opmap["append"] = SUBDOC_CMD_ARRAY_APPEND;
-        opmap["prepend"] = SUBDOC_CMD_ARRAY_PREPEND;
-        opmap["addunique"] = SUBDOC_CMD_ARRAY_ADD_UNIQUE;
-        opmap["append_p"] = SUBDOC_CMD_ARRAY_APPEND_P;
-        opmap["prepend_p"] = SUBDOC_CMD_ARRAY_PREPEND_P;
-        opmap["addunique_p"] = SUBDOC_CMD_ARRAY_ADD_UNIQUE_P;
+        opmap["append"] = OpEntry(SUBDOC_CMD_ARRAY_APPEND, "Insert values to the end of an array");
+        opmap["prepend"] = OpEntry(SUBDOC_CMD_ARRAY_PREPEND, "Insert values to the beginning of an array");
+        opmap["addunique"] = OpEntry(SUBDOC_CMD_ARRAY_ADD_UNIQUE, "Add a unique value to an array");
 
         // arithmetic ops
-        opmap["incr"] = SUBDOC_CMD_INCREMENT;
-        opmap["decr"] = SUBDOC_CMD_DECREMENT;
-        opmap["incr_p"] = SUBDOC_CMD_INCREMENT_P;
-        opmap["decr_p"] = SUBDOC_CMD_DECREMENT_P;
+        opmap["incr"] = OpEntry(SUBDOC_CMD_INCREMENT, "Increment a value");
+        opmap["decr"] = OpEntry(SUBDOC_CMD_DECREMENT, "Decrement a value");
+        opmap["path"] = OpEntry(0xff, "Check the validity of a path");
     }
 
     UIntOption o_iter;
@@ -89,7 +96,8 @@ public:
     StringOption o_value;
     StringOption o_jsfile;
     StringOption o_cmd;
-    map<string,uint8_t> opmap;
+    BoolOption o_mkdirp;
+    map<string,OpEntry> opmap;
     Parser parser;
     size_t totalBytes;
 };
@@ -166,7 +174,11 @@ execOperation(Options& o)
         o.totalBytes += inputStrs.back().length();
     }
 
-    const uint8_t opcode = o.opmap[o.o_cmd.const_result()];
+    uint8_t opcode = o.opmap[o.o_cmd.result()];
+    if (o.o_mkdirp.passed()) {
+        opcode |= 0x80;
+    }
+
     string value = o.o_value.const_result();
     string path = o.o_path.const_result();
     const char *vbuf = value.c_str();
@@ -203,7 +215,7 @@ execOperation(Options& o)
 
         uint16_t rv = subdoc_op_exec(op, path.c_str(), path.size());
         if (rv != SUBDOC_STATUS_SUCCESS) {
-            throw string("Operation failed!");
+            throw uint16_t(rv);
         }
     }
 
@@ -253,6 +265,20 @@ void runMain(int argc, char **argv)
 
     uint64_t t_begin = get_nstime();
 
+    if (cmdStr == "help") {
+        map<string,OpEntry>::const_iterator iter = o.opmap.begin();
+        for (; iter != o.opmap.end(); ++iter) {
+            const OpEntry& ent = iter->second;
+            fprintf(stderr, "%s (0x%x): ", iter->first.c_str(), ent.opcode);
+            fprintf(stderr, "%s\n", ent.description);
+        }
+        exit(EXIT_SUCCESS);
+    }
+    if (!o.o_path.passed()) {
+        fprintf(stderr, "Path (-p) required\n");
+        exit(EXIT_FAILURE);
+    }
+
     if (o.opmap.find(cmdStr) != o.opmap.end()) {
         if (!o.o_jsfile.passed()) {
             throw string("Operation must contain file!");
@@ -284,5 +310,7 @@ int main(int argc, char **argv)
     } catch (string& exc) {
         fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
+    } catch (uint16_t& rc) {
+        fprintf(stderr, "Command failed: %s\n", subdoc_strerror(rc));
     }
 }
