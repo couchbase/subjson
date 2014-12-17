@@ -9,6 +9,8 @@ to obtain regions of the document which should be replaced, and outputs a small,
 fixed array of `iovec` like structures (buffer-length regions) which consist
 of the new document.
 
+The library itself is written in C. The tests are in C++.
+
 ## Performance Characteristics
 
 Because the library does not actually build a JSON tree, the memory usage and
@@ -38,5 +40,26 @@ comparison must be done occasionally on the relevant path components).
     $ cmake .. -DCMAKE_BUILD_TYPE=RELEASE
     $ make
     $ make test
+    $ ./bin/bench --help
 
+## Testing commands
 
+The build will produce a `bench` program in the `$build/bin` directory,
+where `$build` is the directory from which CMake was run.
+
+The basic syntax of `bench` is:
+
+    ./bin/bench -c <COMMAND> -f <JSON FILE> -p <PATH> [ -v <VALUE> ]
+
+You can use `./bin/bench -c help` to show a list of commands.
+
+For commands which perform mutations, the `-v` argument is required, and
+must contain a string which will evaluate as valid JSON within the context
+of the operation. In most cases this is just a simple JSON value; in the case
+of list operations this may also be a series of JSON values separated by
+commas.
+
+Note that if inserting a string, the string must be specified with surrounding
+quotes. For example
+
+    ./bin/bench -f doc.json -c upsert -p path.to.string -v '"new string"'
