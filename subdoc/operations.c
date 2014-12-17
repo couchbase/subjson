@@ -701,3 +701,39 @@ subdoc_op_free(subdoc_OPERATION *op)
     subdoc_string_release(&op->bkbuf_extra);
     free(op);
 }
+
+/* Misc */
+const char *
+subdoc_strerror(uint16_t rc)
+{
+    switch (rc) {
+    case SUBDOC_STATUS_SUCCESS:
+        return "Success";
+    case SUBDOC_STATUS_PATH_ENOENT:
+        return "Requested path does not exist in document";
+    case SUBDOC_STATUS_PATH_MISMATCH:
+        return "The path specified treats an existing document entry as the wrong type";
+    case SUBDOC_STATUS_PATH_EINVAL:
+        return "Path syntax error";
+    case SUBDOC_STATUS_DOC_NOTJSON:
+        return "The document is not JSON";
+    case SUBDOC_STATUS_DOC_EEXISTS:
+        return "The requested path already exists";
+    case SUBDOC_STATUS_PATH_E2BIG:
+        return "The path is too big";
+    case SUBDOC_STATUS_NUM_E2BIG:
+        return "The number specified by the path is too big";
+    case SUBDOC_STATUS_DELTA_E2BIG:
+        return "The combination of the existing number and the delta will result in an underflow or overflow";
+    case SUBDOC_STATUS_VALUE_CANTINSERT:
+        return "The new value cannot be inserted in the context of the path, as it would invalidate the JSON";
+    case SUBDOC_STATUS_GLOBAL_ENOMEM:
+        return "Couldn't allocate memory";
+    case SUBDOC_STATUS_GLOBAL_ENOSUPPORT:
+        return "Operation not implemented";
+    case SUBDOC_STATUS_GLOBAL_UNKNOWN_COMMAND:
+        return "Unrecognized command code";
+    default:
+        return "Unknown error code";
+    }
+}

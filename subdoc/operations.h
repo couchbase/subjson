@@ -61,6 +61,9 @@ subdoc_op_free(subdoc_OPERATION*);
 uint16_t
 subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth);
 
+const char *
+subdoc_strerror(uint16_t rc);
+
 #ifdef __cplusplus
 }
 #endif
