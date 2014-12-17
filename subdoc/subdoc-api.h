@@ -60,6 +60,8 @@ typedef enum {
  * @endcode
  */
 
+
+
 /**
  * @name Commands
  *
@@ -76,13 +78,16 @@ typedef enum {
 typedef enum {
     /* These operations are common because they operate on the _value_ only: */
     /** Get the value located in the path */
-    SUBDOC_CMD_GET = 0,
+    SUBDOC_CMD_GET = 0x00,
+
     /** Simply check the path exists */
-    SUBDOC_CMD_EXISTS,
+    SUBDOC_CMD_EXISTS = 0x01,
+
     /** Replace the value, if the path exists */
-    SUBDOC_CMD_REPLACE,
+    SUBDOC_CMD_REPLACE = 0x02,
+
     /** Remove the value, if the path exists */
-    SUBDOC_CMD_DELETE,
+    SUBDOC_CMD_DELETE = 0x03,
 
     /* Dictionary operations. Only valid if PATH points to a dictionary.
      * The _P variants are similar to `mkdir -p` and will create intermediate
@@ -95,11 +100,12 @@ typedef enum {
      */
 
     /** Add or replace a value for the given path */
-    SUBDOC_CMD_DICT_UPSERT,
+    SUBDOC_CMD_DICT_UPSERT = 0x04,
+    SUBDOC_CMD_DICT_UPSERT_P = 0x84,
+
     /** Add a value for the given path. Fail if the value already exists */
-    SUBDOC_CMD_DICT_ADD,
-    SUBDOC_CMD_DICT_UPSERT_P,
-    SUBDOC_CMD_DICT_ADD_P,
+    SUBDOC_CMD_DICT_ADD = 0x05,
+    SUBDOC_CMD_DICT_ADD_P = 0x85,
 
     /* Array operations. Only valid if PATH points to an array */
 
@@ -109,21 +115,21 @@ typedef enum {
 
     /* The _P variants will create intermediate path elements, if they do
      * not exist */
-    SUBDOC_CMD_ARRAY_PREPEND,
-    SUBDOC_CMD_ARRAY_APPEND,
-    SUBDOC_CMD_ARRAY_PREPEND_P,
-    SUBDOC_CMD_ARRAY_APPEND_P,
+    SUBDOC_CMD_ARRAY_PREPEND = 0x06,
+    SUBDOC_CMD_ARRAY_PREPEND_P = 0x86,
+
+    SUBDOC_CMD_ARRAY_APPEND = 0x07,
+    SUBDOC_CMD_ARRAY_APPEND_P = 0x87,
 
     /**Adds a value to a list, ensuring that the value does not already exist.
      * Values added can only be primitives, and the list itself must already
      * only contain primitives. If any of these is violated, the error
      * SUBDOC_PATH_MISMATCH is returned. */
-    SUBDOC_CMD_ARRAY_ADD_UNIQUE,
-    SUBDOC_CMD_ARRAY_ADD_UNIQUE_P,
+    SUBDOC_CMD_ARRAY_ADD_UNIQUE = 0x08,
+    SUBDOC_CMD_ARRAY_ADD_UNIQUE_P = 0x88,
 
-    /* Use explicit path. In the protocol this should contain a 64-bit integer
-     * as the delta. The _P variants will create intermediate paths, if they
-     * do not exist.
+
+    /* In the protocol this should contain a 64-bit integer
      *
      * If the number itself does not fit into a uint64_t (if unsigned) or an
      * int64_t (if signed), a SUBDOC_NUM_E2BIG error is returned.
@@ -132,11 +138,12 @@ typedef enum {
      * then a SUBDOC_PATH_MISMATCH error is returned. This is the case for
      * 'floats' and 'exponents' as well. Only whole integers are supported.
      */
-    SUBDOC_CMD_INCREMENT,
-    SUBDOC_CMD_DECREMENT,
-    SUBDOC_CMD_INCREMENT_P,
-    SUBDOC_CMD_DECREMENT_P
+    SUBDOC_CMD_INCREMENT = 0x09,
+    SUBDOC_CMD_INCREMENT_P = 0x89,
+    SUBDOC_CMD_DECREMENT = 0x0A,
+    SUBDOC_CMD_DECREMENT_P = 0x8A
 } subdoc_OPTYPE;
+
 
 /**@}*/
 
