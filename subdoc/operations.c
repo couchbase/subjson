@@ -396,26 +396,7 @@ do_list_op(subdoc_OPERATION *op)
 
     int rv;
     subdoc_MATCH *m = &op->match;
-    if (op->optype == SUBDOC_CMD_ARRAY_POP_FIRST) {
-        /* Append a magic 'array index' component to the path */
-        if ((rv = find_first_element(op)) != SUBDOC_STATUS_SUCCESS) {
-            return rv;
-        }
-
-        op->optype = SUBDOC_CMD_DELETE;
-        return do_store_dict(op);
-
-    } else if (op->optype == SUBDOC_CMD_ARRAY_POP_LAST) {
-        /* Rather counter-intuitively, we also search for the first item here.
-         * The idea is that we will get parent information here.. */
-        if ((rv = find_last_element(op)) != SUBDOC_STATUS_SUCCESS) {
-            return rv;
-        }
-
-        op->optype = SUBDOC_CMD_DELETE;
-        return do_store_dict(op);
-
-    } else if (op->optype == SUBDOC_CMD_ARRAY_PREPEND) {
+    if (op->optype == SUBDOC_CMD_ARRAY_PREPEND) {
         /* Find the array itself. */
         rv = find_first_element(op);
 
@@ -646,8 +627,6 @@ subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth)
         return do_store_dict(op);
     case SUBDOC_CMD_ARRAY_APPEND:
     case SUBDOC_CMD_ARRAY_PREPEND:
-    case SUBDOC_CMD_ARRAY_POP_FIRST:
-    case SUBDOC_CMD_ARRAY_POP_LAST:
     case SUBDOC_CMD_ARRAY_APPEND_P:
     case SUBDOC_CMD_ARRAY_PREPEND_P:
     case SUBDOC_CMD_ARRAY_ADD_UNIQUE:

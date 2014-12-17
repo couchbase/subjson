@@ -170,19 +170,19 @@ TEST_F(OpTests, testListOps)
     ASSERT_EQ("\"bar\"", t_subdoc::getMatchString(op->match));
 
     // Test the various POP commands
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_SHIFT, "array");
+    rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[0]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("0", t_subdoc::getMatchString(op->match));
     getAssignNewDoc(op, doc);
 
     rv = performNewOp(op, SUBDOC_CMD_GET, "array[0]");
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_POP, "array");
+    rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("{\"foo\":\"bar\"}", t_subdoc::getMatchString(op->match));
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_POP, "array");
+    rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("2", t_subdoc::getMatchString(op->match));
 

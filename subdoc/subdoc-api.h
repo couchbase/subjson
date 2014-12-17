@@ -113,8 +113,6 @@ typedef enum {
     SUBDOC_CMD_ARRAY_APPEND,
     SUBDOC_CMD_ARRAY_PREPEND_P,
     SUBDOC_CMD_ARRAY_APPEND_P,
-    SUBDOC_CMD_ARRAY_POP_FIRST,
-    SUBDOC_CMD_ARRAY_POP_LAST,
 
     /**Adds a value to a list, ensuring that the value does not already exist.
      * Values added can only be primitives, and the list itself must already
@@ -139,9 +137,6 @@ typedef enum {
     SUBDOC_CMD_INCREMENT_P,
     SUBDOC_CMD_DECREMENT_P
 } subdoc_OPTYPE;
-
-#define SUBDOC_CMD_ARRAY_POP SUBDOC_CMD_ARRAY_POP_LAST
-#define SUBDOC_CMD_ARRAY_SHIFT SUBDOC_CMD_ARRAY_POP_FIRST
 
 /**@}*/
 

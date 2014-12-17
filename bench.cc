@@ -72,8 +72,6 @@ public:
         // list ops
         opmap["append"] = SUBDOC_CMD_ARRAY_APPEND;
         opmap["prepend"] = SUBDOC_CMD_ARRAY_PREPEND;
-        opmap["pop"] = SUBDOC_CMD_ARRAY_POP;
-        opmap["shift"] = SUBDOC_CMD_ARRAY_SHIFT;
         opmap["addunique"] = SUBDOC_CMD_ARRAY_ADD_UNIQUE;
         opmap["append_p"] = SUBDOC_CMD_ARRAY_APPEND_P;
         opmap["prepend_p"] = SUBDOC_CMD_ARRAY_PREPEND_P;
