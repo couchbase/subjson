@@ -23,7 +23,6 @@ err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
 {
     parse_ctx *ctx = jsn->data;
     ctx->match->status = err;
-    printf("PARSE ERROR!!: %s (%d)\n", at, err);
     (void)state; (void)at;
     return 0;
 }
@@ -221,6 +220,9 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state
                 const struct jsonsl_state_st *child = jsonsl_last_child(jsn, state);
                 m->loc_key.length = child->pos_begin;
                 m->loc_key.at = NULL;
+                m->type = child->type;
+                m->sflags = child->special_flags;
+                m->numval = child->nelem;
             }
         }
         if (m->matchres == JSONSL_MATCH_COMPLETE) {
@@ -250,13 +252,150 @@ static void initial_callback(jsonsl_t jsn, jsonsl_action_t action,
     state->mres = jsonsl_jpr_match(ctx->jpr, JSONSL_T_UNKNOWN, 0, NULL, 0);
     jsn->action_callback_PUSH = push_callback;
 
-    if (state->mres != JSONSL_MATCH_POSSIBLE) {
-        state->ignore_callback = 1;
-    } else {
+    if (state->mres == JSONSL_MATCH_POSSIBLE) {
         update_possible(ctx, state, at);
         ctx->match->matchres = JSONSL_MATCH_POSSIBLE;
+    } else if (state->mres == JSONSL_MATCH_COMPLETE) {
+        /* Match the root element. Simple */
+        ctx->match->match_level = state->level;
+        ctx->match->has_key = 0;
+        ctx->match->loc_match.at = at;
+        ctx->match->loc_parent.at = at;
+        ctx->match->matchres = JSONSL_MATCH_COMPLETE;
+    } else {
+        state->ignore_callback = 1;
     }
+
     (void)action; /* always push */
+}
+
+static int
+exec_match_simple(const char *value, size_t nvalue, jsonsl_jpr_t jpr,
+    jsonsl_t jsn, subdoc_MATCH *result)
+{
+    parse_ctx ctx = { NULL };
+
+    ctx.match = result;
+    ctx.jpr = (jsonsl_jpr_t)jpr;
+    result->status = JSONSL_ERROR_SUCCESS;
+
+    jsonsl_enable_all_callbacks(jsn);
+    jsn->action_callback_PUSH = initial_callback;
+    jsn->action_callback_POP = pop_callback;
+    jsn->error_callback = err_callback;
+    jsn->max_callback_level = ctx.jpr->ncomponents + 1;
+    jsn->data = &ctx;
+
+    jsonsl_feed(jsn, value, nvalue);
+    jsonsl_reset(jsn);
+    return 0;
+}
+
+static int
+exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
+    jsonsl_t jsn, subdoc_MATCH *result)
+{
+    /* First component to scan in next iteration */
+    size_t cur_start = 1;
+
+    /* For levels, compensate this much for the match level */
+    size_t level_offset = 0;
+
+    const jsonsl_jpr_t orig_jpr = &pth->jpr_base;
+    struct jsonsl_jpr_component_st comp_s[COMPONENTS_ALLOC];
+
+    /* Last length of the subdocument */
+    size_t last_len = nvalue;
+    /* Pointer to the beginning of the current subdocument */
+    const char *last_start = value;
+
+    memcpy(comp_s, orig_jpr->components, sizeof(comp_s[0]) * orig_jpr->ncomponents);
+
+    while (cur_start < orig_jpr->ncomponents) {
+        size_t ii;
+        int rv, is_last_neg = 0;
+        struct jsonsl_jpr_st tmp_jpr = { NULL };
+
+        /* If the last match was not a list or an object,
+         * but we still need to descend, then throw an error now. */
+        if (last_start != value &&
+                result->type != JSONSL_T_LIST && result->type != JSONSL_T_OBJECT) {
+            result->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+            return 0;
+        }
+
+        for (ii = cur_start; ii < orig_jpr->ncomponents; ii++) {
+            /* Seek to the next negative index */
+            if (orig_jpr->components[ii].is_neg) {
+                /* Convert this to the first array index; then switch it
+                 * around to extract parent information */
+                is_last_neg = 1;
+                break;
+            }
+        }
+        /* Assign the new list. Use one before for the ROOT element */
+        tmp_jpr.components = &comp_s[cur_start-1];
+
+        /* Adjust for root again */
+        tmp_jpr.ncomponents = (ii - cur_start) + 1;
+        level_offset += (ii - cur_start);
+
+        tmp_jpr.components[0].ptype = JSONSL_PATH_ROOT;
+
+        /* Clear the match. There's no good way to preserve info here,
+         * unfortunately. */
+        memset(result, 0, sizeof *result);
+
+        /* Always set this */
+        result->get_last_child_pos = 1;
+
+        /* If we need to find the _last_ item, make use of the get_last_child_pos
+         * field. To use this effectively, search for the _first_ element (to
+         * guarantee a valid parent). Then, once the match is done, the last
+         * item can be derived (see below). */
+        if (is_last_neg) {
+            struct jsonsl_jpr_component_st *comp;
+
+            comp = &tmp_jpr.components[tmp_jpr.ncomponents++];
+            comp->ptype = JSONSL_PATH_NUMERIC;
+            comp->is_arridx = 1;
+            comp->idx = 0;
+        }
+
+        rv = exec_match_simple(last_start, last_len, &tmp_jpr, jsn, result);
+        result->match_level += level_offset;
+
+        if (rv != 0) { /* error */
+            return rv;
+        } else if (result->status != JSONSL_ERROR_SUCCESS) {
+            return 0;
+        } else if (result->matchres != JSONSL_MATCH_COMPLETE) {
+            return 0;
+        }
+
+        /* No errors so far. In this case, set last_start */
+        if (is_last_neg) {
+            subdoc_LOC *lm = &result->loc_match, *lpar = &result->loc_parent;
+
+            /* Offset into last child position */
+            lm->at = last_start + result->loc_key.length;
+
+            /* Set the length. The length is at least as long as the parent */
+            lm->length = (lpar->at + lpar->length) - lm->at;
+            lm->length--;
+
+            /* Set the position */
+            result->position = result->num_siblings - 1;
+
+            last_start = result->loc_match.at;
+            last_len = result->loc_match.length;
+        }
+
+        /* Chomp off the current component */
+        cur_start = ii + 1;
+    }
+
+    return 0;
 }
 
 /**
@@ -272,24 +411,14 @@ static void initial_callback(jsonsl_t jsn, jsonsl_action_t action,
  */
 int
 subdoc_match_exec(const char *value, size_t nvalue,
-    const subdoc_PATH *nj, jsonsl_t jsn, subdoc_MATCH *result)
+    const subdoc_PATH *pth, jsonsl_t jsn, subdoc_MATCH *result)
 {
-    parse_ctx ctx = { NULL };
-
-    ctx.match = result;
-    ctx.jpr = (jsonsl_jpr_t)&nj->jpr_base;
-    result->status = JSONSL_ERROR_SUCCESS;
-
-    jsonsl_enable_all_callbacks(jsn);
-    jsn->action_callback_PUSH = initial_callback;
-    jsn->action_callback_POP = pop_callback;
-    jsn->error_callback = err_callback;
-    jsn->max_callback_level = ctx.jpr->ncomponents + 1;
-    jsn->data = &ctx;
-
-    jsonsl_feed(jsn, value, nvalue);
-    jsonsl_reset(jsn);
-    return 0;
+    if (!pth->has_negix) {
+        return exec_match_simple(value, nvalue,
+            (const jsonsl_jpr_t)&pth->jpr_base, jsn, result);
+    } else {
+        return exec_match_negix(value, nvalue, pth, jsn, result);
+    }
 }
 
 jsonsl_t

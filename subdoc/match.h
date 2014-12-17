@@ -71,6 +71,10 @@ typedef struct {
      *
      * This requires that the last child be an array element, and thus the
      * parent match object be an array.
+     *
+     * This also changes some of the match semantics. Here most of the
+     * information will be adapted to suit the last child; this includes
+     * things like the value type and such.
      */
     unsigned char get_last_child_pos;
 

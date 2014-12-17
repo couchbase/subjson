@@ -12,6 +12,7 @@ extern "C" {
 typedef struct subdoc_PATH_st {
     struct jsonsl_jpr_st jpr_base;
     struct jsonsl_jpr_component_st components_s[COMPONENTS_ALLOC];
+    int has_negix; /* True if there is a negative array index in the path */
 } subdoc_PATH;
 
 struct subdoc_PATH_st *subdoc_path_alloc(void);

@@ -306,3 +306,50 @@ TEST_F(OpTests, testValueValidation)
 
     subdoc_op_free(op);
 }
+
+
+TEST_F(OpTests, testNegativeIndex)
+{
+    subdoc_OPERATION *op = subdoc_op_alloc();
+    string json = "[1,2,3,4,5,6]";
+    SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
+
+    uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("6", t_subdoc::getMatchString(op->match));
+
+    json = "[1,2,3,[4,5,6,[7,8,9]]]";
+    SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
+    rv = performNewOp(op, SUBDOC_CMD_GET, "[-1].[-1].[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("9", t_subdoc::getMatchString(op->match));
+
+    string doc;
+    rv = performNewOp(op, SUBDOC_CMD_DELETE, "[-1].[-1].[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    getAssignNewDoc(op, doc);
+
+    // Can we PUSH values with a negative index?
+    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "[-1].[-1]", "10");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    getAssignNewDoc(op, doc);
+
+
+    rv = performNewOp(op, SUBDOC_CMD_GET, "[-1].[-1].[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("10", t_subdoc::getMatchString(op->match));
+
+    // Intermixed paths:
+    json = "{\"k1\": [\"first\", {\"k2\":[6,7,8]},\"last\"] }";
+    SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
+
+    rv = performNewOp(op, SUBDOC_CMD_GET, "k1[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("\"last\"", t_subdoc::getMatchString(op->match));
+
+    rv = performNewOp(op, SUBDOC_CMD_GET, "k1[1].k2[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("8", t_subdoc::getMatchString(op->match));
+
+    subdoc_op_free(op);
+}

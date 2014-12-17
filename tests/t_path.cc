@@ -101,3 +101,18 @@ TEST_F(PathTests, testEscapes)
     ASSERT_EQ("CAMPER", getComponentString(ss, 2));
     subdoc_path_free(ss);
 }
+
+TEST_F(PathTests, testNegativePath) {
+    subdoc_PATH *ss = subdoc_path_alloc();
+    const char *pth;
+
+    pth = "foo[-1].[-1].[-1]";
+    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_EQ(5, ss->jpr_base.ncomponents);
+    ASSERT_TRUE(!!ss->components_s[2].is_neg);
+    ASSERT_TRUE(!!ss->components_s[3].is_neg);
+    ASSERT_TRUE(!!ss->components_s[4].is_neg);
+    ASSERT_TRUE(!!ss->has_negix);
+
+    subdoc_path_free(ss);
+}

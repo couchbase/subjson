@@ -69,6 +69,10 @@ add_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick
         for (ii = 1, numix = 0; ii < a_len; ii++) {
             const char *c = component + len + ii;
             if (*c < 0x30 || *c > 0x39) {
+                if (ii == 1 && c[0] == '-') {
+                    has_numix = -1;
+                    continue;
+                }
                 /* not a number */
                 return JSONSL_ERROR_INVALID_NUMBER;
             }
@@ -87,10 +91,15 @@ add_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick
         jpr_comp->pstr = (char *)component;
         jpr_comp->ptype = JSONSL_PATH_STRING;
         jpr_comp->len = len;
+        jpr_comp->is_arridx = 0;
+        jpr_comp->is_neg = 0;
         jpr->ncomponents++;
     }
 
     if (has_numix) {
+        if (has_numix == -1) {
+            numix = -1;
+        }
         return subdoc_path_add_arrindex(nj, numix);
     }
     return 0;
@@ -113,6 +122,12 @@ subdoc_path_add_arrindex(subdoc_PATH *pth, size_t ixnum)
     comp->idx = ixnum;
     comp->pstr = NULL;
     jpr->ncomponents++;
+    if (ixnum == -1) {
+        pth->has_negix = 1;
+        comp->is_neg = 1;
+    } else {
+        comp->is_neg = 0;
+    }
     return JSONSL_ERROR_SUCCESS;
 }
 
@@ -134,6 +149,7 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
     /* Set up first component */
     jpr->components[0].ptype = JSONSL_PATH_ROOT;
     jpr->ncomponents++;
+    nj->has_negix = 0;
 
     for (last = c = path; c < path+len; c++) {
         if (*c == '`') {

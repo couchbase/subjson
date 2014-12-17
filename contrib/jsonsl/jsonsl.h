@@ -675,7 +675,10 @@ struct jsonsl_jpr_component_st {
     /** Set this to true to enforce type checking between dict keys and array
      * indices. jsonsl_jpr_match() will return TYPE_MISMATCH if it detects
      * that an array index is actually a child of a dictionary. */
-    int is_arridx;
+    short is_arridx;
+
+    /** Whether this is a placeholder for a negative array index */
+    short is_neg;
 };
 
 struct jsonsl_jpr_st {
