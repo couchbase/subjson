@@ -47,7 +47,7 @@ public:
         o_value('v', "value"),
         o_jsfile('f', "json"),
         o_cmd('c', "command"),
-        o_mkdirp('M', "--create-intermediate"),
+        o_mkdirp('M', "create-intermediate"),
         parser("subdoc-bench")
     {
         o_iter.description("Number of iterations to run");
