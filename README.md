@@ -62,4 +62,5 @@ commas.
 Note that if inserting a string, the string must be specified with surrounding
 quotes. For example
 
-    ./bin/bench -f doc.json -c upsert -p path.to.string -v '"new string"'
+
+    ./bin/bench -f ../jsondata/brewery_5k.json -v '"CENSORED DUE TO PROHIBITION"' -p description -c replace
