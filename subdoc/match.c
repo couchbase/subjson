@@ -229,6 +229,8 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state
             /* Exclude ourselves from the 'sibling' count */
             m->num_siblings--;
         } else {
+            m->type = state->type;
+
             struct jsonsl_jpr_component_st *next_comp =
                     &ctx->jpr->components[state->level];
             if (next_comp->is_arridx) {

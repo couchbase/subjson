@@ -15,7 +15,8 @@ typedef struct {
 
 /** Structure describing a match for an item */
 typedef struct {
-    /**The JSON type for the result (i.e. jsonsl_type_t) */
+    /**The JSON type for the result (i.e. jsonsl_type_t). If the match itself
+     * is not found, this will contain the innermost _parent_ type. */
     jsonsl_type_t type : 32;
 
     /**Error status (jsonsl_error_t) */

@@ -282,6 +282,23 @@ TEST_F(OpTests, testNumeric)
     rv = performArith(op, SUBDOC_CMD_INCREMENT, "counter3", 1);
     ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
 
+    doc = "[]";
+    SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
+    rv = performArith(op, SUBDOC_CMD_INCREMENT, "[0]", 42);
+    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, rv);
+
+    // Try with a _P variant. Should still be the same
+    rv = performArith(op, SUBDOC_CMD_INCREMENT_P, "[0]", 42);
+    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, rv);
+
+    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "-20");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    getAssignNewDoc(op, doc);
+
+    rv = performArith(op, SUBDOC_CMD_INCREMENT, "[0]", 1);
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("-19", t_subdoc::getMatchString(op->match));
+
     subdoc_op_free(op);
 }
 
