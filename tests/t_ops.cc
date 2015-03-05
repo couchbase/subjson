@@ -378,3 +378,35 @@ TEST_F(OpTests, testRootOps)
 
     subdoc_op_free(op);
 }
+
+TEST_F(OpTests, testMismatch)
+{
+    subdoc_OPERATION *op = subdoc_op_alloc();
+    string doc = "{}";
+    SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
+    uint16_t rv;
+
+    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "null");
+    ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
+
+    doc = "[]";
+    SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
+    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "", "blah");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "key", "blah");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    doc = "[null]";
+    SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
+    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "", "blah");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "key", "blah");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND_P, "foo.bar", "null");
+    ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
+
+    subdoc_op_free(op);
+}

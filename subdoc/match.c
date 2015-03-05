@@ -228,6 +228,20 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state
         if (m->matchres == JSONSL_MATCH_COMPLETE) {
             /* Exclude ourselves from the 'sibling' count */
             m->num_siblings--;
+        } else {
+            struct jsonsl_jpr_component_st *next_comp =
+                    &ctx->jpr->components[state->level];
+            if (next_comp->is_arridx) {
+                if (state->type != JSONSL_T_LIST) {
+                    /* printf("Next component expected list, but we are object\n"); */
+                    m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+                }
+            } else {
+                if (state->type != JSONSL_T_OBJECT) {
+                    /* printf("Next component expected object key, but we are list!\n"); */
+                    m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+                }
+            }
         }
 
         /* Zero out the rest of the callbacks */
