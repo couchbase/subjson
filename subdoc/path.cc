@@ -7,7 +7,7 @@ convert_escaped(const char *src, size_t *len)
 {
     unsigned ii, oix;
 
-    char *ret = malloc(*len);
+    char *ret = (char *)malloc(*len);
     if (!ret) {
         return NULL;
     }
@@ -188,7 +188,7 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
 subdoc_PATH *
 subdoc_path_alloc(void)
 {
-    return calloc(1, sizeof(subdoc_PATH));
+    return (subdoc_PATH *)calloc(1, sizeof(subdoc_PATH));
 }
 
 void

@@ -72,7 +72,7 @@ static int subdoc_string__reserve(subdoc_STRING *str, size_t size) {
         newalloc *= 2;
     }
 
-    newbuf = realloc(str->base, newalloc);
+    newbuf = (char *)realloc(str->base, newalloc);
     if (newbuf == NULL) {
         return -1;
     }

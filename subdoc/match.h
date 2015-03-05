@@ -17,10 +17,10 @@ typedef struct {
 typedef struct {
     /**The JSON type for the result (i.e. jsonsl_type_t). If the match itself
      * is not found, this will contain the innermost _parent_ type. */
-    jsonsl_type_t type : 32;
+    unsigned type : 32;
 
     /**Error status (jsonsl_error_t) */
-    jsonsl_error_t status : 16;
+    unsigned status : 16;
 
     /** result of the match. jsonsl_jpr_match_t */
     int16_t matchres;

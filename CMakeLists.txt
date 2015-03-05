@@ -11,7 +11,7 @@ ELSE()
     SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 ENDIF()
 
-FILE(GLOB SUBJSON_SRC subdoc/*.c)
+FILE(GLOB SUBJSON_SRC subdoc/*.c subdoc/*.cc)
 ADD_LIBRARY(subjson ${SUBJSON_SRC})
 ADD_EXECUTABLE(bench bench.cc contrib/cliopts/cliopts.c)
 TARGET_LINK_LIBRARIES(bench subjson)

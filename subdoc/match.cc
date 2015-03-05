@@ -16,12 +16,16 @@ typedef struct {
 static void push_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
 static void pop_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
 
+static parse_ctx *get_ctx(const jsonsl_t jsn)
+{
+    return (parse_ctx *)jsn->data;
+}
 
 static int
 err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
     jsonsl_char_t *at)
 {
-    parse_ctx *ctx = jsn->data;
+    parse_ctx *ctx = get_ctx(jsn);
     ctx->match->status = err;
     (void)state; (void)at;
     return 0;
@@ -38,7 +42,7 @@ static void
 unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = jsn->data;
+    parse_ctx *ctx = get_ctx(jsn);
     subdoc_MATCH *m = ctx->match;
     int rv;
     size_t slen;
@@ -102,10 +106,10 @@ static void
 push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = jsn->data;
+    parse_ctx *ctx = get_ctx(jsn);
     subdoc_MATCH *m = ctx->match;
     struct jsonsl_state_st *parent = jsonsl_last_state(jsn, st);
-    jsonsl_type_t prtype = parent->type;
+    unsigned prtype = parent->type;
 
     if (st->type == JSONSL_T_HKEY) {
         ctx->curhk = at+1;
@@ -175,7 +179,7 @@ static void
 pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
     const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = jsn->data;
+    parse_ctx *ctx = get_ctx(jsn);
     subdoc_MATCH *m = ctx->match;
     size_t end_pos = jsn->pos;
 
@@ -263,7 +267,7 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state
 static void initial_callback(jsonsl_t jsn, jsonsl_action_t action,
     struct jsonsl_state_st *state, const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = jsn->data;
+    parse_ctx *ctx = get_ctx(jsn);
     /* state is the parent */
     state->mres = jsonsl_jpr_match(ctx->jpr, JSONSL_T_UNKNOWN, 0, NULL, 0);
     jsn->action_callback_PUSH = push_callback;
@@ -317,7 +321,7 @@ exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
     /* For levels, compensate this much for the match level */
     size_t level_offset = 0;
 
-    const jsonsl_jpr_t orig_jpr = &pth->jpr_base;
+    const jsonsl_jpr_t orig_jpr = (const jsonsl_jpr_t)&pth->jpr_base;
     struct jsonsl_jpr_component_st comp_s[COMPONENTS_ALLOC];
 
     /* Last length of the subdocument */
@@ -459,7 +463,7 @@ static int
 validate_err_callback(jsonsl_t jsn, jsonsl_error_t err,
     struct jsonsl_state_st *state, jsonsl_char_t *at)
 {
-    validate_ctx *ctx = jsn->data;
+    validate_ctx *ctx = (validate_ctx *)jsn->data;
     ctx->err = err;
     printf("ERROR: AT=%s\n", at);
     (void)at; (void)state;
@@ -470,7 +474,7 @@ static void
 validate_callback(jsonsl_t jsn, jsonsl_action_t action,
     struct jsonsl_state_st *state, const jsonsl_char_t *at)
 {
-    validate_ctx *ctx = jsn->data;
+    validate_ctx *ctx = (validate_ctx *)jsn->data;
 
     if (state->level == 1) {
         ctx->rootcount++;
@@ -574,5 +578,5 @@ subdoc_validate(const char *s, size_t n, jsonsl_t jsn, int mode)
     } else {
         jsonsl_reset(jsn);
     }
-    return ctx.err;
+    return (jsonsl_error_t)ctx.err;
 }

@@ -665,7 +665,7 @@ subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth)
 subdoc_OPERATION *
 subdoc_op_alloc(void)
 {
-    subdoc_OPERATION *op = calloc(1, sizeof(*op));
+    subdoc_OPERATION *op = (subdoc_OPERATION*) calloc(1, sizeof(*op));
 
     if (op == NULL) {
         return NULL;
