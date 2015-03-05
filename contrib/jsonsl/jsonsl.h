@@ -705,6 +705,7 @@ struct jsonsl_jpr_component_st {
      * indices. jsonsl_jpr_match() will return TYPE_MISMATCH if it detects
      * that an array index is actually a child of a dictionary. */
     short is_arridx;
+    short is_neg;
 };
 
 struct jsonsl_jpr_st {
