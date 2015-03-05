@@ -4,6 +4,9 @@
  * - Maintains state
  * - Callback oriented
  * - Lightweight and fast. One source file and one header file
+ *
+ * Copyright (C) 2012-2015 Mark Nunberg
+ * See included LICENSE file for license details.
  */
 
 #ifndef JSONSL_H_
@@ -67,6 +70,16 @@ typedef int ssize_t;
 #endif /* _WIN32 */
 
 #endif /* !JSONSL_API */
+
+#ifndef JSONSL_INLINE
+#if defined(_MSC_VER)
+  #define JSONSL_INLINE __inline
+  #elif defined(__GNUC__)
+  #define JSONSL_INLINE __inline__
+  #else
+  #define JSONSL_INLINE inline
+  #endif /* _MSC_VER or __GNUC__ */
+#endif /* JSONSL_INLINE */
 
 #define JSONSL_MAX_LEVELS 512
 
@@ -234,29 +247,27 @@ struct jsonsl_state_st {
     /**
      * The JSON object type
      */
-    jsonsl_type_t type;
+    unsigned type;
 
     /** If this element is special, then its extended type is here */
-    jsonsl_special_t special_flags;
+    unsigned special_flags;
 
     /**
-     * Position offset variables. These are relative to jsn->pos.
-     * pos_begin is the position at which this state was first pushed
-     * to the stack. pos_cur is the position at which return last controlled
-     * to this state (i.e. an immediate child state was popped from it).
-     */
-
-    /**
-     * The position at which this state was first PUSHed
+     * The position (in terms of number of bytes since the first call to
+     * jsonsl_feed()) at which the state was first pushed. This includes
+     * opening tokens, if applicable.
+     *
+     * @note For strings (i.e. type & JSONSL_Tf_STRINGY is nonzero) this will
+     * be the position of the first quote.
+     *
+     * @see jsonsl_st::pos which contains the _current_ position and can be
+     * used during a POP callback to get the length of the element.
      */
     size_t pos_begin;
 
-    /**
-     * The position at which any immediate child was last POPped.
-     * Note that this field is only set when the item is popped.
-     */
+    /**FIXME: This is redundant as the same information can be derived from
+     * jsonsl_st::pos at pop-time */
     size_t pos_cur;
-
 
     /**
      * Level of recursion into nesting. This is mainly a convenience
@@ -536,10 +547,17 @@ void jsonsl_destroy(jsonsl_t jsn);
  * @param jsn the lexer
  * @param cur the current nest, which should be a struct jsonsl_nest_st
  */
-#define jsonsl_last_state(jsn, cur) \
-    (cur->level > 1 ) \
-    ? (jsn->stack + (cur->level-1)) \
-    : NULL
+static JSONSL_INLINE
+struct jsonsl_state_st *jsonsl_last_state(const jsonsl_t jsn,
+                                          const struct jsonsl_state_st *state)
+{
+    /* Don't complain about overriding array bounds */
+    if (state->level > 1) {
+        return jsn->stack + state->level - 1;
+    } else {
+        return NULL;
+    }
+}
 
 /**
  * Gets the state of the last fully consumed child of this parent. This is
@@ -548,24 +566,35 @@ void jsonsl_destroy(jsonsl_t jsn);
  * @param the lexer
  * @return A pointer to the child.
  */
-#define jsonsl_last_child(jsn, parent) \
-    (jsn->stack + (parent->level+1))
+static JSONSL_INLINE
+struct jsonsl_state_st *jsonsl_last_child(const jsonsl_t jsn,
+                                          const struct jsonsl_state_st *parent)
+{
+    return jsn->stack + (parent->level + 1);
+}
 
 /**Call to instruct the parser to stop parsing and return. This is valid
  * only from within a callback */
-#define jsonsl_stop(jsn) (jsn)->stopfl = 1
+static JSONSL_INLINE
+void jsonsl_stop(jsonsl_t jsn)
+{
+    jsn->stopfl = 1;
+}
 
 /**
  * This enables receiving callbacks on all events. Doesn't do
  * anything special but helps avoid some boilerplate.
  * This does not touch the UESCAPE callbacks or flags.
  */
-#define jsonsl_enable_all_callbacks(jsn) \
-    jsn->call_HKEY = 1; \
-    jsn->call_STRING = 1; \
-    jsn->call_OBJECT = 1; \
-    jsn->call_SPECIAL = 1; \
+static JSONSL_INLINE
+void jsonsl_enable_all_callbacks(jsonsl_t jsn)
+{
+    jsn->call_HKEY = 1;
+    jsn->call_STRING = 1;
+    jsn->call_OBJECT = 1;
+    jsn->call_SPECIAL = 1;
     jsn->call_LIST = 1;
+}
 
 /**
  * A macro which returns true if the current state object can
@@ -676,9 +705,6 @@ struct jsonsl_jpr_component_st {
      * indices. jsonsl_jpr_match() will return TYPE_MISMATCH if it detects
      * that an array index is actually a child of a dictionary. */
     short is_arridx;
-
-    /** Whether this is a placeholder for a negative array index */
-    short is_neg;
 };
 
 struct jsonsl_jpr_st {
@@ -733,8 +759,8 @@ void jsonsl_jpr_destroy(jsonsl_jpr_t jpr);
  * or successful.
  */
 JSONSL_API
-jsonsl_jpr_match_t jsonsl_jpr_match(const jsonsl_jpr_t jpr,
-                                    jsonsl_type_t parent_type,
+jsonsl_jpr_match_t jsonsl_jpr_match(jsonsl_jpr_t jpr,
+                                    unsigned int parent_type,
                                     unsigned int parent_level,
                                     const char *key, size_t nkey);
 
@@ -837,7 +863,7 @@ size_t jsonsl_util_unescape_ex(const char *in,
                                char *out,
                                size_t len,
                                const int toEscape[128],
-                               jsonsl_special_t *oflags,
+                               unsigned *oflags,
                                jsonsl_error_t *err,
                                const char **errat);
 
