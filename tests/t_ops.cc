@@ -353,3 +353,28 @@ TEST_F(OpTests, testNegativeIndex)
 
     subdoc_op_free(op);
 }
+
+TEST_F(OpTests, testRootOps)
+{
+    subdoc_OPERATION *op = subdoc_op_alloc();
+    string json = "[]";
+    SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
+    uint16_t rv;
+
+    rv = performNewOp(op, SUBDOC_CMD_GET, "");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("[]", t_subdoc::getMatchString(op->match));
+
+    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "null");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    getAssignNewDoc(op, json);
+
+    rv = performNewOp(op, SUBDOC_CMD_GET, "");
+    ASSERT_EQ("[null]", t_subdoc::getMatchString(op->match));
+
+    // Deleting root element should be CANTINSERT
+    rv = performNewOp(op, SUBDOC_CMD_DELETE, "");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    subdoc_op_free(op);
+}

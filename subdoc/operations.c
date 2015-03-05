@@ -613,6 +613,12 @@ subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth)
     case SUBDOC_CMD_DICT_UPSERT_P:
     case SUBDOC_CMD_REPLACE:
     case SUBDOC_CMD_DELETE:
+        if (op->path->jpr_base.ncomponents == 1) {
+            /* Can't perform these operations on the root element since they
+             * will invalidate the JSON or are otherwise meaningless. */
+            return SUBDOC_STATUS_VALUE_CANTINSERT;
+        }
+
         if (op->user_in.length) {
             rv = subdoc_validate(op->user_in.at, op->user_in.length, op->jsn,
                 SUBDOC_VALIDATE_PARENT_DICT);

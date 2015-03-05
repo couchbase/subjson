@@ -151,6 +151,10 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
     jpr->ncomponents++;
     nj->has_negix = 0;
 
+    if (!len) {
+        return 0;
+    }
+
     for (last = c = path; c < path+len; c++) {
         if (*c == '`') {
             n_backtick++;
