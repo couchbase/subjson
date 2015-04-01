@@ -427,3 +427,16 @@ TEST_F(OpTests, testMismatch)
 
     subdoc_op_free(op);
 }
+
+TEST_F(OpTests, testWhitespace)
+{
+    subdoc_OPERATION *op = subdoc_op_alloc();
+    string doc = "[ 1, 2, 3,       4        ]";
+    SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
+    uint16_t rv;
+
+    rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("4", t_subdoc::getMatchString(op->match));
+    subdoc_op_free(op);
+}

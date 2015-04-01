@@ -404,6 +404,12 @@ exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
             lm->length = (lpar->at + lpar->length) - lm->at;
             lm->length--;
 
+            /* Strip trailing whitespace. Leading whitespace is stripped
+             * within jsonsl itself */
+            while (lm->at[lm->length-1] == ' ' && lm->length) {
+                lm->length--;
+            }
+
             /* Set the position */
             result->position = result->num_siblings - 1;
 
