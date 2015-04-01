@@ -70,11 +70,13 @@ add_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick
             const char *c = component + len + ii;
             if (*c < 0x30 || *c > 0x39) {
                 if (ii == 1 && c[0] == '-') {
-                    has_numix = -1;
-                    continue;
+                    if (a_len == 3 && c[1] == '1') {
+                        has_numix = -1;
+                        break;
+                    } else {
+                        return JSONSL_ERROR_INVALID_NUMBER;
+                    }
                 }
-                /* not a number */
-                return JSONSL_ERROR_INVALID_NUMBER;
             }
             numix *= 10;
             numix += *c - 0x30;

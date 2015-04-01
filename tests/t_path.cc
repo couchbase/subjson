@@ -114,5 +114,8 @@ TEST_F(PathTests, testNegativePath) {
     ASSERT_TRUE(!!ss->components_s[4].is_neg);
     ASSERT_TRUE(!!ss->has_negix);
 
+    pth = "foo[-2]";
+    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
+
     subdoc_path_free(ss);
 }
