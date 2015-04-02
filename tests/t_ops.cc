@@ -31,7 +31,7 @@ getAssignNewDoc(subdoc_OPERATION *op, string& newdoc)
 }
 
 static uint16_t
-performNewOp(subdoc_OPERATION *op, uint8_t opcode, const char *path, const char *value = NULL, size_t nvalue = 0)
+performNewOp(subdoc_OPERATION *op, subdoc_OPTYPE opcode, const char *path, const char *value = NULL, size_t nvalue = 0)
 {
     subdoc_op_clear(op);
     if (value != NULL) {
@@ -45,7 +45,7 @@ performNewOp(subdoc_OPERATION *op, uint8_t opcode, const char *path, const char 
 }
 
 static uint16_t
-performArith(subdoc_OPERATION *op, uint8_t opcode, const char *path, uint64_t delta)
+performArith(subdoc_OPERATION *op, subdoc_OPTYPE opcode, const char *path, uint64_t delta)
 {
     uint64_t ntmp = htonll(delta);
     return performNewOp(op, opcode, path, (const char *)&ntmp, sizeof ntmp);

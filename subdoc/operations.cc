@@ -697,7 +697,7 @@ subdoc_op_clear(subdoc_OPERATION *op)
     op->user_in.length = 0;
     op->user_in.at = NULL;
     op->doc_new_len = 0;
-    op->optype = 0;
+    op->optype = SUBDOC_CMD_GET;
 
     memset(&op->match, 0, sizeof op->match);
 }

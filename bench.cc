@@ -209,7 +209,7 @@ execOperation(Options& o)
     for (size_t ii = 0; ii < itermax; ii++) {
         subdoc_op_clear(op);
         const string& curInput = inputStrs[ii % inputStrs.size()];
-        SUBDOC_OP_SETCODE(op, opcode);
+        SUBDOC_OP_SETCODE(op, subdoc_OPTYPE(opcode));
         SUBDOC_OP_SETDOC(op, curInput.c_str(), curInput.size());
         SUBDOC_OP_SETVALUE(op, vbuf, nvbuf);
 
