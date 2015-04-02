@@ -548,7 +548,7 @@ do_arith_op(subdoc_OPERATION *op)
             }
 
             num_i += delta;
-            n_buf = sprintf(op->numbufs, "%"PRId64, num_i);
+            n_buf = sprintf(op->numbufs, "%" PRId64, num_i);
         }
     } else {
         switch (op->optype) {
@@ -564,7 +564,7 @@ do_arith_op(subdoc_OPERATION *op)
             return SUBDOC_STATUS_PATH_ENOENT;
         }
 
-        n_buf = sprintf(op->numbufs, "%"PRId64, delta);
+        n_buf = sprintf(op->numbufs, "%" PRId64, delta);
         op->user_in.at = op->numbufs;
         op->user_in.length = n_buf;
         op->optype = SUBDOC_CMD_DICT_ADD_P;

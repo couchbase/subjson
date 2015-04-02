@@ -297,7 +297,7 @@ void runMain(int argc, char **argv)
     double mb_per_sec = ((double)o.totalBytes * (double)o.o_iter.result()) / n_seconds;
     mb_per_sec /= (1024 * 1024);
 
-    fprintf(stderr, "DURATION=%.2lfs. OPS=%lu\n", n_seconds, o.o_iter.result());
+    fprintf(stderr, "DURATION=%.2lfs. OPS=%u\n", n_seconds, o.o_iter.result());
     fprintf(stderr, "%.2lf OPS/s\n",  ops_per_sec);
     fprintf(stderr, "%.2lf MB/s\n", mb_per_sec);
 }
