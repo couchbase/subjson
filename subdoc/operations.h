@@ -64,11 +64,11 @@ SUBDOC_OP_SETCODE(subdoc_OPERATION *op, subdoc_OPTYPE code)
     op->optype = code;
 }
 
-uint16_t
+subdoc_ERRORS
 subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth);
 
 const char *
-subdoc_strerror(uint16_t rc);
+subdoc_strerror(subdoc_ERRORS rc);
 
 #ifdef __cplusplus
 }

@@ -107,7 +107,7 @@ add_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick
     return 0;
 }
 
-int
+jsonsl_error_t
 subdoc_path_add_arrindex(subdoc_PATH *pth, size_t ixnum)
 {
     jsonsl_jpr_t jpr = &pth->jpr_base;

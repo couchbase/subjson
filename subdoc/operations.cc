@@ -11,7 +11,7 @@ static subdoc_LOC loc_QUOTE = { "\"", 1 };
 static subdoc_LOC loc_COMMA_QUOTE = { ",\"", 2 };
 static subdoc_LOC loc_QUOTE_COLON = { "\":", 2 };
 
-static uint16_t
+static subdoc_ERRORS
 do_match_common(subdoc_OPERATION *op)
 {
     subdoc_match_exec(op->doc_cur.at, op->doc_cur.length, op->path, op->jsn, &op->match);
@@ -24,7 +24,7 @@ do_match_common(subdoc_OPERATION *op)
     }
 }
 
-static uint16_t
+static subdoc_ERRORS
 do_get(subdoc_OPERATION *op)
 {
     if (op->match.matchres != JSONSL_MATCH_COMPLETE) {
@@ -114,9 +114,9 @@ strip_comma(subdoc_LOC *loc, int mode)
 
 #define MKDIR_P_ARRAY 0
 #define MKDIR_P_DICT 1
-static uint16_t do_mkdir_p(subdoc_OPERATION *op, int mode);
+static subdoc_ERRORS do_mkdir_p(subdoc_OPERATION *op, int mode);
 
-static uint16_t
+static subdoc_ERRORS
 do_store_dict(subdoc_OPERATION *op)
 {
     /* we can't do a simple get here, since it's a bit more complex than that */
@@ -232,7 +232,7 @@ do_store_dict(subdoc_OPERATION *op)
     return SUBDOC_STATUS_SUCCESS;
 }
 
-static uint16_t
+static subdoc_ERRORS
 do_mkdir_p(subdoc_OPERATION *op, int mode)
 {
     const struct jsonsl_jpr_component_st *comp;
@@ -305,20 +305,19 @@ do_mkdir_p(subdoc_OPERATION *op, int mode)
     return SUBDOC_STATUS_SUCCESS;
 }
 
-static uint16_t
+static subdoc_ERRORS
 find_first_element(subdoc_OPERATION *op)
 {
-    int rv;
-    rv = subdoc_path_add_arrindex(op->path, 0);
+    jsonsl_error_t rv = subdoc_path_add_arrindex(op->path, 0);
     if (rv != JSONSL_ERROR_SUCCESS) {
         return SUBDOC_STATUS_PATH_E2BIG;
     }
 
-    rv = do_match_common(op);
+    subdoc_ERRORS status = do_match_common(op);
     subdoc_path_pop_component(op->path);
 
-    if (rv != SUBDOC_STATUS_SUCCESS) {
-        return rv;
+    if (status != SUBDOC_STATUS_SUCCESS) {
+        return status;
     }
     if (op->match.matchres != JSONSL_MATCH_COMPLETE) {
         return SUBDOC_STATUS_PATH_ENOENT;
@@ -328,14 +327,14 @@ find_first_element(subdoc_OPERATION *op)
 
 /* Finds the last element. This normalizes the match structure so that
  * the last element appears in the 'loc_match' field */
-static uint16_t
+static subdoc_ERRORS
 find_last_element(subdoc_OPERATION *op)
 {
     subdoc_LOC *mloc = &op->match.loc_match;
     subdoc_LOC *ploc = &op->match.loc_parent;
 
     op->match.get_last_child_pos = 1;
-    int rv = find_first_element(op);
+    subdoc_ERRORS rv = find_first_element(op);
     if (rv != SUBDOC_STATUS_SUCCESS) {
         return rv;
     }
@@ -358,7 +357,7 @@ find_last_element(subdoc_OPERATION *op)
 }
 
 /* Inserts a single element into an empty array */
-static uint16_t
+static subdoc_ERRORS
 insert_singleton_element(subdoc_OPERATION *op)
 {
     /* First segment is ... [ */
@@ -373,7 +372,7 @@ insert_singleton_element(subdoc_OPERATION *op)
 }
 
 
-static uint16_t
+static subdoc_ERRORS
 do_list_op(subdoc_OPERATION *op)
 {
     #define HANDLE_LISTADD_ENOENT(rv) \
@@ -394,7 +393,7 @@ do_list_op(subdoc_OPERATION *op)
         } \
     }
 
-    int rv;
+    subdoc_ERRORS rv;
     subdoc_MATCH *m = &op->match;
     if (op->optype == SUBDOC_CMD_ARRAY_PREPEND) {
         /* Find the array itself. */
@@ -488,10 +487,10 @@ do_list_op(subdoc_OPERATION *op)
     return SUBDOC_STATUS_SUCCESS;
 }
 
-static uint16_t
+static subdoc_ERRORS
 do_arith_op(subdoc_OPERATION *op)
 {
-    uint16_t status;
+    subdoc_ERRORS status;
     int64_t num_i;
     int64_t delta;
     uint64_t tmp;
@@ -592,11 +591,11 @@ do_arith_op(subdoc_OPERATION *op)
     return SUBDOC_STATUS_SUCCESS;
 }
 
-uint16_t
+subdoc_ERRORS
 subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth)
 {
     int rv = subdoc_path_parse(op->path, pth, npth);
-    uint16_t status;
+    subdoc_ERRORS status;
 
     if (rv != 0) {
         return SUBDOC_STATUS_PATH_EINVAL;
@@ -714,7 +713,7 @@ subdoc_op_free(subdoc_OPERATION *op)
 
 /* Misc */
 const char *
-subdoc_strerror(uint16_t rc)
+subdoc_strerror(subdoc_ERRORS rc)
 {
     switch (rc) {
     case SUBDOC_STATUS_SUCCESS:

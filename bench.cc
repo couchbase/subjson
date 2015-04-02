@@ -213,9 +213,9 @@ execOperation(Options& o)
         SUBDOC_OP_SETDOC(op, curInput.c_str(), curInput.size());
         SUBDOC_OP_SETVALUE(op, vbuf, nvbuf);
 
-        uint16_t rv = subdoc_op_exec(op, path.c_str(), path.size());
+        subdoc_ERRORS rv = subdoc_op_exec(op, path.c_str(), path.size());
         if (rv != SUBDOC_STATUS_SUCCESS) {
-            throw uint16_t(rv);
+            throw rv;
         }
     }
 
@@ -310,7 +310,7 @@ int main(int argc, char **argv)
     } catch (string& exc) {
         fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
-    } catch (uint16_t& rc) {
+    } catch (subdoc_ERRORS& rc) {
         fprintf(stderr, "Command failed: %s\n", subdoc_strerror(rc));
     }
 }
