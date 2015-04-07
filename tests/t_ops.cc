@@ -30,8 +30,8 @@ getAssignNewDoc(subdoc_OPERATION *op, string& newdoc)
     SUBDOC_OP_SETDOC(op, newdoc.c_str(), newdoc.size());
 }
 
-static uint16_t
-performNewOp(subdoc_OPERATION *op, uint8_t opcode, const char *path, const char *value = NULL, size_t nvalue = 0)
+static subdoc_ERRORS
+performNewOp(subdoc_OPERATION *op, subdoc_OPTYPE opcode, const char *path, const char *value = NULL, size_t nvalue = 0)
 {
     subdoc_op_clear(op);
     if (value != NULL) {
@@ -44,8 +44,8 @@ performNewOp(subdoc_OPERATION *op, uint8_t opcode, const char *path, const char 
     return subdoc_op_exec(op, path, strlen(path));
 }
 
-static uint16_t
-performArith(subdoc_OPERATION *op, uint8_t opcode, const char *path, uint64_t delta)
+static subdoc_ERRORS
+performArith(subdoc_OPERATION *op, subdoc_OPTYPE opcode, const char *path, uint64_t delta)
 {
     uint64_t ntmp = htonll(delta);
     return performNewOp(op, opcode, path, (const char *)&ntmp, sizeof ntmp);
@@ -62,7 +62,7 @@ TEST_F(OpTests, testOperations)
     ASSERT_EQ("\"Allagash Brewing\"", t_subdoc::getMatchString(op->match));
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, performNewOp(op, SUBDOC_CMD_EXISTS, "name"));
 
-    uint16_t rv = performNewOp(op, SUBDOC_CMD_DELETE, "address");
+    subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_DELETE, "address");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
 
     getAssignNewDoc(op, newdoc);
@@ -103,7 +103,7 @@ TEST_F(OpTests, testGenericOps)
 {
     subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, SAMPLE_big_json, strlen(SAMPLE_big_json));
-    uint16_t rv;
+    subdoc_ERRORS rv;
     string newdoc;
 
     rv = performNewOp(op, SUBDOC_CMD_DELETE, "address[0]");
@@ -129,7 +129,7 @@ TEST_F(OpTests, testListOps)
     subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
 
-    uint16_t rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "array", "[]");
+    subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "array", "[]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     getAssignNewDoc(op, doc);
 
@@ -194,7 +194,7 @@ TEST_F(OpTests, testUnique)
 {
     string json = "{}";
     string doc;
-    uint16_t rv;
+    subdoc_ERRORS rv;
     subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
 
@@ -231,7 +231,7 @@ TEST_F(OpTests, testUnique)
 TEST_F(OpTests, testNumeric)
 {
     string doc = "{}";
-    uint16_t rv;
+    subdoc_ERRORS rv;
     subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
 
@@ -307,7 +307,7 @@ TEST_F(OpTests, testValueValidation)
     subdoc_OPERATION *op = subdoc_op_alloc();
     string json = "{}";
     string doc;
-    uint16_t rv;
+    subdoc_ERRORS rv;
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
 
     rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "INVALID");
@@ -331,7 +331,7 @@ TEST_F(OpTests, testNegativeIndex)
     string json = "[1,2,3,4,5,6]";
     SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
 
-    uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
+    subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("6", t_subdoc::getMatchString(op->match));
 
@@ -376,7 +376,7 @@ TEST_F(OpTests, testRootOps)
     subdoc_OPERATION *op = subdoc_op_alloc();
     string json = "[]";
     SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
-    uint16_t rv;
+    subdoc_ERRORS rv;
 
     rv = performNewOp(op, SUBDOC_CMD_GET, "");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
@@ -401,7 +401,7 @@ TEST_F(OpTests, testMismatch)
     subdoc_OPERATION *op = subdoc_op_alloc();
     string doc = "{}";
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
-    uint16_t rv;
+    subdoc_ERRORS rv;
 
     rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "null");
     ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
@@ -433,7 +433,7 @@ TEST_F(OpTests, testWhitespace)
     subdoc_OPERATION *op = subdoc_op_alloc();
     string doc = "[ 1, 2, 3,       4        ]";
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
-    uint16_t rv;
+    subdoc_ERRORS rv;
 
     rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);

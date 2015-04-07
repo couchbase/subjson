@@ -209,13 +209,13 @@ execOperation(Options& o)
     for (size_t ii = 0; ii < itermax; ii++) {
         subdoc_op_clear(op);
         const string& curInput = inputStrs[ii % inputStrs.size()];
-        SUBDOC_OP_SETCODE(op, opcode);
+        SUBDOC_OP_SETCODE(op, subdoc_OPTYPE(opcode));
         SUBDOC_OP_SETDOC(op, curInput.c_str(), curInput.size());
         SUBDOC_OP_SETVALUE(op, vbuf, nvbuf);
 
-        uint16_t rv = subdoc_op_exec(op, path.c_str(), path.size());
+        subdoc_ERRORS rv = subdoc_op_exec(op, path.c_str(), path.size());
         if (rv != SUBDOC_STATUS_SUCCESS) {
-            throw uint16_t(rv);
+            throw rv;
         }
     }
 
@@ -297,7 +297,7 @@ void runMain(int argc, char **argv)
     double mb_per_sec = ((double)o.totalBytes * (double)o.o_iter.result()) / n_seconds;
     mb_per_sec /= (1024 * 1024);
 
-    fprintf(stderr, "DURATION=%.2lfs. OPS=%lu\n", n_seconds, o.o_iter.result());
+    fprintf(stderr, "DURATION=%.2lfs. OPS=%u\n", n_seconds, o.o_iter.result());
     fprintf(stderr, "%.2lf OPS/s\n",  ops_per_sec);
     fprintf(stderr, "%.2lf MB/s\n", mb_per_sec);
 }
@@ -310,7 +310,7 @@ int main(int argc, char **argv)
     } catch (string& exc) {
         fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
-    } catch (uint16_t& rc) {
+    } catch (subdoc_ERRORS& rc) {
         fprintf(stderr, "Command failed: %s\n", subdoc_strerror(rc));
     }
 }
