@@ -440,3 +440,20 @@ TEST_F(OpTests, testWhitespace)
     ASSERT_EQ("4", t_subdoc::getMatchString(op->match));
     subdoc_op_free(op);
 }
+
+TEST_F(OpTests, testTooDeep) {
+    subdoc_OPERATION *op = subdoc_op_alloc();
+    std::string deep = "{\"array\":";
+    for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
+        deep += "[";
+    }
+    for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
+        deep += "]";
+    }
+
+    SUBDOC_OP_SETDOC(op, deep.c_str(), deep.size());
+
+    uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, "dummy.path");
+    ASSERT_EQ(SUBDOC_STATUS_DOC_ETOODEEP, rv);
+    subdoc_op_free(op);
+}

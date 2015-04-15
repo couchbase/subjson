@@ -32,6 +32,8 @@ typedef enum {
     /**Invalid value for insertion. Inserting this value would invalidate
      * the JSON document */
     SUBDOC_STATUS_VALUE_CANTINSERT = 0x509,
+    /** Document too deep to parse */
+    SUBDOC_STATUS_DOC_ETOODEEP = 0x50A,
 
     /* MEMCACHED ERROR CODES */
     SUBDOC_STATUS_GLOBAL_UNKNOWN_COMMAND = 0x81,

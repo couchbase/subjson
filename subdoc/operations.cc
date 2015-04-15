@@ -18,7 +18,11 @@ do_match_common(subdoc_OPERATION *op)
     if (op->match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
         return SUBDOC_STATUS_PATH_MISMATCH;
     } else if (op->match.status != JSONSL_ERROR_SUCCESS) {
-        return SUBDOC_STATUS_DOC_NOTJSON;
+        if (op->match.status == JSONSL_ERROR_LEVELS_EXCEEDED) {
+            return SUBDOC_STATUS_DOC_ETOODEEP;
+        } else {
+            return SUBDOC_STATUS_DOC_NOTJSON;
+        }
     } else {
         return SUBDOC_STATUS_SUCCESS;
     }
