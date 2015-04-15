@@ -602,7 +602,11 @@ subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth)
     subdoc_ERRORS status;
 
     if (rv != 0) {
-        return SUBDOC_STATUS_PATH_EINVAL;
+        if (rv == JSONSL_ERROR_LEVELS_EXCEEDED) {
+            return SUBDOC_STATUS_PATH_E2BIG;
+        } else {
+            return SUBDOC_STATUS_PATH_EINVAL;
+        }
     }
 
     switch (op->optype) {

@@ -455,5 +455,14 @@ TEST_F(OpTests, testTooDeep) {
 
     uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, "dummy.path");
     ASSERT_EQ(SUBDOC_STATUS_DOC_ETOODEEP, rv);
+
+    // Try with a really deep path:
+    std::string dp = "dummy";
+    for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
+        dp += ".dummy";
+    }
+    rv = performNewOp(op, SUBDOC_CMD_GET, dp.c_str());
+    ASSERT_EQ(SUBDOC_STATUS_PATH_E2BIG, rv);
+
     subdoc_op_free(op);
 }
