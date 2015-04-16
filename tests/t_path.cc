@@ -70,6 +70,15 @@ TEST_F(PathTests, testNumericIndices) {
     ASSERT_EQ(1, jpr->components[4].is_arridx);
     ASSERT_EQ(9, getComponentNumber(ss, 4));
 
+    // Try again, using [] syntax
+    pth = "foo[0][0][0]";
+    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_EQ(5, ss->jpr_base.ncomponents);
+
+    pth = "[1][2][3]";
+    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_EQ(4, ss->jpr_base.ncomponents);
+
     subdoc_path_free(ss);
 }
 

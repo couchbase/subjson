@@ -23,11 +23,44 @@ convert_escaped(const char *src, size_t *len)
     return ret;
 }
 
+/* Adds a numeric component */
 static int
-add_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick)
+add_num_component(subdoc_PATH *nj, const char *component, size_t len)
 {
-    int has_numix = 0;
-    uint64_t numix;
+    unsigned ii;
+    size_t numval = 0;
+
+    if (component[0] == '-') {
+        if (len != 2 || component[1] != '1') {
+            return JSONSL_ERROR_INVALID_NUMBER;
+        } else {
+            return subdoc_path_add_arrindex(nj, (size_t)-1);
+        }
+    }
+
+    for (ii = 0; ii < len; ii++) {
+        const char *c = &component[ii];
+        if (*c < 0x30 && *c > 0x39) {
+            return JSONSL_ERROR_INVALID_NUMBER;
+        } else {
+            size_t tmpval = numval;
+            tmpval *= 10;
+            tmpval += *c - 0x30;
+
+            /* check for overflow */
+            if (tmpval < numval) {
+                return JSONSL_ERROR_INVALID_NUMBER;
+            } else {
+                numval = tmpval;
+            }
+        }
+    }
+    return subdoc_path_add_arrindex(nj, numval);
+}
+
+static int
+add_str_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick)
+{
     struct jsonsl_jpr_component_st *jpr_comp;
     jsonsl_jpr_t jpr = &nj->jpr_base;
 
@@ -45,65 +78,18 @@ add_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick
         return JSONSL_ERROR_JPR_BADPATH;
     }
 
-
-
-    /* Because an array index is always at the (unescaped) end, we don't need
-     * to check if we have backticks before checking for array indices */
-    if (component[len-1] == ']') {
-        unsigned ii;
-        size_t a_len = 0;
-        has_numix = 1;
-        for (; len != 0; --len, a_len++) {
-            if (component[len] == '[') {
-                break;
-            }
-        }
-
-        if (len == 0 && *component != '[') {
-            /* Mismatch! */
-            return -1;
-        }
-
-        /* end is a ']' */
-        a_len--;
-        for (ii = 1, numix = 0; ii < a_len; ii++) {
-            const char *c = component + len + ii;
-            if (*c < 0x30 || *c > 0x39) {
-                if (ii == 1 && c[0] == '-') {
-                    if (a_len == 3 && c[1] == '1') {
-                        has_numix = -1;
-                        break;
-                    } else {
-                        return JSONSL_ERROR_INVALID_NUMBER;
-                    }
-                }
-            }
-            numix *= 10;
-            numix += *c - 0x30;
-        }
+    if (n_backtick) {
+        /* OHNOEZ! Slow path */
+        component = convert_escaped(component, &len);
     }
 
-    if (len) {
-        if (n_backtick) {
-            /* OHNOEZ! Slow path */
-            component = convert_escaped(component, &len);
-        }
-
-        jpr_comp = &nj->components_s[jpr->ncomponents];
-        jpr_comp->pstr = (char *)component;
-        jpr_comp->ptype = JSONSL_PATH_STRING;
-        jpr_comp->len = len;
-        jpr_comp->is_arridx = 0;
-        jpr_comp->is_neg = 0;
-        jpr->ncomponents++;
-    }
-
-    if (has_numix) {
-        if (has_numix == -1) {
-            numix = -1;
-        }
-        return subdoc_path_add_arrindex(nj, numix);
-    }
+    jpr_comp = &nj->components_s[jpr->ncomponents];
+    jpr_comp->pstr = (char *)component;
+    jpr_comp->ptype = JSONSL_PATH_STRING;
+    jpr_comp->len = len;
+    jpr_comp->is_arridx = 0;
+    jpr_comp->is_neg = 0;
+    jpr->ncomponents++;
     return 0;
 }
 
@@ -139,6 +125,7 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
     /* Path's buffers cannot change */
     const char *c, *last, *path_end = path + len;
     int in_escape = 0;
+    int in_bracket = 0;
     int n_backtick = 0;
     int rv;
 
@@ -157,8 +144,12 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
         return 0;
     }
 
-    for (last = c = path; c < path+len; c++) {
+    for (last = c = path; c < path_end; c++) {
         if (*c == '`') {
+            if (in_bracket) {
+                return JSONSL_ERROR_JPR_BADPATH; /* no ` allowed in [] */
+            }
+
             n_backtick++;
             if (c < path_end-1 && c[1] == '`') {
                 n_backtick++, c++;
@@ -170,21 +161,60 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
             }
             continue;
         }
+
         if (in_escape) {
             continue;
         }
-        if (*c == '.') {
-            /* Delimiter */
-            rv = add_component(nj, last, c-last, n_backtick);
-            if (rv != 0) {
-                return rv;
+
+        int comp_added = 0;
+
+        if (*c == '[') {
+            if (in_bracket) {
+                return JSONSL_ERROR_JPR_BADPATH;
+            }
+            in_bracket = 1;
+
+            /* There's a leading string portion, e.g. "foo[0]". Parse foo first */
+            if (c-last) {
+                rv = add_str_component(nj, last, c-last, n_backtick);
+                comp_added = 1;
+            } else {
+                last = c + 1; /* Shift ahead to avoid the '[' */
             }
 
-            last = c + 1;
-            n_backtick = 0;
+        } else if (*c == ']') {
+            if (!in_bracket) {
+                return JSONSL_ERROR_JPR_BADPATH;
+            } else {
+                /* Add numeric component here */
+                in_bracket = 0;
+                rv = add_num_component(nj, last, c-last);
+                comp_added = 1;
+                in_bracket = 0;
+            }
+        } else if (*c == '.') {
+            rv = add_str_component(nj, last, c-last, n_backtick);
+            comp_added = 1;
+        }
+
+        if (comp_added) {
+            if (rv != 0) {
+                return rv;
+            } else {
+                if (*c == ']' && c + 1 < path_end && c[1] == '.') {
+                    c++; /* Skip over the following '.' */
+                }
+                last = c + 1;
+                n_backtick = 0;
+            }
         }
     }
-    return add_component(nj, last, c-last, n_backtick);
+
+    if (c-last) {
+        return add_str_component(nj, last, c-last, n_backtick);
+    } else {
+        return 0;
+    }
 }
 
 subdoc_PATH *
