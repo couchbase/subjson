@@ -1,4 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
+OPTION(SUBJSON_GTEST "Location of gtest (for testing)" "${PROJECT_SOURCE_DIR}/contrib/gtest")
 PROJECT(subjson)
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR})
 
@@ -16,5 +17,7 @@ ADD_LIBRARY(subjson ${SUBJSON_SRC})
 ADD_EXECUTABLE(bench bench.cc contrib/cliopts/cliopts.c)
 TARGET_LINK_LIBRARIES(bench subjson)
 
-ENABLE_TESTING()
-ADD_SUBDIRECTORY(tests)
+IF(EXISTS ${SUBJSON_GTEST})
+    ENABLE_TESTING()
+    ADD_SUBDIRECTORY(tests)
+ENDIF()
