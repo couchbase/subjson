@@ -8,7 +8,10 @@
 extern "C" {
 #endif
 
-#define COMPONENTS_ALLOC 32
+// Maximum number of components in a path. Set to 33 to allow 32 'actual'
+// components plus the implicit root element.
+#define COMPONENTS_ALLOC 33
+
 typedef struct subdoc_PATH_st {
     struct jsonsl_jpr_st jpr_base;
     struct jsonsl_jpr_component_st components_s[COMPONENTS_ALLOC];
