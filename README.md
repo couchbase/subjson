@@ -1,4 +1,4 @@
-# subjson - quickly manipulate JSON subfields in pure C
+# subjson - quickly manipulate JSON subfields
 
 This is high performance string library which can manipulate JSON documents.
 It does so by performing simple string substitutions on _regions_ of the
@@ -8,8 +8,6 @@ This library uses the fast [jsonsl](https://github.com/mnunberg/jsonsl) parser
 to obtain regions of the document which should be replaced, and outputs a small,
 fixed array of `iovec` like structures (buffer-length regions) which consist
 of the new document.
-
-The library itself is written in C. The tests are in C++.
 
 ## Performance Characteristics
 
@@ -33,14 +31,15 @@ comparison must be done occasionally on the relevant path components).
 
 ## Building
 
-    $ git submodule init
-    $ git submodule update
     $ mkdir build
     $ cd build
-    $ cmake .. -DCMAKE_BUILD_TYPE=RELEASE
+    $ cmake .. -DCMAKE_BUILD_TYPE=RELEASE -DSUBJSON_GTEST=/path/to/gtest
     $ make
     $ make test
     $ ./bin/bench --help
+
+Note that to run the tests you will need to have a copy of gtest. A minified
+version may be found [here](https://github.com/couchbasedeps/gtest).
 
 ## Testing commands
 
