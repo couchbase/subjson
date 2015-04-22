@@ -17,7 +17,7 @@ ADD_LIBRARY(subjson ${SUBJSON_SRC})
 ADD_EXECUTABLE(bench bench.cc contrib/cliopts/cliopts.c)
 TARGET_LINK_LIBRARIES(bench subjson)
 
-IF(EXISTS ${SUBJSON_GTEST})
+IF(EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
     ENABLE_TESTING()
     ADD_SUBDIRECTORY(tests)
 ENDIF()
