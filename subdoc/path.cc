@@ -34,7 +34,7 @@ add_num_component(subdoc_PATH *nj, const char *component, size_t len)
         if (len != 2 || component[1] != '1') {
             return JSONSL_ERROR_INVALID_NUMBER;
         } else {
-            return subdoc_path_add_arrindex(nj, (size_t)-1);
+            return subdoc_path_add_arrindex(nj, -1);
         }
     }
 
@@ -94,7 +94,7 @@ add_str_component(subdoc_PATH *nj, const char *component, size_t len, int n_back
 }
 
 jsonsl_error_t
-subdoc_path_add_arrindex(subdoc_PATH *pth, size_t ixnum)
+subdoc_path_add_arrindex(subdoc_PATH *pth, ssize_t ixnum)
 {
     jsonsl_jpr_t jpr = &pth->jpr_base;
     struct jsonsl_jpr_component_st *comp;

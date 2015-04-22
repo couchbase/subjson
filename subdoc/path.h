@@ -22,7 +22,7 @@ struct subdoc_PATH_st *subdoc_path_alloc(void);
 void subdoc_path_free(struct subdoc_PATH_st*);
 void subdoc_path_clear(struct subdoc_PATH_st*);
 int subdoc_path_parse(struct subdoc_PATH_st *nj, const char *path, size_t len);
-jsonsl_error_t subdoc_path_add_arrindex(subdoc_PATH *pth, size_t ixnum);
+jsonsl_error_t subdoc_path_add_arrindex(subdoc_PATH *pth, ssize_t ixnum);
 #define subdoc_path_pop_component(pth) do { \
     (pth)->jpr_base.ncomponents--; \
 } while (0);

@@ -150,9 +150,8 @@ do_store_dict(subdoc_OPERATION *op)
             return SUBDOC_STATUS_PATH_ENOENT;
         }
     } else if (m->matchres == JSONSL_MATCH_COMPLETE) {
-        switch (op->optype) {
-        case SUBDOC_CMD_DICT_ADD:
-        case SUBDOC_CMD_DICT_ADD_P:
+        if ((op->optype == SUBDOC_CMD_DICT_ADD) ||
+            (op->optype == SUBDOC_CMD_DICT_ADD_P)) {
             return SUBDOC_STATUS_DOC_EEXISTS;
         }
     }
@@ -513,11 +512,9 @@ do_arith_op(subdoc_OPERATION *op)
 
     delta = tmp;
 
-    switch (op->optype) {
-    case SUBDOC_CMD_DECREMENT:
-    case SUBDOC_CMD_DECREMENT_P:
+    if ((op->optype == SUBDOC_CMD_DECREMENT) ||
+        (op->optype == SUBDOC_CMD_DECREMENT_P)) {
         delta *= -1;
-        break;
     }
 
     /* Find the number first */
@@ -554,13 +551,11 @@ do_arith_op(subdoc_OPERATION *op)
             n_buf = sprintf(op->numbufs, "%" PRId64, num_i);
         }
     } else {
-        switch (op->optype) {
-        case SUBDOC_CMD_INCREMENT:
-        case SUBDOC_CMD_DECREMENT:
+        if ((op->optype == SUBDOC_CMD_INCREMENT) ||
+            (op->optype == SUBDOC_CMD_DECREMENT)) {
             if (!op->match.immediate_parent_found) {
                 return SUBDOC_STATUS_PATH_ENOENT;
             }
-            break;
         }
 
         if (op->match.type != JSONSL_T_OBJECT) {
