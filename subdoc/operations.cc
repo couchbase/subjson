@@ -62,57 +62,6 @@ Operation::do_get()
     return SUBDOC_STATUS_SUCCESS;
 }
 
-/* Define how the 'until' parameter is treated. INCLUSIVE will make the result
- * overlap with 'until' (on a single byte)
- * whereas EXCLUSIVE will make sure they don't
- */
-#define LOC_INC 1
-#define LOC_EXCL 2
-
-/*Sets `result`, so that `result` ends where `until` begins */
-static void
-mk_end_at_begin(const subdoc_LOC *doc, const subdoc_LOC *until, subdoc_LOC *result,
-    int mode)
-{
-    result->at = doc->at;
-    result->length = until->at - doc->at;
-    if (mode == LOC_INC) {
-        result->length++;
-    }
-}
-
-static void
-mk_end_at_end(const subdoc_LOC *doc, const subdoc_LOC *until, subdoc_LOC *result,
-    int mode)
-{
-    result->at = doc->at;
-    result->length = (until->at + until->length) - doc->at;
-    if (mode == LOC_EXCL) {
-        result->length--;
-    }
-}
-
-/*Sets `result` so that result begins where `from` ends */
-static void
-mk_begin_at_end(const subdoc_LOC *doc, const subdoc_LOC *from, subdoc_LOC *result,
-    int mode)
-{
-    result->at = from->at + from->length;
-    result->length = doc->length;
-    result->length -= result->at - doc->at;
-    if (mode == LOC_INC) {
-        result->at--;
-        result->length++;
-    }
-}
-
-static void
-mk_begin_at_begin(const subdoc_LOC *doc, const subdoc_LOC *from, subdoc_LOC *result)
-{
-    result->at = from->at;
-    result->length = doc->length - (from->at - doc->at);
-}
-
 /* Start at the beginning of the buffer, stripping first comma */
 #define STRIP_FIRST_COMMA 1
 
@@ -203,12 +152,12 @@ Operation::do_store_dict()
 
         /* Remove the matches, starting from the beginning of the key */
         if (m->has_key) {
-            mk_end_at_begin(&doc_cur, &m->loc_key, &doc_new[0], LOC_EXCL);
+            doc_new[0].end_at_begin(doc_cur, match.loc_key, subdoc_LOC::NO_OVERLAP);
         } else {
-            mk_end_at_begin(&doc_cur, &m->loc_match, &doc_new[0], LOC_EXCL);
+            doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
         }
 
-        mk_begin_at_end(&doc_cur, &m->loc_match, &doc_new[1], LOC_EXCL);
+        doc_new[1].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
 
         if (m->num_siblings) {
             if (m->position + 1 == m->num_siblings) {
@@ -222,17 +171,17 @@ Operation::do_store_dict()
 
     } else if (m->matchres == JSONSL_MATCH_COMPLETE) {
         /* 1. Remove the old value from the first segment */
-        mk_end_at_begin(&doc_cur, &m->loc_match, &doc_new[0], LOC_EXCL);
+        doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
 
         /* 2. Insert the new value */
         doc_new[1] = user_in;
 
         /* 3. Insert the rest of the document */
-        mk_begin_at_end(&doc_cur, &m->loc_match, &doc_new[2], LOC_EXCL);
+        doc_new[2].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
         doc_new_len = 3;
 
     } else if (m->immediate_parent_found) {
-        mk_end_at_end(&doc_cur, &m->loc_parent, &doc_new[0], LOC_EXCL);
+        doc_new[0].end_at_end(doc_cur, match.loc_parent, subdoc_LOC::NO_OVERLAP);
         /*TODO: The key might have a literal '"' in it, which has been escaped? */
         if (m->num_siblings) {
             doc_new[1] = loc_COMMA_QUOTE; /* ," */
@@ -249,7 +198,7 @@ Operation::do_store_dict()
         /* new value */
         doc_new[4] = user_in;
         /* Closing tokens */
-        mk_begin_at_end(&doc_cur, &m->loc_parent, &doc_new[5], LOC_INC);
+        doc_new[5].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
         doc_new_len = 6;
 
     } else {
@@ -265,8 +214,7 @@ Operation::do_mkdir_p(int mode)
     jsonsl_jpr_t jpr = &path->jpr_base;
     unsigned ii;
     subdoc_MATCH *m = &match;
-
-    mk_end_at_end(&doc_cur, &m->loc_parent, &doc_new[0], LOC_EXCL);
+    doc_new[0].end_at_end(doc_cur, match.loc_parent, subdoc_LOC::NO_OVERLAP);
 
     /* doc_new LAYOUT:
      *
@@ -321,7 +269,7 @@ Operation::do_mkdir_p(int mode)
     doc_new[3].at = bkbuf.data() + doc_new[1].length;
     doc_new[2] = user_in;
 
-    mk_begin_at_end(&doc_cur, &m->loc_parent, &doc_new[4], LOC_INC);
+    doc_new[4].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
     doc_new_len = 5;
 
     return SUBDOC_STATUS_SUCCESS;
@@ -383,11 +331,11 @@ subdoc_ERRORS
 Operation::insert_singleton_element()
 {
     /* First segment is ... [ */
-    mk_end_at_begin(&doc_cur, &match.loc_parent, &doc_new[0], LOC_INC);
+    doc_new[0].end_at_begin(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
     /* User: */
     doc_new[1] = user_in;
     /* Last segment is ... ] */
-    mk_begin_at_end(&doc_cur, &match.loc_parent, &doc_new[2], LOC_INC);
+    doc_new[2].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
 
     doc_new_len = 3;
     return SUBDOC_STATUS_SUCCESS;
@@ -435,13 +383,13 @@ Operation::do_list_op()
 
         GT_PREPEND_FOUND:
         /* Right before the first element */
-        mk_end_at_begin(&doc_cur, &m->loc_match, &doc_new[0], LOC_EXCL);
+        doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
         /* User data */
         doc_new[1] = user_in;
         /* Comma */
         doc_new[2] = loc_COMMA;
         /* Next element */
-        mk_begin_at_begin(&doc_cur, &m->loc_match, &doc_new[3]);
+        doc_new[3].begin_at_begin(doc_cur, match.loc_match);
 
         doc_new_len = 4;
         return SUBDOC_STATUS_SUCCESS;
@@ -456,13 +404,13 @@ Operation::do_list_op()
 
         GT_APPEND_FOUND:
         /* Last element */
-        mk_end_at_end(&doc_cur, &m->loc_match, &doc_new[0], LOC_INC);
+        doc_new[0].end_at_end(doc_cur, match.loc_match, subdoc_LOC::OVERLAP);
         /* Insert comma */
         doc_new[1] = loc_COMMA;
         /* User */
         doc_new[2] = user_in;
         /* Parent end */
-        mk_begin_at_end(&doc_cur, &m->loc_parent, &doc_new[3], LOC_INC);
+        doc_new[3].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
 
         doc_new_len = 4;
         return SUBDOC_STATUS_SUCCESS;
@@ -594,14 +542,14 @@ Operation::do_arith_op()
 
 
     /* Preamble */
-    mk_end_at_begin(&doc_cur, &match.loc_match, &doc_new[0], LOC_EXCL);
+    doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
 
     /* New number */
     doc_new[1].at = numbufs;
     doc_new[1].length = n_buf;
 
     /* Postamble */
-    mk_begin_at_end(&doc_cur, &match.loc_match, &doc_new[2], LOC_EXCL);
+    doc_new[2].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
     doc_new_len = 3;
 
     match.loc_match.at = numbufs;

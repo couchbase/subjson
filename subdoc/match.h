@@ -1,17 +1,12 @@
 #ifndef SUBDOC_MATCH_H
 #define SUBDOC_MATCH_H
 
+#include "loc.h"
 #include "path.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** Structure describing a position and length of a buffer (e.g. IOV) */
-typedef struct {
-    const char *at;
-    size_t length;
-} subdoc_LOC;
 
 /** Structure describing a match for an item */
 typedef struct {

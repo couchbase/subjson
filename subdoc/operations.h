@@ -1,6 +1,7 @@
 #ifndef SUBDOC_OPERATIONS_H
 #define SUBDOC_OPERATIONS_H
 #include "subdoc-api.h"
+#include "loc.h"
 #include "path.h"
 #include "match.h"
 #include "subdoc-util.h"
