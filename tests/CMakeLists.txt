@@ -16,4 +16,4 @@ FILE(GLOB T_SUBJS_SRC t_*.cc)
 ADD_EXECUTABLE(subjson-test ${T_SUBJS_SRC} subdoc-tests-common.cc)
 
 TARGET_LINK_LIBRARIES(subjson-test subjson gtest gtest_main)
-ADD_TEST(NAME subjson-all-tests COMMAND $<TARGET_FILE:subjson-test>)
+ADD_TEST(NAME subjson-all-tests COMMAND subjson-test)
