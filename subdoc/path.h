@@ -5,6 +5,10 @@
 #include "jsonsl_header.h"
 
 #ifdef __cplusplus
+#ifdef _MSC_VER
+// There is no ssize_t in Visual Studio 2013, but size_t is signed
+#define ssize_t size_t
+#endif
 extern "C" {
 #endif
 
