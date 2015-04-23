@@ -27,12 +27,6 @@ typedef struct {
     subdoc_LOC doc_new[8];
     /* Number of fragments active */
     size_t doc_new_len;
-
-    /* Backing buffer for any of our own (in-library) required storage */
-    subdoc_STRING bkbuf_extra;
-
-    /* Backing buffer for various tokens we might need to insert */
-    char numbufs[32];
 } subdoc_OPERATION;
 
 subdoc_OPERATION *

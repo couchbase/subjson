@@ -18,7 +18,6 @@
 #define CLIOPTS_ENABLE_CXX
 #define INCLUDE_SUBDOC_NTOHLL
 #include "subdoc/subdoc-api.h"
-#include "subdoc/subdoc-util.h"
 #include "subdoc/path.h"
 #include "subdoc/match.h"
 #include "subdoc/operations.h"
