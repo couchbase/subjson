@@ -7,37 +7,41 @@
 #include <inttypes.h>
 #include <string>
 
-static subdoc_LOC loc_COMMA = { ",", 1 };
-static subdoc_LOC loc_QUOTE = { "\"", 1 };
-static subdoc_LOC loc_COMMA_QUOTE = { ",\"", 2 };
-static subdoc_LOC loc_QUOTE_COLON = { "\":", 2 };
+using Subdoc::Loc;
+using Subdoc::Error;
+using Subdoc::Operation;
+
+static Loc loc_COMMA = { ",", 1 };
+static Loc loc_QUOTE = { "\"", 1 };
+static Loc loc_COMMA_QUOTE = { ",\"", 2 };
+static Loc loc_QUOTE_COLON = { "\":", 2 };
 
 namespace {
-class Operation : public subdoc_OPERATION {
+class PrivOperation : public Operation {
 public:
-    inline Operation();
+    inline PrivOperation();
     inline void clear();
-    ~Operation();
-    subdoc_ERRORS op_exec(const char *pth, size_t npth);
+    ~PrivOperation();
+    Error op_exec(const char *pth, size_t npth);
 
 private:
     std::string bkbuf;
     char numbufs[32];
 
-    subdoc_ERRORS do_match_common();
-    subdoc_ERRORS do_get();
-    subdoc_ERRORS do_store_dict();
-    subdoc_ERRORS do_mkdir_p(int mode);
-    subdoc_ERRORS find_first_element();
-    subdoc_ERRORS find_last_element();
-    subdoc_ERRORS insert_singleton_element();
-    subdoc_ERRORS do_list_op();
-    subdoc_ERRORS do_arith_op();
+    Error do_match_common();
+    Error do_get();
+    Error do_store_dict();
+    Error do_mkdir_p(int mode);
+    Error find_first_element();
+    Error find_last_element();
+    Error insert_singleton_element();
+    Error do_list_op();
+    Error do_arith_op();
 };
 }
 
-subdoc_ERRORS
-Operation::do_match_common()
+Error
+PrivOperation::do_match_common()
 {
     subdoc_match_exec(doc_cur.at, doc_cur.length, path, jsn, &match);
     if (match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
@@ -53,8 +57,8 @@ Operation::do_match_common()
     }
 }
 
-subdoc_ERRORS
-Operation::do_get()
+Error
+PrivOperation::do_get()
 {
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
         return SUBDOC_STATUS_PATH_ENOENT;
@@ -69,7 +73,7 @@ Operation::do_get()
 #define STRIP_LAST_COMMA 2
 
 static void
-strip_comma(subdoc_LOC *loc, int mode)
+strip_comma(Loc *loc, int mode)
 {
     unsigned ii;
     if (mode == STRIP_FIRST_COMMA) {
@@ -93,8 +97,8 @@ strip_comma(subdoc_LOC *loc, int mode)
 #define MKDIR_P_ARRAY 0
 #define MKDIR_P_DICT 1
 
-subdoc_ERRORS
-Operation::do_store_dict()
+Error
+PrivOperation::do_store_dict()
 {
     /* we can't do a simple get here, since it's a bit more complex than that */
     /* TODO: Validate new value! */
@@ -151,12 +155,12 @@ Operation::do_store_dict()
 
         /* Remove the matches, starting from the beginning of the key */
         if (match.has_key) {
-            doc_new[0].end_at_begin(doc_cur, match.loc_key, subdoc_LOC::NO_OVERLAP);
+            doc_new[0].end_at_begin(doc_cur, match.loc_key, Loc::NO_OVERLAP);
         } else {
-            doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+            doc_new[0].end_at_begin(doc_cur, match.loc_match, Loc::NO_OVERLAP);
         }
 
-        doc_new[1].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+        doc_new[1].begin_at_end(doc_cur, match.loc_match, Loc::NO_OVERLAP);
 
         if (match.num_siblings) {
             if (match.position + 1 == match.num_siblings) {
@@ -170,17 +174,17 @@ Operation::do_store_dict()
 
     } else if (match.matchres == JSONSL_MATCH_COMPLETE) {
         /* 1. Remove the old value from the first segment */
-        doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+        doc_new[0].end_at_begin(doc_cur, match.loc_match, Loc::NO_OVERLAP);
 
         /* 2. Insert the new value */
         doc_new[1] = user_in;
 
         /* 3. Insert the rest of the document */
-        doc_new[2].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+        doc_new[2].begin_at_end(doc_cur, match.loc_match, Loc::NO_OVERLAP);
         doc_new_len = 3;
 
     } else if (match.immediate_parent_found) {
-        doc_new[0].end_at_end(doc_cur, match.loc_parent, subdoc_LOC::NO_OVERLAP);
+        doc_new[0].end_at_end(doc_cur, match.loc_parent, Loc::NO_OVERLAP);
         /*TODO: The key might have a literal '"' in it, which has been escaped? */
         if (match.num_siblings) {
             doc_new[1] = loc_COMMA_QUOTE; /* ," */
@@ -197,7 +201,7 @@ Operation::do_store_dict()
         /* new value */
         doc_new[4] = user_in;
         /* Closing tokens */
-        doc_new[5].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
+        doc_new[5].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
         doc_new_len = 6;
 
     } else {
@@ -206,13 +210,13 @@ Operation::do_store_dict()
     return SUBDOC_STATUS_SUCCESS;
 }
 
-subdoc_ERRORS
-Operation::do_mkdir_p(int mode)
+Error
+PrivOperation::do_mkdir_p(int mode)
 {
     const struct jsonsl_jpr_component_st *comp;
     jsonsl_jpr_t jpr = &path->jpr_base;
     unsigned ii;
-    doc_new[0].end_at_end(doc_cur, match.loc_parent, subdoc_LOC::NO_OVERLAP);
+    doc_new[0].end_at_end(doc_cur, match.loc_parent, Loc::NO_OVERLAP);
 
     /* doc_new LAYOUT:
      *
@@ -267,21 +271,21 @@ Operation::do_mkdir_p(int mode)
     doc_new[3].at = bkbuf.data() + doc_new[1].length;
     doc_new[2] = user_in;
 
-    doc_new[4].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
+    doc_new[4].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
     doc_new_len = 5;
 
     return SUBDOC_STATUS_SUCCESS;
 }
 
-subdoc_ERRORS
-Operation::find_first_element()
+Error
+PrivOperation::find_first_element()
 {
     jsonsl_error_t rv = subdoc_path_add_arrindex(path, 0);
     if (rv != JSONSL_ERROR_SUCCESS) {
         return SUBDOC_STATUS_PATH_E2BIG;
     }
 
-    subdoc_ERRORS status = do_match_common();
+    Error status = do_match_common();
     subdoc_path_pop_component(path);
 
     if (status != SUBDOC_STATUS_SUCCESS) {
@@ -295,14 +299,14 @@ Operation::find_first_element()
 
 /* Finds the last element. This normalizes the match structure so that
  * the last element appears in the 'loc_match' field */
-subdoc_ERRORS
-Operation::find_last_element()
+Error
+PrivOperation::find_last_element()
 {
-    subdoc_LOC *mloc = &match.loc_match;
-    subdoc_LOC *ploc = &match.loc_parent;
+    Loc *mloc = &match.loc_match;
+    Loc *ploc = &match.loc_parent;
 
     match.get_last_child_pos = 1;
-    subdoc_ERRORS rv = find_first_element();
+    Error rv = find_first_element();
     if (rv != SUBDOC_STATUS_SUCCESS) {
         return rv;
     }
@@ -325,23 +329,23 @@ Operation::find_last_element()
 }
 
 /* Inserts a single element into an empty array */
-subdoc_ERRORS
-Operation::insert_singleton_element()
+Error
+PrivOperation::insert_singleton_element()
 {
     /* First segment is ... [ */
-    doc_new[0].end_at_begin(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
+    doc_new[0].end_at_begin(doc_cur, match.loc_parent, Loc::OVERLAP);
     /* User: */
     doc_new[1] = user_in;
     /* Last segment is ... ] */
-    doc_new[2].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
+    doc_new[2].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
 
     doc_new_len = 3;
     return SUBDOC_STATUS_SUCCESS;
 }
 
 
-subdoc_ERRORS
-Operation::do_list_op()
+Error
+PrivOperation::do_list_op()
 {
     #define HANDLE_LISTADD_ENOENT(rv) \
     if (rv == SUBDOC_STATUS_PATH_ENOENT) { \
@@ -361,7 +365,7 @@ Operation::do_list_op()
         } \
     }
 
-    subdoc_ERRORS rv;
+    Error rv;
     if (optype == SUBDOC_CMD_ARRAY_PREPEND) {
         /* Find the array itself. */
         rv = find_first_element();
@@ -380,7 +384,7 @@ Operation::do_list_op()
 
         GT_PREPEND_FOUND:
         /* Right before the first element */
-        doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+        doc_new[0].end_at_begin(doc_cur, match.loc_match, Loc::NO_OVERLAP);
         /* User data */
         doc_new[1] = user_in;
         /* Comma */
@@ -401,13 +405,13 @@ Operation::do_list_op()
 
         GT_APPEND_FOUND:
         /* Last element */
-        doc_new[0].end_at_end(doc_cur, match.loc_match, subdoc_LOC::OVERLAP);
+        doc_new[0].end_at_end(doc_cur, match.loc_match, Loc::OVERLAP);
         /* Insert comma */
         doc_new[1] = loc_COMMA;
         /* User */
         doc_new[2] = user_in;
         /* Parent end */
-        doc_new[3].begin_at_end(doc_cur, match.loc_parent, subdoc_LOC::OVERLAP);
+        doc_new[3].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
 
         doc_new_len = 4;
         return SUBDOC_STATUS_SUCCESS;
@@ -454,10 +458,10 @@ Operation::do_list_op()
     return SUBDOC_STATUS_SUCCESS;
 }
 
-subdoc_ERRORS
-Operation::do_arith_op()
+Error
+PrivOperation::do_arith_op()
 {
-    subdoc_ERRORS status;
+    Error status;
     int64_t num_i;
     int64_t delta;
     uint64_t tmp;
@@ -539,14 +543,14 @@ Operation::do_arith_op()
 
 
     /* Preamble */
-    doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+    doc_new[0].end_at_begin(doc_cur, match.loc_match, Loc::NO_OVERLAP);
 
     /* New number */
     doc_new[1].at = numbufs;
     doc_new[1].length = n_buf;
 
     /* Postamble */
-    doc_new[2].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
+    doc_new[2].begin_at_end(doc_cur, match.loc_match, Loc::NO_OVERLAP);
     doc_new_len = 3;
 
     match.loc_match.at = numbufs;
@@ -554,11 +558,11 @@ Operation::do_arith_op()
     return SUBDOC_STATUS_SUCCESS;
 }
 
-subdoc_ERRORS
-Operation::op_exec(const char *pth, size_t npth)
+Error
+PrivOperation::op_exec(const char *pth, size_t npth)
 {
     int rv = subdoc_path_parse(path, pth, npth);
-    subdoc_ERRORS status;
+    Error status;
 
     if (rv != 0) {
         if (rv == JSONSL_ERROR_LEVELS_EXCEEDED) {
@@ -628,14 +632,14 @@ Operation::op_exec(const char *pth, size_t npth)
     }
 }
 
-Operation::Operation()
+PrivOperation::PrivOperation()
 {
-    memset(static_cast<subdoc_OPERATION*>(this), 0, sizeof (subdoc_OPERATION));
+    memset(static_cast<Operation*>(this), 0, sizeof (Operation));
     path = subdoc_path_alloc();
     jsn = subdoc_jsn_alloc();
 }
 
-Operation::~Operation()
+PrivOperation::~PrivOperation()
 {
     clear();
     subdoc_path_free(path);
@@ -643,7 +647,7 @@ Operation::~Operation()
 }
 
 void
-Operation::clear()
+PrivOperation::clear()
 {
     subdoc_path_clear(path);
     bkbuf.clear();
@@ -656,7 +660,7 @@ Operation::clear()
 
 /* Misc */
 const char *
-subdoc_strerror(subdoc_ERRORS rc)
+subdoc_strerror(Error rc)
 {
     switch (rc) {
     case SUBDOC_STATUS_SUCCESS:
@@ -692,26 +696,26 @@ subdoc_strerror(subdoc_ERRORS rc)
 
 
 // C Wrappers
-subdoc_OPERATION *
+Operation *
 subdoc_op_alloc(void)
 {
-    return new Operation();
+    return new PrivOperation();
 }
 
 void
-subdoc_op_clear(subdoc_OPERATION *op)
+subdoc_op_clear(Operation *op)
 {
-    reinterpret_cast<Operation*>(op)->clear();
+    reinterpret_cast<PrivOperation*>(op)->clear();
 }
 
 void
-subdoc_op_free(subdoc_OPERATION *op)
+subdoc_op_free(Operation *op)
 {
-    delete reinterpret_cast<Operation*>(op);
+    delete reinterpret_cast<PrivOperation*>(op);
 }
 
-subdoc_ERRORS
-subdoc_op_exec(subdoc_OPERATION *op, const char *pth, size_t npth)
+Error
+subdoc_op_exec(Operation *op, const char *pth, size_t npth)
 {
-    return reinterpret_cast<Operation*>(op)->op_exec(pth, npth);
+    return reinterpret_cast<PrivOperation*>(op)->op_exec(pth, npth);
 }

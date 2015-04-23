@@ -124,6 +124,11 @@ typedef struct subdoc_LOC {
 #endif
 } subdoc_LOC;
 
+// Namespace alias
+#ifdef __cplusplus
+namespace Subdoc { typedef subdoc_LOC Loc; }
+#endif
+
 #ifdef __cplusplus
 }
 #endif

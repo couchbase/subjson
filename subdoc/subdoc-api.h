@@ -42,6 +42,10 @@ typedef enum {
     SUBDOC_STATUS_GLOBAL_EINVAL = 0x04,
 } subdoc_ERRORS;
 
+#ifdef __cplusplus
+namespace Subdoc { typedef subdoc_ERRORS Error; }
+#endif
+
 /**@name Paths
  * A Sub-Document _PATH_ is a path to the container of the item you want to
  * access. Every JSON primitive is stored either as an array element or a

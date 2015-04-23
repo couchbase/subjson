@@ -30,6 +30,10 @@ typedef struct {
     size_t doc_new_len;
 } subdoc_OPERATION;
 
+#ifdef __cplusplus
+namespace Subdoc { typedef subdoc_OPERATION Operation; }
+#endif
+
 subdoc_OPERATION *
 subdoc_op_alloc(void);
 
