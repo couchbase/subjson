@@ -115,7 +115,7 @@ TEST_F(PathTests, testNegativePath) {
     subdoc_PATH *ss = subdoc_path_alloc();
     const char *pth;
 
-    pth = "foo[-1].[-1].[-1]";
+    pth = "foo[-1][-1][-1]";
     ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
     ASSERT_EQ(5, ss->jpr_base.ncomponents);
     ASSERT_TRUE(!!ss->components_s[2].is_neg);
@@ -127,4 +127,20 @@ TEST_F(PathTests, testNegativePath) {
     ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
 
     subdoc_path_free(ss);
+}
+
+TEST_F(PathTests, testInvalidSequence) {
+    subdoc_PATH *ss = subdoc_path_alloc();
+    const char *pth;
+
+    #if 0 /* TODO */
+    pth = "[1].[2].[3]";
+    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    #endif
+
+    pth = "hello[0]world";
+    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
+
+    pth = "[not][a][number]";
+    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
 }

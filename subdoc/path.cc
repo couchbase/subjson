@@ -40,7 +40,7 @@ add_num_component(subdoc_PATH *nj, const char *component, size_t len)
 
     for (ii = 0; ii < len; ii++) {
         const char *c = &component[ii];
-        if (*c < 0x30 && *c > 0x39) {
+        if (*c < 0x30 || *c > 0x39) {
             return JSONSL_ERROR_INVALID_NUMBER;
         } else {
             size_t tmpval = numval;
@@ -191,6 +191,11 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
                 rv = add_num_component(nj, last, c-last);
                 comp_added = 1;
                 in_bracket = 0;
+                /* Check next character is valid */
+                const char *tmpnext = c + 1;
+                if (tmpnext != path_end && *tmpnext != '[' && *tmpnext != '.') {
+                    return JSONSL_ERROR_JPR_BADPATH;
+                }
             }
         } else if (*c == '.') {
             rv = add_str_component(nj, last, c-last, n_backtick);
