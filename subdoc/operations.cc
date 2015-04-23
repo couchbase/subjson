@@ -100,7 +100,6 @@ Operation::do_store_dict()
     /* TODO: Validate new value! */
 
     const jsonsl_jpr_t jpr = &path->jpr_base;
-    subdoc_MATCH *m = &match;
 
     /* Now it's time to get creative */
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
@@ -111,7 +110,7 @@ Operation::do_store_dict()
 
         case SUBDOC_CMD_DICT_ADD:
         case SUBDOC_CMD_DICT_UPSERT:
-            if (!m->immediate_parent_found) {
+            if (!match.immediate_parent_found) {
                 return SUBDOC_STATUS_PATH_ENOENT;
             }
             break;
@@ -122,7 +121,7 @@ Operation::do_store_dict()
         default:
             return SUBDOC_STATUS_PATH_ENOENT;
         }
-    } else if (m->matchres == JSONSL_MATCH_COMPLETE) {
+    } else if (match.matchres == JSONSL_MATCH_COMPLETE) {
         if ((optype == SUBDOC_CMD_DICT_ADD) ||
             (optype == SUBDOC_CMD_DICT_ADD_P)) {
             return SUBDOC_STATUS_DOC_EEXISTS;
@@ -151,7 +150,7 @@ Operation::do_store_dict()
          */
 
         /* Remove the matches, starting from the beginning of the key */
-        if (m->has_key) {
+        if (match.has_key) {
             doc_new[0].end_at_begin(doc_cur, match.loc_key, subdoc_LOC::NO_OVERLAP);
         } else {
             doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
@@ -159,8 +158,8 @@ Operation::do_store_dict()
 
         doc_new[1].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
 
-        if (m->num_siblings) {
-            if (m->position + 1 == m->num_siblings) {
+        if (match.num_siblings) {
+            if (match.position + 1 == match.num_siblings) {
                 /* Is the last item */
                 strip_comma(&doc_new[0], STRIP_LAST_COMMA);
             } else {
@@ -169,7 +168,7 @@ Operation::do_store_dict()
         }
         doc_new_len = 2;
 
-    } else if (m->matchres == JSONSL_MATCH_COMPLETE) {
+    } else if (match.matchres == JSONSL_MATCH_COMPLETE) {
         /* 1. Remove the old value from the first segment */
         doc_new[0].end_at_begin(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
 
@@ -180,10 +179,10 @@ Operation::do_store_dict()
         doc_new[2].begin_at_end(doc_cur, match.loc_match, subdoc_LOC::NO_OVERLAP);
         doc_new_len = 3;
 
-    } else if (m->immediate_parent_found) {
+    } else if (match.immediate_parent_found) {
         doc_new[0].end_at_end(doc_cur, match.loc_parent, subdoc_LOC::NO_OVERLAP);
         /*TODO: The key might have a literal '"' in it, which has been escaped? */
-        if (m->num_siblings) {
+        if (match.num_siblings) {
             doc_new[1] = loc_COMMA_QUOTE; /* ," */
         } else {
             doc_new[1] = loc_QUOTE /* " */;
@@ -213,7 +212,6 @@ Operation::do_mkdir_p(int mode)
     const struct jsonsl_jpr_component_st *comp;
     jsonsl_jpr_t jpr = &path->jpr_base;
     unsigned ii;
-    subdoc_MATCH *m = &match;
     doc_new[0].end_at_end(doc_cur, match.loc_parent, subdoc_LOC::NO_OVERLAP);
 
     /* doc_new LAYOUT:
@@ -227,20 +225,20 @@ Operation::do_mkdir_p(int mode)
 
     /* figure out the components missing */
     /* THIS IS RESERVED FOR doc_new[1]! */
-    if (m->num_siblings) {
+    if (match.num_siblings) {
         bkbuf += ',';
     }
 
     /* Insert the first item. This is a dictionary key without any object
      * wrapper: */
-    comp = &jpr->components[m->match_level];
+    comp = &jpr->components[match.match_level];
     bkbuf += '"';
     bkbuf.append(comp->pstr, comp->len);
     bkbuf += "\":";
 
     /* The next set of components must be created as entries within the
      * newly created key */
-    for (ii = m->match_level + 1; ii < jpr->ncomponents; ii++) {
+    for (ii = match.match_level + 1; ii < jpr->ncomponents; ii++) {
         comp = &jpr->components[ii];
         if (comp->ptype != JSONSL_PATH_STRING) {
             return SUBDOC_STATUS_PATH_ENOENT;
@@ -259,7 +257,7 @@ Operation::do_mkdir_p(int mode)
         bkbuf += ']';
     }
 
-    for (ii = m->match_level+1; ii < jpr->ncomponents; ii++) {
+    for (ii = match.match_level+1; ii < jpr->ncomponents; ii++) {
         bkbuf += '}';
     }
     doc_new[3].length = bkbuf.size() - doc_new[1].length;
@@ -347,7 +345,7 @@ Operation::do_list_op()
 {
     #define HANDLE_LISTADD_ENOENT(rv) \
     if (rv == SUBDOC_STATUS_PATH_ENOENT) { \
-        if (m->immediate_parent_found) { \
+        if (match.immediate_parent_found) { \
             return insert_singleton_element(); \
         } else { \
             return rv; \
@@ -356,7 +354,7 @@ Operation::do_list_op()
 
     #define HANDLE_LISTADD_ENOENT_P(rv) \
     if (rv == SUBDOC_STATUS_PATH_ENOENT) { \
-        if (m->immediate_parent_found) { \
+        if (match.immediate_parent_found) { \
             return insert_singleton_element(); \
         } else { \
             return do_mkdir_p(MKDIR_P_ARRAY); \
@@ -364,7 +362,6 @@ Operation::do_list_op()
     }
 
     subdoc_ERRORS rv;
-    subdoc_MATCH *m = &match;
     if (optype == SUBDOC_CMD_ARRAY_PREPEND) {
         /* Find the array itself. */
         rv = find_first_element();
@@ -433,7 +430,7 @@ Operation::do_list_op()
         goto GT_ARR_P_COMMON;
 
     } else if (optype == SUBDOC_CMD_ARRAY_ADD_UNIQUE) {
-        m->ensure_unique = user_in;
+        match.ensure_unique = user_in;
         rv = find_first_element();
         HANDLE_LISTADD_ENOENT(rv);
 
@@ -442,13 +439,13 @@ Operation::do_list_op()
             /* mismatch, perhaps? */
             return rv;
         }
-        if (m->unique_item_found) {
+        if (match.unique_item_found) {
             return SUBDOC_STATUS_DOC_EEXISTS;
         }
         goto GT_PREPEND_FOUND;
 
     } else if (optype == SUBDOC_CMD_ARRAY_ADD_UNIQUE_P) {
-        m->ensure_unique = user_in;
+        match.ensure_unique = user_in;
         rv = find_first_element();
         HANDLE_LISTADD_ENOENT_P(rv);
         goto GT_ADD_UNIQUE;
