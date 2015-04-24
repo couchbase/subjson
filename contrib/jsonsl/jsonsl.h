@@ -58,6 +58,11 @@ typedef int ssize_t;
 #define JSONSL_STATE_USER_FIELDS
 #endif /* JSONSL_STATE_GENERIC */
 
+/* Additional fields for component object */
+#ifndef JSONSL_JPR_COMPONENT_USER_FIELDS
+#define JSONSL_JPR_COMPONENT_USER_FIELDS
+#endif
+
 #ifndef JSONSL_API
 /**
  * We require a /DJSONSL_DLL so that users already using this as a static
@@ -327,6 +332,26 @@ struct jsonsl_state_st {
     void *data;
 #endif /* JSONSL_STATE_USER_FIELDS */
 };
+
+/**Gets the number of elements in the list.
+ * @param st The state. Must be of type JSONSL_T_LIST
+ * @return number of elements in the list
+ */
+#define JSONSL_LIST_SIZE(st) ((st)->nelem)
+
+/**Gets the number of key-value pairs in an object
+ * @param st The state. Must be of type JSONSL_T_OBJECT
+ * @return the number of key-value pairs in the object
+ */
+#define JSONSL_OBJECT_SIZE(st) ((st)->nelem / 2)
+
+/**Gets the numeric value.
+ * @param st The state. Must be of type JSONSL_T_SPECIAL and
+ *           special_flags must have the JSONSL_SPECIALf_NUMERIC flag
+ *           set.
+ * @return the numeric value of the state.
+ */
+#define JSONSL_NUMERIC_VALUE(st) ((st)->nelem)
 
 /*
  * So now we need some special structure for keeping the
@@ -705,7 +730,9 @@ struct jsonsl_jpr_component_st {
      * indices. jsonsl_jpr_match() will return TYPE_MISMATCH if it detects
      * that an array index is actually a child of a dictionary. */
     short is_arridx;
-    short is_neg;
+
+    /* Extra fields (for more advanced searches. Default is empty) */
+    JSONSL_JPR_COMPONENT_USER_FIELDS
 };
 
 struct jsonsl_jpr_st {

@@ -10,6 +10,9 @@
 
 #define JSONSL_STATE_USER_FIELDS \
     short mres;
+#define JSONSL_JPR_COMPONENT_USER_FIELDS \
+    short is_neg;
+
 #ifdef INCLUDE_JSONSL_SRC
 #if defined(__GNUC__) || defined(__clang__)
 #define JSONSL_API __attribute__((unused)) static
