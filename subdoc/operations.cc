@@ -1,11 +1,12 @@
 #define INCLUDE_SUBDOC_STRING_SRC
 #define INCLUDE_SUBDOC_NTOHLL
+#define NOMINMAX // For Visual Studio
 
 #include "operations.h"
-#include <limits.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <string>
+#include <limits>
 
 using Subdoc::Loc;
 using Subdoc::Error;
@@ -474,7 +475,7 @@ PrivOperation::do_arith_op()
 
     memcpy(&tmp, user_in.at, 8);
     tmp = ntohll(tmp);
-    if (tmp > INT64_MAX) {
+    if (tmp > std::numeric_limits<int64_t>::max()) {
         return SUBDOC_STATUS_DELTA_E2BIG;
     }
 
@@ -498,7 +499,7 @@ PrivOperation::do_arith_op()
             return SUBDOC_STATUS_PATH_MISMATCH;
         } else  {
             num_i = strtoll(match.loc_match.at, NULL, 10);
-            if (num_i == LLONG_MAX && errno == ERANGE) {
+            if (num_i == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
                 return SUBDOC_STATUS_NUM_E2BIG;
             }
 
@@ -506,11 +507,11 @@ PrivOperation::do_arith_op()
              * and not force 64 bit C arithmetic to confuse users, so use proper
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
             if (delta >= 0 && num_i >= 0) {
-                if (INT64_MAX - delta <= num_i) {
+                if (std::numeric_limits<int64_t>::max() - delta <= num_i) {
                     return SUBDOC_STATUS_DELTA_E2BIG;
                 }
             } else if (delta < 0 && num_i < 0) {
-                if (delta <= INT64_MIN - num_i) {
+                if (delta <= std::numeric_limits<int64_t>::min() - num_i) {
                     return SUBDOC_STATUS_DELTA_E2BIG;
                 }
             }
