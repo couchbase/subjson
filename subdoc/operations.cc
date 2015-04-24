@@ -27,7 +27,7 @@ public:
 
 private:
     std::string bkbuf;
-    char numbufs[32];
+    std::string numbuf;
 
     Error do_match_common();
     Error do_get();
@@ -466,7 +466,6 @@ PrivOperation::do_arith_op()
     int64_t num_i;
     int64_t delta;
     uint64_t tmp;
-    size_t n_buf;
 
     /* Scan the match first */
     if (user_in.length != 8) {
@@ -517,7 +516,7 @@ PrivOperation::do_arith_op()
             }
 
             num_i += delta;
-            n_buf = sprintf(numbufs, "%" PRId64, num_i);
+            numbuf = std::to_string(num_i);
         }
     } else {
         if ((optype == SUBDOC_CMD_INCREMENT) ||
@@ -531,9 +530,9 @@ PrivOperation::do_arith_op()
             return SUBDOC_STATUS_PATH_ENOENT;
         }
 
-        n_buf = sprintf(numbufs, "%" PRId64, delta);
-        user_in.at = numbufs;
-        user_in.length = n_buf;
+        numbuf = std::to_string(delta);
+        user_in.at = numbuf.data();
+        user_in.length = numbuf.size();
         optype = SUBDOC_CMD_DICT_ADD_P;
         if ((status = do_store_dict()) != SUBDOC_STATUS_SUCCESS) {
             return status;
@@ -547,15 +546,15 @@ PrivOperation::do_arith_op()
     doc_new[0].end_at_begin(doc_cur, match.loc_match, Loc::NO_OVERLAP);
 
     /* New number */
-    doc_new[1].at = numbufs;
-    doc_new[1].length = n_buf;
+    doc_new[1].at = numbuf.data();
+    doc_new[1].length = numbuf.size();
 
     /* Postamble */
     doc_new[2].begin_at_end(doc_cur, match.loc_match, Loc::NO_OVERLAP);
     doc_new_len = 3;
 
-    match.loc_match.at = numbufs;
-    match.loc_match.length = n_buf;
+    match.loc_match.at = numbuf.data();
+    match.loc_match.length = numbuf.size();
     return SUBDOC_STATUS_SUCCESS;
 }
 
