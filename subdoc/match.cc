@@ -31,6 +31,8 @@ err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
     return 0;
 }
 
+// Updates the state to reflect information on the parent. This is used by
+// the subdoc code for insertion/deletion operations.
 static void
 update_possible(parse_ctx *ctx, const struct jsonsl_state_st *state, const char *at)
 {
@@ -116,13 +118,17 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
         return;
     }
 
-    if (m->matchres == M_POSSIBLE && parent->mres == M_POSSIBLE) {
+    // If the parent is a match candidate
+    if (parent->mres == M_POSSIBLE) {
+        // Key is either the array offset or the dictionary key.
         size_t nkey = (prtype == JSONSL_T_OBJECT) ? ctx->hklen : parent->nelem - 1;
 
         /* Run the match */
         st->mres = jsonsl_jpr_match(ctx->jpr, prtype, parent->level, ctx->curhk, nkey);
 
-        /* We can't have a MATCH_POSSIBLE on primitive */
+        // jsonsl's jpr is a bit laxer here. but in our case
+        // it's impossible for a primitive to result in a "possible" result,
+        // since a partial result should always mean a container
         if (st->mres == M_POSSIBLE && IS_CONTAINER(st) == 0) {
             st->mres = JSONSL_MATCH_TYPE_MISMATCH;
         }
@@ -135,18 +141,26 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
             m->type = st->type;
 
             if (prtype == JSONSL_T_OBJECT) {
-                m->has_key = 1;
-                m->loc_key.at = ctx->curhk-1;
+                m->has_key = true;
+
+                // The beginning of the key (for "subdoc" purposes) actually
+                // _includes_ the opening and closing quotes
+                m->loc_key.at = ctx->curhk - 1;
                 m->loc_key.length = ctx->hklen+2;
+
+                // I'm not sure if it's used.
                 m->position = (st->nelem - 1) / 2;
             } else {
+
+                // Array doesn't have a key
                 m->has_key = 0;
+                // array[n]
                 m->position = st->nelem - 1;
             }
 
             if (m->ensure_unique.at) {
-                /* Start matching at first element! */
                 if (prtype != JSONSL_T_LIST) {
+                    // Can't check "uniquness" in an array!
                     m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
                     st->ignore_callback = 1;
                 } else {
@@ -157,11 +171,12 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
             }
 
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {
+            // Can't have a match on this tree. Ignore subsequent callbacks here.
             st->ignore_callback = 1;
 
         } else if (st->mres == JSONSL_MATCH_POSSIBLE) {
+            // Update our depth thus far
             update_possible(ctx, st, at);
-
         } else if (st->mres == JSONSL_MATCH_TYPE_MISMATCH) {
             st->ignore_callback = 1;
             m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
@@ -176,21 +191,23 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
  * 3. It captures the length of the deepest parent
  */
 static void
-pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
-    const jsonsl_char_t *at)
+pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
+    const jsonsl_char_t *)
 {
     parse_ctx *ctx = get_ctx(jsn);
     subdoc_MATCH *m = ctx->match;
     size_t end_pos = jsn->pos;
 
     if (state->type == JSONSL_T_HKEY) {
-        /* Keep the hashkey! */
+        // All we care about is recording the length of the key. We'll use
+        // this later on when matching (in the PUSH callback of a new element)
         ctx->hklen = state->pos_cur - (state->pos_begin + 1);
         return;
     }
 
     if (state->mres == JSONSL_MATCH_COMPLETE) {
-        /* We have a match, so mark the end here */
+        // This is the matched element. Record the end location of the
+        // match.
         m->loc_match.length = end_pos - state->pos_begin;
         if (state->type != JSONSL_T_SPECIAL) {
             m->loc_match.length++; /* Include the terminating token */
@@ -199,68 +216,94 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state
             m->numval = state->nelem;
         }
 
-        /* Ignore the callback level for this depth: */
+        // Don't care about more data
         jsn->max_callback_level = state->level;
         return;
     }
 
+    // Not a container and not a full match. We can't do anything here.
     if (!JSONSL_STATE_IS_CONTAINER(state)) {
         return;
     }
 
+    // We already recorded the deepest-most parent.
     if (m->loc_parent.length) {
         return;
     }
 
-    if (state->mres == JSONSL_MATCH_POSSIBLE) {
-        m->loc_parent.length = end_pos - state->pos_begin;
-        m->loc_parent.length++;
-        if (state->type == JSONSL_T_OBJECT) {
-            m->num_siblings = state->nelem / 2;
-        } else {
-            m->num_siblings = state->nelem;
-            if (m->num_siblings && m->get_last_child_pos) {
-                /* Set the last child begin position */
-                const struct jsonsl_state_st *child = jsonsl_last_child(jsn, state);
-                m->loc_key.length = child->pos_begin;
-                m->loc_key.at = NULL;
-                m->type = child->type;
-                m->sflags = child->special_flags;
-                m->numval = child->nelem;
-            }
+    // This isn't part of the match tree, so we just ignore it
+    if (state->mres != JSONSL_MATCH_POSSIBLE) {
+        return;
+    }
+
+    // If we haven't bailed out yet, it means this is the deepest most parent
+    // match. This can either be the actual parent of the match (if a match
+    // is found), or the deepest existing parent which exists in the document.
+    // The latter information is needed for MKDIR_P semantics.
+
+    // Record the length of the parent
+    m->loc_parent.length = end_pos - state->pos_begin;
+    m->loc_parent.length++;
+
+    // Record the number of "siblings" in the container. This is used by
+    // insertion/removal operations to determine comma placement, if any,
+    // before or after the current match.
+    if (state->type == JSONSL_T_OBJECT) {
+        m->num_siblings = state->nelem / 2;
+    } else {
+        m->num_siblings = state->nelem;
+
+        // For array-based APPEND operations we need the position of the
+        // last child (which may not exist if the base array is empty).
+        if (m->num_siblings && m->get_last_child_pos) {
+            /* Set the last child begin position */
+            const struct jsonsl_state_st *child = jsonsl_last_child(jsn, state);
+
+            // Special semantics for this field when using get_last_child_pos.
+            // See field documentation in header.
+            m->loc_key.length = child->pos_begin;
+            m->loc_key.at = NULL;
+
+            // Set information about the last child itself.
+            m->type = child->type;
+            m->sflags = child->special_flags;
+            m->numval = child->nelem;
         }
-        if (m->matchres == JSONSL_MATCH_COMPLETE) {
-            /* Exclude ourselves from the 'sibling' count */
-            m->num_siblings--;
-        } else {
-            m->type = state->type;
+    }
+    if (m->matchres == JSONSL_MATCH_COMPLETE) {
+        /* Exclude ourselves from the 'sibling' count */
+        m->num_siblings--;
+    }
 
-            struct jsonsl_jpr_component_st *next_comp =
-                    &ctx->jpr->components[state->level];
-            if (next_comp->is_arridx) {
-                if (state->type != JSONSL_T_LIST) {
-                    /* printf("Next component expected list, but we are object\n"); */
-                    m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-                }
-            } else {
-                if (state->type != JSONSL_T_OBJECT) {
-                    /* printf("Next component expected object key, but we are list!\n"); */
-                    m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-                }
+    // If the match was not found, we need to do some additional sanity
+    // checking (usually done inside the push/pop callback in the case
+    // where a match _is_ found) to verify our would-be path can actually
+    // make sense.
+    if (m->matchres != JSONSL_MATCH_COMPLETE) {
+        m->type = state->type;
+
+        struct jsonsl_jpr_component_st *next_comp =
+                &ctx->jpr->components[state->level];
+        if (next_comp->is_arridx) {
+            if (state->type != JSONSL_T_LIST) {
+                /* printf("Next component expected list, but we are object\n"); */
+                m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
             }
-        }
-
-        /* Zero out the rest of the callbacks */
-        jsn->max_callback_level = 1;
-        jsonsl_stop(jsn);
-
-        if (state->level == ctx->jpr->ncomponents-1) {
-            m->immediate_parent_found = 1;
+        } else {
+            if (state->type != JSONSL_T_OBJECT) {
+                /* printf("Next component expected object key, but we are list!\n"); */
+                m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+            }
         }
     }
 
-    (void)action; /* always pop */
-    (void)at;
+    jsn->max_callback_level = 1;
+    jsonsl_stop(jsn);
+
+    // Is this the actual parent of the match?
+    if (state->level == ctx->jpr->ncomponents-1) {
+        m->immediate_parent_found = 1;
+    }
 }
 
 /* Called when */
