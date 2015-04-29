@@ -43,21 +43,21 @@ subdoc_op_clear(subdoc_OPERATION *);
 void
 subdoc_op_free(subdoc_OPERATION*);
 
-static inline void
+static JSONSL_INLINE void
 SUBDOC_OP_SETVALUE(subdoc_OPERATION *op, const char *val, size_t nval)
 {
     op->user_in.at = val;
     op->user_in.length = nval;
 }
 
-static inline void
+static JSONSL_INLINE void
 SUBDOC_OP_SETDOC(subdoc_OPERATION *op, const char *doc, size_t ndoc)
 {
     op->doc_cur.at = doc;
     op->doc_cur.length = ndoc;
 }
 
-static inline void
+static JSONSL_INLINE void
 SUBDOC_OP_SETCODE(subdoc_OPERATION *op, subdoc_OPTYPE code)
 {
     op->optype = code;
