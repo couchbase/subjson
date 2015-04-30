@@ -151,6 +151,7 @@ typedef enum {
     SUBDOC_CMD_DECREMENT_P = 0x8A
 } subdoc_OPTYPE;
 
+static const int SUBDOC_CMD_FLAG_MKDIR_P = 0x80;
 
 /**@}*/
 
