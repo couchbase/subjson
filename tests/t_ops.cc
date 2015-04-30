@@ -321,6 +321,40 @@ TEST_F(OpTests, testValueValidation)
     rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "1,\"k2\":2");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
 
+    // Dict key without a colon or value.
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, "bad_dict", "{ \"foo\" }");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, "bad_dict", "{ \"foo\": }");
+    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // Dict without a colon or value.
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_dict", "{ \"foo\" }");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // Dict without a colon.
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_dict", "{ \"foo\": }");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // null with incorrect name.
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_null", "nul");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // invalid float (more than one decimal point).
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float1", "2.0.0");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // invalid float (no digit after the '.').
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float2", "2.");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // invalid float (no exponential after the 'e').
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float3", "2.0e");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+
+    // invalid float (no digits after the exponential sign).
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float4", "2.0e+");
+    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
     subdoc_op_free(op);
 }
 
