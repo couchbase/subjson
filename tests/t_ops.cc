@@ -5,7 +5,18 @@ using std::string;
 using std::cerr;
 using std::endl;
 
-class OpTests : public ::testing::Test {};
+class OpTests : public ::testing::Test {
+protected:
+  virtual void SetUp() {
+      op = subdoc_op_alloc();
+  }
+
+  virtual void TearDown() {
+      subdoc_op_free(op);
+  }
+
+  subdoc_OPERATION *op;
+};
 
 static string
 getNewDoc(const subdoc_OPERATION* op)
@@ -54,7 +65,6 @@ performArith(subdoc_OPERATION *op, subdoc_OPTYPE opcode, const char *path, uint6
 #include "big_json.inc.h"
 TEST_F(OpTests, testOperations)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     string newdoc;
 
     SUBDOC_OP_SETDOC(op, SAMPLE_big_json, strlen(SAMPLE_big_json));
@@ -93,15 +103,12 @@ TEST_F(OpTests, testOperations)
     rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "[1,2,3]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     getNewDoc(op);
-
-    subdoc_op_free(op);
 }
 
 // Mainly checks that we can perform generic DELETE and GET operations
 // on array indices
 TEST_F(OpTests, testGenericOps)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, SAMPLE_big_json, strlen(SAMPLE_big_json));
     subdoc_ERRORS rv;
     string newdoc;
@@ -120,13 +127,11 @@ TEST_F(OpTests, testGenericOps)
     rv = performNewOp(op, SUBDOC_CMD_GET, "address[2]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("\"USA\"", t_subdoc::getMatchString(op->match));
-    subdoc_op_free(op);
 }
 
 TEST_F(OpTests, testListOps)
 {
     string doc = "{}";
-    subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
 
     subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "array", "[]");
@@ -185,9 +190,6 @@ TEST_F(OpTests, testListOps)
     rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("2", t_subdoc::getMatchString(op->match));
-
-
-    subdoc_op_free(op);
 }
 
 TEST_F(OpTests, testUnique)
@@ -195,7 +197,6 @@ TEST_F(OpTests, testUnique)
     string json = "{}";
     string doc;
     subdoc_ERRORS rv;
-    subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
 
     rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE_P, "unique", "\"value\"");
@@ -219,8 +220,6 @@ TEST_F(OpTests, testUnique)
 
     rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE, "unique", "2");
     ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
-
-    subdoc_op_free(op);
 }
 
 #ifndef INT64_MIN
@@ -232,7 +231,6 @@ TEST_F(OpTests, testNumeric)
 {
     string doc = "{}";
     subdoc_ERRORS rv;
-    subdoc_OPERATION *op = subdoc_op_alloc();
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
 
     // Can we make a simple counter?
@@ -298,13 +296,10 @@ TEST_F(OpTests, testNumeric)
     rv = performArith(op, SUBDOC_CMD_INCREMENT, "[0]", 1);
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("-19", t_subdoc::getMatchString(op->match));
-
-    subdoc_op_free(op);
 }
 
 TEST_F(OpTests, testValueValidation)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     string json = "{}";
     string doc;
     subdoc_ERRORS rv;
@@ -355,13 +350,11 @@ TEST_F(OpTests, testValueValidation)
     // invalid float (no digits after the exponential sign).
     rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float4", "2.0e+");
     EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
-    subdoc_op_free(op);
 }
 
 
 TEST_F(OpTests, testNegativeIndex)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     string json = "[1,2,3,4,5,6]";
     SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
 
@@ -401,13 +394,10 @@ TEST_F(OpTests, testNegativeIndex)
     rv = performNewOp(op, SUBDOC_CMD_GET, "k1[1].k2[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("8", t_subdoc::getMatchString(op->match));
-
-    subdoc_op_free(op);
 }
 
 TEST_F(OpTests, testRootOps)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     string json = "[]";
     SUBDOC_OP_SETDOC(op, json.c_str(), json.size());
     subdoc_ERRORS rv;
@@ -426,13 +416,10 @@ TEST_F(OpTests, testRootOps)
     // Deleting root element should be CANTINSERT
     rv = performNewOp(op, SUBDOC_CMD_DELETE, "");
     ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
-
-    subdoc_op_free(op);
 }
 
 TEST_F(OpTests, testMismatch)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     string doc = "{}";
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
     subdoc_ERRORS rv;
@@ -458,13 +445,10 @@ TEST_F(OpTests, testMismatch)
 
     rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND_P, "foo.bar", "null");
     ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
-
-    subdoc_op_free(op);
 }
 
 TEST_F(OpTests, testWhitespace)
 {
-    subdoc_OPERATION *op = subdoc_op_alloc();
     string doc = "[ 1, 2, 3,       4        ]";
     SUBDOC_OP_SETDOC(op, doc.c_str(), doc.size());
     subdoc_ERRORS rv;
@@ -472,11 +456,10 @@ TEST_F(OpTests, testWhitespace)
     rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
     ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
     ASSERT_EQ("4", t_subdoc::getMatchString(op->match));
-    subdoc_op_free(op);
 }
 
-TEST_F(OpTests, testTooDeep) {
-    subdoc_OPERATION *op = subdoc_op_alloc();
+TEST_F(OpTests, testTooDeep)
+{
     std::string deep = "{\"array\":";
     for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
         deep += "[";
@@ -497,6 +480,4 @@ TEST_F(OpTests, testTooDeep) {
     }
     rv = performNewOp(op, SUBDOC_CMD_GET, dp.c_str());
     ASSERT_EQ(SUBDOC_STATUS_PATH_E2BIG, rv);
-
-    subdoc_op_free(op);
 }
