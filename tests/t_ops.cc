@@ -481,3 +481,46 @@ TEST_F(OpTests, testTooDeep)
     rv = performNewOp(op, SUBDOC_CMD_GET, dp.c_str());
     ASSERT_EQ(SUBDOC_STATUS_PATH_E2BIG, rv);
 }
+
+TEST_F(OpTests, testTooDeepDict) {
+    // Verify that we cannot create too deep a document with DICT_ADD
+    // Should be able to do the maximum depth:
+    std::string deep_dict("{");
+    for (size_t ii = 1; ii < COMPONENTS_ALLOC - 1; ii++) {
+        deep_dict += "\"" + std::to_string(ii) + "\": {";
+    }
+    for (size_t ii = 0; ii < COMPONENTS_ALLOC - 1; ii++) {
+        deep_dict += "}";
+    }
+    SUBDOC_OP_SETDOC(op, deep_dict.c_str(), deep_dict.size());
+
+    // Create base path at one less than the max.
+    std::string one_less_max_path(std::to_string(1));
+    for (int depth = 2; depth < COMPONENTS_ALLOC - 2; depth++) {
+        one_less_max_path += std::string(".") + std::to_string(depth);
+    }
+
+    const std::string max_valid_path(one_less_max_path + "." +
+                                     std::to_string(COMPONENTS_ALLOC - 2));
+    // Assert we can access elements at the max depth (before we start
+    // attempting to add more).
+    uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, max_valid_path.c_str());
+    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_EQ("{}", t_subdoc::getMatchString(op->match));
+
+    // Should be able to add an element as the same level as the max.
+    const std::string equal_max_path(one_less_max_path + ".sibling_max");
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, equal_max_path.c_str(),
+                      "\"also at max depth\"");
+    EXPECT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    std::string newDoc;
+    getAssignNewDoc(op, newDoc);
+
+    // Attempts to add one level deeper should fail.
+    std::string too_long_path(max_valid_path + ".too_long");
+    std::cerr << "DEBUG doc: " << newDoc << std::endl;
+    std::cerr << "DEBUG path:" << too_long_path << std::endl;
+    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, too_long_path.c_str(),
+                      "\"past max depth\"");
+    EXPECT_EQ(SUBDOC_STATUS_PATH_E2BIG, rv);
+}
