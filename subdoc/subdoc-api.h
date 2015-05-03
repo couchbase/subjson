@@ -155,8 +155,6 @@ static const int SUBDOC_CMD_FLAG_MKDIR_P = 0x80;
 
 /**@}*/
 
-struct subdoc_PATH_st;
-
 #ifdef __cplusplus
 }
 #endif

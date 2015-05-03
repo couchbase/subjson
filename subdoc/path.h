@@ -1,37 +1,47 @@
-#ifndef SUBDOC_PATH_H
+#if !defined(SUBDOC_PATH_H) && defined(__cplusplus)
 #define SUBDOC_PATH_H
 
 #include "subdoc-api.h"
 #include "jsonsl_header.h"
+#include <string>
+#include <list>
 
-#ifdef __cplusplus
 #ifdef _MSC_VER
 // There is no ssize_t in Visual Studio 2013, but size_t is signed
 #define ssize_t size_t
-#endif
-extern "C" {
 #endif
 
 // Maximum number of components in a path. Set to 33 to allow 32 'actual'
 // components plus the implicit root element.
 #define COMPONENTS_ALLOC 33
 
-typedef struct subdoc_PATH_st {
-    struct jsonsl_jpr_st jpr_base;
-    struct jsonsl_jpr_component_st components_s[COMPONENTS_ALLOC];
-    int has_negix; /* True if there is a negative array index in the path */
-} subdoc_PATH;
+namespace Subdoc {
+class Path {
+public:
+    typedef jsonsl_jpr_component_st Component;
+    typedef jsonsl_jpr_st CompInfo;
 
-struct subdoc_PATH_st *subdoc_path_alloc(void);
-void subdoc_path_free(struct subdoc_PATH_st*);
-void subdoc_path_clear(struct subdoc_PATH_st*);
-int subdoc_path_parse(struct subdoc_PATH_st *nj, const char *path, size_t len);
-jsonsl_error_t subdoc_path_add_arrindex(subdoc_PATH *pth, ssize_t ixnum);
-#define subdoc_path_pop_component(pth) do { \
-    (pth)->jpr_base.ncomponents--; \
-} while (0);
+    Path();
+    ~Path();
+    void clear();
+    int parse(const char *, size_t);
+    void pop_component() { jpr_base.ncomponents--; }
+    jsonsl_error_t add_array_index(ssize_t ixnum);
+    size_t size() const { return jpr_base.ncomponents; }
+    Component& get_component(int ix) { return jpr_base.components[ix]; }
 
-#ifdef __cplusplus
+    CompInfo jpr_base;
+    Component components_s[COMPONENTS_ALLOC];
+    bool has_negix; /* True if there is a negative array index in the path */
+private:
+    inline const char * convert_escaped(const char *src, size_t &len);
+    inline int add_num_component(const char *component, size_t len);
+    inline int add_str_component(const char *component, size_t len, int n_backtick);
+    inline Component& alloc_component(jsonsl_jpr_type_t type);
+
+    std::list<std::string*> m_cached;
+    std::list<std::string*> m_used;
+};
 }
-#endif
+
 #endif

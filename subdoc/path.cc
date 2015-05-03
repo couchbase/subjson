@@ -2,30 +2,33 @@
 #include "subdoc-api.h"
 #include "path.h"
 
-static char *
-convert_escaped(const char *src, size_t *len)
+using namespace Subdoc;
+
+const char *
+Path::convert_escaped(const char *src, size_t& len)
 {
-    unsigned ii, oix;
-
-    char *ret = (char *)malloc(*len);
-    if (!ret) {
-        return NULL;
+    if (m_cached.empty()) {
+        m_used.push_back(new std::string());
+    } else {
+        m_used.push_back(m_cached.back());
+        m_cached.pop_back();
     }
+    std::string& s = *m_used.back();
 
-    for (oix = 0, ii = 0; ii < *len; ii++) {
+    for (size_t ii = 0; ii < len; ii++) {
         if (src[ii] != '`') {
-            ret[oix++] = src[ii];
-        } else if(src[ii] == '`' && ii+1 < *len && src[ii+1] == '`') {
-            ret[oix++] = src[ii++];
+            s += src[ii];
+        } else if(src[ii] == '`' && ii+1 < len && src[ii+1] == '`') {
+            s += src[ii++];
         }
     }
-    *len = oix;
-    return ret;
+    len = s.size();
+    return s.c_str();
 }
 
 /* Adds a numeric component */
-static int
-add_num_component(subdoc_PATH *nj, const char *component, size_t len)
+int
+Path::add_num_component(const char *component, size_t len)
 {
     unsigned ii;
     size_t numval = 0;
@@ -34,7 +37,7 @@ add_num_component(subdoc_PATH *nj, const char *component, size_t len)
         if (len != 2 || component[1] != '1') {
             return JSONSL_ERROR_INVALID_NUMBER;
         } else {
-            return subdoc_path_add_arrindex(nj, -1);
+            return add_array_index(-1);
         }
     }
 
@@ -55,15 +58,21 @@ add_num_component(subdoc_PATH *nj, const char *component, size_t len)
             }
         }
     }
-    return subdoc_path_add_arrindex(nj, numval);
+    return add_array_index(numval);
 }
 
-static int
-add_str_component(subdoc_PATH *nj, const char *component, size_t len, int n_backtick)
+Path::Component&
+Path::alloc_component(jsonsl_jpr_type_t type)
 {
-    struct jsonsl_jpr_component_st *jpr_comp;
-    jsonsl_jpr_t jpr = &nj->jpr_base;
+    Component& ret = components_s[jpr_base.ncomponents];
+    ret.ptype = type;
+    jpr_base.ncomponents++;
+    return ret;
+}
 
+int
+Path::add_str_component(const char *component, size_t len, int n_backtick)
+{
     /* Allocate first component: */
     if (len > 1 && component[0] == '`' && component[len-1] == '`') {
         component++;
@@ -71,7 +80,7 @@ add_str_component(subdoc_PATH *nj, const char *component, size_t len, int n_back
         len -= 2;
     }
 
-    if (jpr->ncomponents == COMPONENTS_ALLOC) {
+    if (jpr_base.ncomponents == COMPONENTS_ALLOC) {
         return JSONSL_ERROR_LEVELS_EXCEEDED;
     }
     if (len == 0) {
@@ -80,47 +89,41 @@ add_str_component(subdoc_PATH *nj, const char *component, size_t len, int n_back
 
     if (n_backtick) {
         /* OHNOEZ! Slow path */
-        component = convert_escaped(component, &len);
+        component = convert_escaped(component, len);
     }
 
-    jpr_comp = &nj->components_s[jpr->ncomponents];
-    jpr_comp->pstr = (char *)component;
-    jpr_comp->ptype = JSONSL_PATH_STRING;
-    jpr_comp->len = len;
-    jpr_comp->is_arridx = 0;
-    jpr_comp->is_neg = 0;
-    jpr->ncomponents++;
+    Component& jpr_comp = alloc_component(JSONSL_PATH_STRING);
+    jpr_comp.pstr = const_cast<char*>(component);
+    jpr_comp.len = len;
+    jpr_comp.is_arridx = 0;
+    jpr_comp.is_neg = 0;
     return 0;
 }
 
 jsonsl_error_t
-subdoc_path_add_arrindex(subdoc_PATH *pth, ssize_t ixnum)
+Path::add_array_index(ssize_t ixnum)
 {
-    jsonsl_jpr_t jpr = &pth->jpr_base;
-    struct jsonsl_jpr_component_st *comp;
-
-    if (jpr->ncomponents == COMPONENTS_ALLOC) {
+    if (size() == COMPONENTS_ALLOC) {
         return JSONSL_ERROR_LEVELS_EXCEEDED;
     }
 
-    comp = &jpr->components[jpr->ncomponents];
-    comp->ptype = JSONSL_PATH_NUMERIC;
-    comp->len = 0;
-    comp->is_arridx = 1;
-    comp->idx = ixnum;
-    comp->pstr = NULL;
-    jpr->ncomponents++;
+    Component& comp = alloc_component(JSONSL_PATH_NUMERIC);
+    comp.len = 0;
+    comp.is_arridx = 1;
+    comp.idx = ixnum;
+    comp.pstr = NULL;
     if (ixnum == -1) {
-        pth->has_negix = 1;
-        comp->is_neg = 1;
+        has_negix = true;
+        comp.is_neg = 1;
     } else {
-        comp->is_neg = 0;
+        comp.is_neg = 0;
     }
     return JSONSL_ERROR_SUCCESS;
 }
 
 /* So this should somehow give us a 'JPR' object.. */
-int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
+int
+Path::parse(const char *path, size_t len)
 {
     /* Path's buffers cannot change */
     const char *c, *last, *path_end = path + len;
@@ -129,16 +132,13 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
     int n_backtick = 0;
     int rv;
 
-    jsonsl_jpr_t jpr = &nj->jpr_base;
-    jpr->components = nj->components_s;
-    jpr->ncomponents = 0;
-    jpr->orig = (char *)path;
-    jpr->norig = len;
+    jpr_base.ncomponents = 0;
+    jpr_base.components = components_s;
+    jpr_base.orig = const_cast<char*>(path);
+    jpr_base.norig = len;
+    has_negix = false;
 
-    /* Set up first component */
-    jpr->components[0].ptype = JSONSL_PATH_ROOT;
-    jpr->ncomponents++;
-    nj->has_negix = 0;
+    alloc_component(JSONSL_PATH_ROOT);
 
     if (!len) {
         return 0;
@@ -176,7 +176,7 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
 
             /* There's a leading string portion, e.g. "foo[0]". Parse foo first */
             if (c-last) {
-                rv = add_str_component(nj, last, c-last, n_backtick);
+                rv = add_str_component(last, c-last, n_backtick);
                 comp_added = 1;
             } else {
                 last = c + 1; /* Shift ahead to avoid the '[' */
@@ -188,7 +188,7 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
             } else {
                 /* Add numeric component here */
                 in_bracket = 0;
-                rv = add_num_component(nj, last, c-last);
+                rv = add_num_component(last, c-last);
                 comp_added = 1;
                 in_bracket = 0;
                 /* Check next character is valid */
@@ -198,7 +198,7 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
                 }
             }
         } else if (*c == '.') {
-            rv = add_str_component(nj, last, c-last, n_backtick);
+            rv = add_str_component(last, c-last, n_backtick);
             comp_added = 1;
         }
 
@@ -216,40 +216,34 @@ int subdoc_path_parse(subdoc_PATH *nj, const char *path, size_t len)
     }
 
     if (c-last) {
-        return add_str_component(nj, last, c-last, n_backtick);
+        return add_str_component(last, c-last, n_backtick);
     } else {
         return 0;
     }
 }
 
-subdoc_PATH *
-subdoc_path_alloc(void)
-{
-    return (subdoc_PATH *)calloc(1, sizeof(subdoc_PATH));
+Path::Path() {
+    memset(&jpr_base, 0, sizeof jpr_base);
+    memset(components_s, 0, sizeof components_s);
+    has_negix = false;
 }
 
-void
-subdoc_path_clear(subdoc_PATH *nj)
-{
-    unsigned ii;
-    jsonsl_jpr_t jpr = &nj->jpr_base;
-    for (ii = 1; ii < jpr->ncomponents; ii++) {
-        struct jsonsl_jpr_component_st *comp = &jpr->components[ii];
-        if (comp->pstr == NULL) {
-            /* nop */
-        } else if (comp->pstr >= jpr->orig && comp->pstr < (jpr->orig + jpr->norig)) {
-            /* nop */
-        } else {
-            free(comp->pstr);
-        }
-        comp->pstr = NULL;
-        comp->is_arridx = 0;
+Path::~Path() {
+    clear();
+    std::list<std::string*>::iterator ii = m_cached.begin();
+    for (; ii != m_cached.end(); ++ii) {
+        delete *ii;
     }
 }
 
 void
-subdoc_path_free(subdoc_PATH *nj)
-{
-    subdoc_path_clear(nj);
-    free(nj);
+Path::clear() {
+    unsigned ii;
+    for (ii = 1; ii < size(); ii++) {
+        Component& comp = get_component(ii);
+        comp.pstr = NULL;
+        comp.is_arridx = 0;
+    }
+    m_cached.insert(m_cached.end(), m_used.begin(), m_used.end());
+    m_used.clear();
 }

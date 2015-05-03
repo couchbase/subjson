@@ -1,21 +1,20 @@
-#ifndef SUBDOC_MATCH_H
+#if !defined(SUBDOC_MATCH_H) && defined(__cplusplus)
 #define SUBDOC_MATCH_H
 
 #include "loc.h"
 #include "path.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace Subdoc {
 
 /** Structure describing a match for an item */
-typedef struct {
+class Match {
+public:
     /**The JSON type for the result (i.e. jsonsl_type_t). If the match itself
      * is not found, this will contain the innermost _parent_ type. */
-    unsigned type : 32;
+    uint32_t type;
 
     /**Error status (jsonsl_error_t) */
-    unsigned status : 16;
+    uint16_t status;
 
     /** result of the match. jsonsl_jpr_match_t */
     int16_t matchres;
@@ -79,31 +78,50 @@ typedef struct {
     unsigned char unique_item_found;
 
     /** Location describing the matched item, if the match is found */
-    subdoc_LOC loc_match;
+    Loc loc_match;
 
     /**Location desribing the key for the item. Valid only if #has_key is true*/
-    subdoc_LOC loc_key;
+    Loc loc_key;
 
     /**Location describing the deepest parent match. If #immediate_parent_found
      * is true then this is the direct parent of the match.*/
-    subdoc_LOC loc_parent;
+    Loc loc_parent;
 
     /**If set to true, will also descend each child element to ensure that
      * the contents here are unique. Will set an error code accordingly, if
      * types are mismatched. */
-    subdoc_LOC ensure_unique;
-} subdoc_MATCH;
+    Loc ensure_unique;
 
+    int exec_match(const char *value, size_t nvalue, const Path *path, jsonsl_t jsn);
+    int exec_match(const Loc& loc, const Path* path, jsonsl_t jsn) {
+        return exec_match(loc.at, loc.length, path, jsn);
+    }
 
-int
-subdoc_match_exec(const char *value, size_t nvalue,
-    const subdoc_PATH *nj, jsonsl_t jsn, subdoc_MATCH *result);
+    Match();
+    ~Match();
+    void clear();
 
-jsonsl_t
-subdoc_jsn_alloc(void);
+    static jsonsl_t jsn_alloc();
+    static void jsn_free(jsonsl_t jsn);
 
-void
-subdoc_jsn_free(jsonsl_t);
+    /**
+     * Convenience function to scan an item and see if it's json.
+     *
+     * @param s Buffer to check
+     * @param n Size of buffer
+     * @param jsn Parser. If NULL, one will be allocated and freed internally
+     * @param mode The context in which the value should be checked. This is one of
+     * the `SUBDOC_VALIDATE_PARENT_*` constants. The mode may also be combined
+     * with one of the flags to add additional constraints on the added value.
+     *
+     * @return JSONSL_ERROR_SUCCESS if JSON, error code otherwise.
+     */
+    static jsonsl_error_t validate(const char *s, size_t n, jsonsl_t jsn, int mode);
+private:
+    inline int exec_match_simple(const char *value, size_t nvalue, const Path::CompInfo *jpr, jsonsl_t jsn);
+    inline int exec_match_negix(const char *value, size_t nvalue, const Path *pth, jsonsl_t jsn);
+};
+}
 
 /* Treats the value as a top-level object */
 #define SUBDOC_VALIDATE_PARENT_NONE 0x01
@@ -134,23 +152,5 @@ typedef enum {
     SUBDOC_VALIDATE_EPARTIAL
 } subdoc_VALIDSTATUS;
 
-/**
- * Convenience function to scan an item and see if it's json.
- *
- * @param s Buffer to check
- * @param n Size of buffer
- * @param jsn Parser. If NULL, one will be allocated and freed internally
- * @param mode The context in which the value should be checked. This is one of
- * the `SUBDOC_VALIDATE_PARENT_*` constants. The mode may also be combined
- * with one of the flags to add additional constraints on the added value.
- *
- * @return JSONSL_ERROR_SUCCESS if JSON, error code otherwise.
- */
-jsonsl_error_t
-subdoc_validate(const char *s, size_t n, jsonsl_t jsn, int mode);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* SUBDOC_MATCH_H */

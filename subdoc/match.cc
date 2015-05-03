@@ -6,11 +6,13 @@
 #include "subdoc-api.h"
 #include "match.h"
 
+using namespace Subdoc;
+
 typedef struct {
     const char *curhk;
     jsonsl_jpr_t jpr;
     size_t hklen;
-    subdoc_MATCH *match;
+    Match *match;
 } parse_ctx;
 
 static void push_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
@@ -45,7 +47,7 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
     const jsonsl_char_t *at)
 {
     parse_ctx *ctx = get_ctx(jsn);
-    subdoc_MATCH *m = ctx->match;
+    Match *m = ctx->match;
     int rv;
     size_t slen;
 
@@ -109,7 +111,7 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     const jsonsl_char_t *at)
 {
     parse_ctx *ctx = get_ctx(jsn);
-    subdoc_MATCH *m = ctx->match;
+    Match *m = ctx->match;
     struct jsonsl_state_st *parent = jsonsl_last_state(jsn, st);
     unsigned prtype = parent->type;
 
@@ -195,7 +197,7 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
     const jsonsl_char_t *)
 {
     parse_ctx *ctx = get_ctx(jsn);
-    subdoc_MATCH *m = ctx->match;
+    Match *m = ctx->match;
     size_t end_pos = jsn->pos;
 
     if (state->type == JSONSL_T_HKEY) {
@@ -332,15 +334,15 @@ static void initial_callback(jsonsl_t jsn, jsonsl_action_t action,
     (void)action; /* always push */
 }
 
-static int
-exec_match_simple(const char *value, size_t nvalue, jsonsl_jpr_t jpr,
-    jsonsl_t jsn, subdoc_MATCH *result)
+int
+Match::exec_match_simple(const char *value, size_t nvalue,
+    const Path::CompInfo *jpr, jsonsl_t jsn)
 {
     parse_ctx ctx = { NULL };
 
-    ctx.match = result;
+    ctx.match = this;
     ctx.jpr = (jsonsl_jpr_t)jpr;
-    result->status = JSONSL_ERROR_SUCCESS;
+    status = JSONSL_ERROR_SUCCESS;
 
     jsonsl_enable_all_callbacks(jsn);
     jsn->action_callback_PUSH = initial_callback;
@@ -354,9 +356,9 @@ exec_match_simple(const char *value, size_t nvalue, jsonsl_jpr_t jpr,
     return 0;
 }
 
-static int
-exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
-    jsonsl_t jsn, subdoc_MATCH *result)
+int
+Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
+    jsonsl_t jsn)
 {
     /* First component to scan in next iteration */
     size_t cur_start = 1;
@@ -381,9 +383,8 @@ exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
 
         /* If the last match was not a list or an object,
          * but we still need to descend, then throw an error now. */
-        if (last_start != value &&
-                result->type != JSONSL_T_LIST && result->type != JSONSL_T_OBJECT) {
-            result->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+        if (last_start != value && type != JSONSL_T_LIST && type != JSONSL_T_OBJECT) {
+            matchres = JSONSL_MATCH_TYPE_MISMATCH;
             return 0;
         }
 
@@ -407,10 +408,11 @@ exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
 
         /* Clear the match. There's no good way to preserve info here,
          * unfortunately. */
-        memset(result, 0, sizeof *result);
+        clear();
 
         /* Always set this */
-        result->get_last_child_pos = 1;
+        get_last_child_pos = 1;
+
 
         /* If we need to find the _last_ item, make use of the get_last_child_pos
          * field. To use this effectively, search for the _first_ element (to
@@ -425,39 +427,37 @@ exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
             comp->idx = 0;
         }
 
-        rv = exec_match_simple(last_start, last_len, &tmp_jpr, jsn, result);
-        result->match_level += level_offset;
+        rv = exec_match_simple(last_start, last_len, &tmp_jpr, jsn);
+        match_level += level_offset;
 
         if (rv != 0) { /* error */
             return rv;
-        } else if (result->status != JSONSL_ERROR_SUCCESS) {
+        } else if (status != JSONSL_ERROR_SUCCESS) {
             return 0;
-        } else if (result->matchres != JSONSL_MATCH_COMPLETE) {
+        } else if (matchres != JSONSL_MATCH_COMPLETE) {
             return 0;
         }
 
         /* No errors so far. In this case, set last_start */
         if (is_last_neg) {
-            subdoc_LOC *lm = &result->loc_match, *lpar = &result->loc_parent;
-
             /* Offset into last child position */
-            lm->at = last_start + result->loc_key.length;
+            loc_match.at = last_start + loc_key.length;
 
             /* Set the length. The length is at least as long as the parent */
-            lm->length = (lpar->at + lpar->length) - lm->at;
-            lm->length--;
+            loc_match.length = (loc_parent.at + loc_parent.length) - loc_match.at;
+            loc_match.length--;
 
             /* Strip trailing whitespace. Leading whitespace is stripped
              * within jsonsl itself */
-            while (lm->at[lm->length-1] == ' ' && lm->length) {
-                lm->length--;
+            while (loc_match.at[loc_match.length-1] == ' ' && loc_match.length) {
+                loc_match.length--;
             }
 
             /* Set the position */
-            result->position = result->num_siblings - 1;
+            position = num_siblings - 1;
 
-            last_start = result->loc_match.at;
-            last_len = result->loc_match.length;
+            last_start = loc_match.at;
+            last_len = loc_match.length;
         }
 
         /* Chomp off the current component */
@@ -479,25 +479,40 @@ exec_match_negix(const char *value, size_t nvalue, const subdoc_PATH *pth,
  * @return 0 if found, otherwise an error code
  */
 int
-subdoc_match_exec(const char *value, size_t nvalue,
-    const subdoc_PATH *pth, jsonsl_t jsn, subdoc_MATCH *result)
+Match::exec_match(const char *value, size_t nvalue, const Path *pth, jsonsl_t jsn)
 {
     if (!pth->has_negix) {
         return exec_match_simple(value, nvalue,
-            (const jsonsl_jpr_t)&pth->jpr_base, jsn, result);
+            (const jsonsl_jpr_t)&pth->jpr_base, jsn);
     } else {
-        return exec_match_negix(value, nvalue, pth, jsn, result);
+        return exec_match_negix(value, nvalue, pth, jsn);
     }
 }
 
+Match::Match()
+{
+    clear();
+}
+
+Match::~Match()
+{
+}
+
+void
+Match::clear()
+{
+    // TODO: Memberwise reset
+    memset(this, 0, sizeof(*this));
+}
+
 jsonsl_t
-subdoc_jsn_alloc(void)
+Match::jsn_alloc()
 {
     return jsonsl_new(COMPONENTS_ALLOC);
 }
 
 void
-subdoc_jsn_free(jsonsl_t jsn)
+Match::jsn_free(jsonsl_t jsn)
 {
     jsonsl_destroy(jsn);
 }
@@ -555,19 +570,19 @@ validate_callback(jsonsl_t jsn, jsonsl_action_t action,
     (void)state;(void)at;
 }
 
-static const subdoc_LOC validate_ARRAY_PRE = { "[", 1 };
-static const subdoc_LOC validate_ARRAY_POST = { "]", 1 };
-static const subdoc_LOC validate_DICT_PRE = { "{\"k\":", 5 };
-static const subdoc_LOC validate_DICT_POST = { "}", 1 };
-static const subdoc_LOC validate_NOOP = { NULL, 0 };
+static const Loc validate_ARRAY_PRE = { "[", 1 };
+static const Loc validate_ARRAY_POST = { "]", 1 };
+static const Loc validate_DICT_PRE = { "{\"k\":", 5 };
+static const Loc validate_DICT_POST = { "}", 1 };
+static const Loc validate_NOOP = { NULL, 0 };
 
 jsonsl_error_t
-subdoc_validate(const char *s, size_t n, jsonsl_t jsn, int mode)
+Match::validate(const char *s, size_t n, jsonsl_t jsn, int mode)
 {
     int need_free_jsn = 0;
     int type = mode & SUBDOC_VALIDATE_MODEMASK;
     int flags = mode & SUBDOC_VALIDATE_FLAGMASK;
-    const subdoc_LOC *l_pre, *l_post;
+    const Loc *l_pre, *l_post;
 
     validate_ctx ctx = { 0,0 };
     if (jsn == NULL) {

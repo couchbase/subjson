@@ -1,18 +1,14 @@
-#ifndef SUBDOC_LOC_H
+#if !defined(SUBDOC_LOC_H) && defined(__cplusplus)
 #define SUBDOC_LOC_H
 
 #include <stddef.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+namespace Subdoc {
 /** Structure describing a position and length of a buffer (e.g. IOV) */
-typedef struct subdoc_LOC {
+class Loc {
+public:
     const char *at;
     size_t length;
 
-#ifdef __cplusplus
     enum OverlapMode {
         NO_OVERLAP = 0,
         OVERLAP = 1
@@ -35,7 +31,7 @@ typedef struct subdoc_LOC {
      * @param until position at where this buffer should end
      * @param overlap Whether the end should overlap with the first byte of `until`
      */
-    void end_at_begin(const subdoc_LOC& base, const subdoc_LOC& until, OverlapMode overlap)
+    void end_at_begin(const Loc& base, const Loc& until, OverlapMode overlap)
     {
         at = base.at;
         length = until.at - base.at;
@@ -63,7 +59,7 @@ typedef struct subdoc_LOC {
      * @param overlap Whether the current buffer should overlap `until`'s last
      *        byte
      */
-    void begin_at_end(const subdoc_LOC& base, const subdoc_LOC& from, OverlapMode overlap)
+    void begin_at_end(const Loc& base, const Loc& from, OverlapMode overlap)
     {
         at = from.at + from.length;
         length = base.length - (at - base.at);
@@ -89,7 +85,7 @@ typedef struct subdoc_LOC {
      * @param base Common buffer
      * @param from The begin position
      */
-    void begin_at_begin(const subdoc_LOC& base, const subdoc_LOC& from)
+    void begin_at_begin(const Loc& base, const Loc& from)
     {
         at = from.at;
         length = base.length - (from.at - base.at);
@@ -113,7 +109,7 @@ typedef struct subdoc_LOC {
      * @param overlap
      */
     void
-    end_at_end(const subdoc_LOC& base, const subdoc_LOC& until, OverlapMode overlap)
+    end_at_end(const Loc& base, const Loc& until, OverlapMode overlap)
     {
         at = base.at;
         length = (until.at + until.length) - base.at;
@@ -121,15 +117,7 @@ typedef struct subdoc_LOC {
             length--;
         }
     }
-#endif
-} subdoc_LOC;
+};
 
-// Namespace alias
-#ifdef __cplusplus
-namespace Subdoc { typedef subdoc_LOC Loc; }
-#endif
-
-#ifdef __cplusplus
-}
-#endif
+} // namespace Subdoc
 #endif

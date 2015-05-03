@@ -11,40 +11,18 @@
 using Subdoc::Loc;
 using Subdoc::Error;
 using Subdoc::Operation;
+using Subdoc::Path;
+using Subdoc::Match;
 
 static Loc loc_COMMA = { ",", 1 };
 static Loc loc_QUOTE = { "\"", 1 };
 static Loc loc_COMMA_QUOTE = { ",\"", 2 };
 static Loc loc_QUOTE_COLON = { "\":", 2 };
 
-namespace {
-class PrivOperation : public Operation {
-public:
-    inline PrivOperation();
-    inline void clear();
-    ~PrivOperation();
-    Error op_exec(const char *pth, size_t npth);
-
-private:
-    std::string bkbuf;
-    std::string numbuf;
-
-    Error do_match_common();
-    Error do_get();
-    Error do_store_dict();
-    Error do_mkdir_p(int mode);
-    Error find_first_element();
-    Error find_last_element();
-    Error insert_singleton_element();
-    Error do_list_op();
-    Error do_arith_op();
-};
-}
-
 Error
-PrivOperation::do_match_common()
+Operation::do_match_common()
 {
-    subdoc_match_exec(doc_cur.at, doc_cur.length, path, jsn, &match);
+    match.exec_match(doc_cur, path, jsn);
     if (match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
         return SUBDOC_STATUS_PATH_MISMATCH;
     } else if (match.status != JSONSL_ERROR_SUCCESS) {
@@ -59,7 +37,7 @@ PrivOperation::do_match_common()
 }
 
 Error
-PrivOperation::do_get()
+Operation::do_get()
 {
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
         return SUBDOC_STATUS_PATH_ENOENT;
@@ -99,7 +77,7 @@ strip_comma(Loc *loc, int mode)
 #define MKDIR_P_DICT 1
 
 Error
-PrivOperation::do_store_dict()
+Operation::do_store_dict()
 {
     /* we can't do a simple get here, since it's a bit more complex than that */
     /* TODO: Validate new value! */
@@ -212,7 +190,7 @@ PrivOperation::do_store_dict()
 }
 
 Error
-PrivOperation::do_mkdir_p(int mode)
+Operation::do_mkdir_p(int mode)
 {
     const struct jsonsl_jpr_component_st *comp;
     jsonsl_jpr_t jpr = &path->jpr_base;
@@ -279,15 +257,15 @@ PrivOperation::do_mkdir_p(int mode)
 }
 
 Error
-PrivOperation::find_first_element()
+Operation::find_first_element()
 {
-    jsonsl_error_t rv = subdoc_path_add_arrindex(path, 0);
+    jsonsl_error_t rv = path->add_array_index(0);
     if (rv != JSONSL_ERROR_SUCCESS) {
         return SUBDOC_STATUS_PATH_E2BIG;
     }
 
     Error status = do_match_common();
-    subdoc_path_pop_component(path);
+    path->pop_component();
 
     if (status != SUBDOC_STATUS_SUCCESS) {
         return status;
@@ -301,7 +279,7 @@ PrivOperation::find_first_element()
 /* Finds the last element. This normalizes the match structure so that
  * the last element appears in the 'loc_match' field */
 Error
-PrivOperation::find_last_element()
+Operation::find_last_element()
 {
     Loc *mloc = &match.loc_match;
     Loc *ploc = &match.loc_parent;
@@ -331,7 +309,7 @@ PrivOperation::find_last_element()
 
 /* Inserts a single element into an empty array */
 Error
-PrivOperation::insert_singleton_element()
+Operation::insert_singleton_element()
 {
     /* First segment is ... [ */
     doc_new[0].end_at_begin(doc_cur, match.loc_parent, Loc::OVERLAP);
@@ -346,7 +324,7 @@ PrivOperation::insert_singleton_element()
 
 
 Error
-PrivOperation::do_list_op()
+Operation::do_list_op()
 {
     #define HANDLE_LISTADD_ENOENT(rv) \
     if (rv == SUBDOC_STATUS_PATH_ENOENT) { \
@@ -460,7 +438,7 @@ PrivOperation::do_list_op()
 }
 
 Error
-PrivOperation::do_arith_op()
+Operation::do_arith_op()
 {
     Error status;
     int64_t num_i;
@@ -559,9 +537,9 @@ PrivOperation::do_arith_op()
 }
 
 Error
-PrivOperation::op_exec(const char *pth, size_t npth)
+Operation::op_exec(const char *pth, size_t npth)
 {
-    int rv = subdoc_path_parse(path, pth, npth);
+    int rv = path->parse(pth, npth);
     Error status;
 
     if (rv != 0) {
@@ -594,7 +572,7 @@ PrivOperation::op_exec(const char *pth, size_t npth)
         }
 
         if (user_in.length) {
-            rv = subdoc_validate(user_in.at, user_in.length, jsn,
+            rv = Match::validate(user_in.at, user_in.length, jsn,
                 SUBDOC_VALIDATE_PARENT_DICT);
             if (rv != JSONSL_ERROR_SUCCESS) {
                 return SUBDOC_STATUS_VALUE_CANTINSERT;
@@ -612,7 +590,7 @@ PrivOperation::op_exec(const char *pth, size_t npth)
     case SUBDOC_CMD_ARRAY_ADD_UNIQUE:
     case SUBDOC_CMD_ARRAY_ADD_UNIQUE_P:
         if (user_in.length) {
-            rv = subdoc_validate(user_in.at, user_in.length, jsn,
+            rv = Match::validate(user_in.at, user_in.length, jsn,
                 SUBDOC_VALIDATE_PARENT_ARRAY);
             if (rv != JSONSL_ERROR_SUCCESS) {
                 return SUBDOC_STATUS_VALUE_CANTINSERT;
@@ -632,30 +610,43 @@ PrivOperation::op_exec(const char *pth, size_t npth)
     }
 }
 
-PrivOperation::PrivOperation()
+Operation::Operation()
+: path(new Path()),
+  jsn(Match::jsn_alloc()),
+  optype(SUBDOC_CMD_GET),
+  doc_new_len(0)
 {
-    memset(static_cast<Operation*>(this), 0, sizeof (Operation));
-    path = subdoc_path_alloc();
-    jsn = subdoc_jsn_alloc();
 }
 
-PrivOperation::~PrivOperation()
+Operation::~Operation()
 {
     clear();
-    subdoc_path_free(path);
-    subdoc_jsn_free(jsn);
+    delete path;
+    Match::jsn_free(jsn);
 }
 
 void
-PrivOperation::clear()
+Operation::clear()
 {
-    subdoc_path_clear(path);
+    path->clear();
     bkbuf.clear();
     user_in.length = 0;
     user_in.at = NULL;
     doc_new_len = 0;
     optype = SUBDOC_CMD_GET;
     memset(&match, 0, sizeof match);
+}
+
+Operation *
+subdoc_op_alloc()
+{
+    return new Operation();
+}
+
+void
+subdoc_op_free(Operation *op)
+{
+    delete op;
 }
 
 /* Misc */
@@ -692,30 +683,4 @@ subdoc_strerror(Error rc)
     default:
         return "Unknown error code";
     }
-}
-
-
-// C Wrappers
-Operation *
-subdoc_op_alloc(void)
-{
-    return new PrivOperation();
-}
-
-void
-subdoc_op_clear(Operation *op)
-{
-    reinterpret_cast<PrivOperation*>(op)->clear();
-}
-
-void
-subdoc_op_free(Operation *op)
-{
-    delete reinterpret_cast<PrivOperation*>(op);
-}
-
-Error
-subdoc_op_exec(Operation *op, const char *pth, size_t npth)
-{
-    return reinterpret_cast<PrivOperation*>(op)->op_exec(pth, npth);
 }
