@@ -16,6 +16,8 @@ public:
         OVERLAP = 1
     };
 
+    void assign(const char *s, size_t n) { at = s; length = n; }
+
     /**
      * Modifies the object so that it ends where `until` begins.
      *

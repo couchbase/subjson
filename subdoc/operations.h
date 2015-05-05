@@ -34,6 +34,15 @@ public:
     void clear();
     ~Operation();
     Error op_exec(const char *pth, size_t npth);
+    Error op_exec(const std::string& s) { return op_exec(s.c_str(), s.size()); }
+
+    void set_value(const char *s, size_t n) { user_in.assign(s, n); }
+    void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
+
+    void set_doc(const char *s, size_t n) { doc_cur.assign(s, n); }
+    void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
+
+    void set_code(uint8_t code) { optype = subdoc_OPTYPE(code); }
 
 private:
     std::string bkbuf;

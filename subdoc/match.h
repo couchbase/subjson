@@ -96,6 +96,9 @@ public:
     int exec_match(const Loc& loc, const Path* path, jsonsl_t jsn) {
         return exec_match(loc.at, loc.length, path, jsn);
     }
+    int exec_match(const std::string& s, const Path& path, jsonsl_t jsn) {
+        return exec_match(s.c_str(), s.size(), &path, jsn);
+    }
 
     Match();
     ~Match();

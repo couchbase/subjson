@@ -25,10 +25,13 @@ public:
     ~Path();
     void clear();
     int parse(const char *, size_t);
+    int parse(const char *s) { return parse(s, strlen(s)); }
+    int parse(const std::string& s) { return parse(s.c_str(), s.size()); }
     void pop_component() { jpr_base.ncomponents--; }
     jsonsl_error_t add_array_index(ssize_t ixnum);
     size_t size() const { return jpr_base.ncomponents; }
-    Component& get_component(int ix) { return jpr_base.components[ix]; }
+    Component& get_component(int ix) const { return jpr_base.components[ix]; }
+    Component& operator[](size_t ix) const { return get_component(ix); }
 
     CompInfo jpr_base;
     Component components_s[COMPONENTS_ALLOC];

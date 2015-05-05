@@ -28,6 +28,9 @@ using std::vector;
 using std::map;
 using namespace cliopts;
 
+using Subdoc::Path;
+using Subdoc::Operation;
+
 struct OpEntry {
     uint8_t opcode;
     const char *description;
@@ -206,13 +209,13 @@ execOperation(Options& o)
 
     size_t itermax = o.o_iter.result();
     for (size_t ii = 0; ii < itermax; ii++) {
-        subdoc_op_clear(op);
+        op->clear();
         const string& curInput = inputStrs[ii % inputStrs.size()];
-        SUBDOC_OP_SETCODE(op, subdoc_OPTYPE(opcode));
-        SUBDOC_OP_SETDOC(op, curInput.c_str(), curInput.size());
-        SUBDOC_OP_SETVALUE(op, vbuf, nvbuf);
+        op->set_code(opcode);
+        op->set_doc(curInput);
+        op->set_value(vbuf, nvbuf);
 
-        subdoc_ERRORS rv = subdoc_op_exec(op, path.c_str(), path.size());
+        subdoc_ERRORS rv = op->op_exec(path);
         if (rv != SUBDOC_STATUS_SUCCESS) {
             throw rv;
         }
@@ -239,18 +242,16 @@ execPathParse(Options& o)
 {
     size_t itermax = o.o_iter.result();
     string path = o.o_path.const_result();
-    subdoc_PATH *pth = subdoc_path_alloc();
+    Path pth;
 
     for (size_t ii = 0; ii < itermax; ii++) {
-        subdoc_path_clear(pth);
-        int rv = subdoc_path_parse(pth, path.c_str(), path.size());
+        pth.clear();
+        int rv = pth.parse(path);
 
         if (rv != 0) {
             throw string("Failed to parse path!");
         }
     }
-
-    subdoc_path_free(pth);
 }
 
 void runMain(int argc, char **argv)

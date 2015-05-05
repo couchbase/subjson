@@ -3,144 +3,135 @@
 using std::string;
 using std::cerr;
 using std::endl;
+using Subdoc::Path;
 
 class PathTests : public ::testing::Test {};
 
 static void
-getComponentString(const subdoc_PATH_st* nj, int ix, string& out) {
-    const jsonsl_jpr_component_st *component = &nj->jpr_base.components[ix];
-    out.assign(component->pstr, component->len);
+getComponentString(const Path& nj, int ix, string& out) {
+    const auto& comp = nj.get_component(ix);
+    out.assign(comp.pstr, comp.len);
 }
 static string
-getComponentString(const subdoc_PATH_st *nj, int ix) {
+getComponentString(const Path& nj, int ix) {
     string tmp;
     getComponentString(nj, ix, tmp);
     return tmp;
 }
 static unsigned long
-getComponentNumber(const subdoc_PATH_st *nj, int ix) {
-    return nj->jpr_base.components[ix].idx;
+getComponentNumber(const Path& nj, int ix) {
+    return nj.get_component(ix).idx;
 }
 
 TEST_F(PathTests, testBasic)
 {
-    subdoc_PATH_st *ss = subdoc_path_alloc();
-    jsonsl_jpr_t jpr = &ss->jpr_base;
+    Path ss;
 
-    const char *pth1 = "foo.bar.baz";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth1, strlen(pth1)));
-    ASSERT_EQ(4, ss->jpr_base.ncomponents);
+    string pth1("foo.bar.baz");
+    ASSERT_EQ(0, ss.parse(pth1));
+    ASSERT_EQ(4, ss.size());
 
-    ASSERT_EQ(JSONSL_PATH_ROOT, jpr->components[0].ptype);
-    ASSERT_EQ(JSONSL_PATH_STRING, jpr->components[1].ptype);
-    ASSERT_EQ(JSONSL_PATH_STRING, jpr->components[2].ptype);
-    ASSERT_EQ(JSONSL_PATH_STRING, jpr->components[3].ptype);
+    ASSERT_EQ(JSONSL_PATH_ROOT, ss[0].ptype);
+    ASSERT_EQ(JSONSL_PATH_STRING, ss[1].ptype);
+    ASSERT_EQ(JSONSL_PATH_STRING, ss[2].ptype);
+    ASSERT_EQ(JSONSL_PATH_STRING, ss[3].ptype);
 
 
     ASSERT_EQ("foo", getComponentString(ss, 1));
     ASSERT_EQ("bar", getComponentString(ss, 2));
     ASSERT_EQ("baz", getComponentString(ss, 3));
-    subdoc_path_free(ss);
 
-    ss = subdoc_path_alloc();
+    ss.clear();
     pth1 = "....";
-    ASSERT_NE(0, subdoc_path_parse(ss, pth1, strlen(pth1)));
-    subdoc_path_free(ss);
+    ASSERT_NE(0, ss.parse(pth1));
 }
 
 TEST_F(PathTests, testNumericIndices) {
-    subdoc_PATH_st *ss = subdoc_path_alloc();
-    const char *pth = "array[1].item[9]";
-    jsonsl_jpr_t jpr = &ss->jpr_base;
+    Path ss;
+    string pth = "array[1].item[9]";
 
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
-    ASSERT_EQ(5, jpr->ncomponents);
+    ASSERT_EQ(0, ss.parse(pth));
+    ASSERT_EQ(5, ss.size());
 
-    ASSERT_EQ(JSONSL_PATH_STRING, jpr->components[1].ptype);
+    ASSERT_EQ(JSONSL_PATH_STRING, ss[1].ptype);
     ASSERT_EQ("array", getComponentString(ss, 1));
 
-    ASSERT_EQ(JSONSL_PATH_NUMERIC, jpr->components[2].ptype);
-    ASSERT_EQ(1, jpr->components[2].is_arridx);
+    ASSERT_EQ(JSONSL_PATH_NUMERIC, ss[2].ptype);
+    ASSERT_EQ(1, ss[2].is_arridx);
     ASSERT_EQ(1, getComponentNumber(ss, 2));
 
-    ASSERT_EQ(JSONSL_PATH_STRING, jpr->components[3].ptype);
+    ASSERT_EQ(JSONSL_PATH_STRING, ss[3].ptype);
     ASSERT_EQ("item", getComponentString(ss, 3));
 
-    ASSERT_EQ(JSONSL_PATH_NUMERIC, jpr->components[4].ptype);
-    ASSERT_EQ(1, jpr->components[4].is_arridx);
+    ASSERT_EQ(JSONSL_PATH_NUMERIC, ss[4].ptype);
+    ASSERT_EQ(1, ss[4].is_arridx);
     ASSERT_EQ(9, getComponentNumber(ss, 4));
 
     // Try again, using [] syntax
     pth = "foo[0][0][0]";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
-    ASSERT_EQ(5, ss->jpr_base.ncomponents);
+    ASSERT_EQ(0, ss.parse(pth));
+    ASSERT_EQ(5, ss.size());
 
     pth = "[1][2][3]";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
-    ASSERT_EQ(4, ss->jpr_base.ncomponents);
-
-    subdoc_path_free(ss);
+    ASSERT_EQ(0, ss.parse(pth));
+    ASSERT_EQ(4, ss.size());
 }
 
 TEST_F(PathTests, testEscapes)
 {
-    subdoc_PATH_st *ss = subdoc_path_alloc();
-    const char *pth;
+    Path ss;
+    string pth;
 
     pth = "`simple`.`escaped`.`path`";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_EQ(0, ss.parse(pth));
     ASSERT_EQ("simple", getComponentString(ss, 1));
     ASSERT_EQ("escaped", getComponentString(ss, 2));
     ASSERT_EQ("path", getComponentString(ss, 3));
-    subdoc_path_free(ss);
 
     // Try something more complex
-    ss = subdoc_path_alloc();
+    ss.clear();
     pth = "escaped.`arr.idx`[9]";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_EQ(0, ss.parse(pth));
     ASSERT_EQ("escaped", getComponentString(ss, 1));
     ASSERT_EQ("arr.idx", getComponentString(ss, 2));
     ASSERT_EQ(9, getComponentNumber(ss, 3));
-    subdoc_path_free(ss);
 
-    ss = subdoc_path_alloc();
+    ss.clear();
     pth = "`BACKTICK``HAPPY`.`CAMPER`";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_EQ(0, ss.parse(pth));
     ASSERT_EQ("BACKTICK`HAPPY", getComponentString(ss, 1));
     ASSERT_EQ("CAMPER", getComponentString(ss, 2));
-    subdoc_path_free(ss);
 }
 
 TEST_F(PathTests, testNegativePath) {
-    subdoc_PATH *ss = subdoc_path_alloc();
-    const char *pth;
+    Path ss;
+    string pth;
 
     pth = "foo[-1][-1][-1]";
-    ASSERT_EQ(0, subdoc_path_parse(ss, pth, strlen(pth)));
-    ASSERT_EQ(5, ss->jpr_base.ncomponents);
-    ASSERT_TRUE(!!ss->components_s[2].is_neg);
-    ASSERT_TRUE(!!ss->components_s[3].is_neg);
-    ASSERT_TRUE(!!ss->components_s[4].is_neg);
-    ASSERT_TRUE(!!ss->has_negix);
+    ASSERT_EQ(0, ss.parse(pth));
+    ASSERT_EQ(5, ss.size());
+    ASSERT_TRUE(!!ss.components_s[2].is_neg);
+    ASSERT_TRUE(!!ss.components_s[3].is_neg);
+    ASSERT_TRUE(!!ss.components_s[4].is_neg);
+    ASSERT_TRUE(!!ss.has_negix);
 
+    ss.clear();
     pth = "foo[-2]";
-    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
-
-    subdoc_path_free(ss);
+    ASSERT_NE(0, ss.parse(pth));
 }
 
 TEST_F(PathTests, testInvalidSequence) {
-    subdoc_PATH *ss = subdoc_path_alloc();
-    const char *pth;
+    Path ss;
+    string pth;
 
     #if 0 /* TODO */
     pth = "[1].[2].[3]";
-    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_NE(0, ss.parse(pth));
     #endif
 
     pth = "hello[0]world";
-    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_NE(0, ss.parse(pth));
 
     pth = "[not][a][number]";
-    ASSERT_NE(0, subdoc_path_parse(ss, pth, strlen(pth)));
+    ASSERT_NE(0, ss.parse(pth));
 }
