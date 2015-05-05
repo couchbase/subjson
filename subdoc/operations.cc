@@ -630,11 +630,11 @@ Operation::clear()
 {
     path->clear();
     bkbuf.clear();
+    match.clear();
     user_in.length = 0;
     user_in.at = NULL;
     doc_new_len = 0;
     optype = SUBDOC_CMD_GET;
-    memset(&match, 0, sizeof match);
 }
 
 Operation *
