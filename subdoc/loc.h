@@ -2,6 +2,8 @@
 #define SUBDOC_LOC_H
 
 #include <stddef.h>
+#include <string>
+
 namespace Subdoc {
 /** Structure describing a position and length of a buffer (e.g. IOV) */
 class Loc {
@@ -115,6 +117,16 @@ public:
         length = (until.at + until.length) - base.at;
         if (overlap == NO_OVERLAP) {
             length--;
+        }
+    }
+
+    bool empty() const { return length == 0; }
+
+    std::string to_string() const {
+        if (!empty()) {
+            return std::string(at, length);
+        } else {
+            return std::string();
         }
     }
 };

@@ -43,7 +43,8 @@ const char * MatchTests::json = "{"
         JQ("subdict") ":{" JQ("subkey1") ":" JQ("subval1") "},"
         JQ("sublist") ":[" JQ("elem1") "," JQ("elem2") "," JQ("elem3") "],"
         JQ("numbers") ":[1,2,3,4,5,6,7,8,9,0]" ","
-        JQ("empty") ":{}"
+        JQ("empty") ":{}" ","
+        JQ("U\\u002DEscape") ":null"
        "}";
 
 TEST_F(MatchTests, testToplevelDict)
@@ -133,4 +134,14 @@ TEST_F(MatchTests, testSingletonComponentNotFound)
     ASSERT_EQ(1, m.match_level);
     ASSERT_NE(0, m.immediate_parent_found);
     ASSERT_EQ(json, t_subdoc::getParentString(m));
+}
+
+TEST_F(MatchTests, testUescape)
+{
+    // See if we can find the 'u-escape' here.
+    m.clear();
+    pth.parse("U-Escape");
+    m.exec_match(json, strlen(json), pth.getPath(), jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_STREQ("\"U\\u002DEscape\"", m.loc_key.to_string().c_str());
 }

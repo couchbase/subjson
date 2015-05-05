@@ -5,14 +5,64 @@
 #include "jsonsl_header.h"
 #include "subdoc-api.h"
 #include "match.h"
+#include "uescape.h"
 
 using namespace Subdoc;
 
 typedef struct {
-    const char *curhk;
     jsonsl_jpr_t jpr;
-    size_t hklen;
+
+    // Internal pointer/length pair used to hold the pointer of either the
+    // current key, or the unique array value (if in "unique" mode).
+    // These are actually accessed by get_hk()
+    const char *hkbuf_;
+    unsigned hklen_;
+
+    // Internal flag set to true if the current key is actually found in
+    // 'hkstr' (in which case `hkstr` contains the properly unescaped version
+    // of the key).
+    bool hkesc;
+
     Match *match;
+
+    // Contains the unescaped key (if the original contained u-escapes)
+    std::string hkstr;
+
+    void set_unique_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
+        hkbuf_ = at;
+    }
+
+    const char *get_unique() const { return hkbuf_; }
+
+    void set_hk_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
+        hkbuf_ = at + 1;
+    }
+
+    void set_hk_end(const jsonsl_state_st *state) {
+        hklen_ = state->pos_cur - (state->pos_begin + 1);
+
+        if (!state->nescapes) {
+            hkesc = false;
+        } else {
+            hkstr.clear();
+            hkesc = true;
+            UescapeConverter::convert(hkbuf_, hklen_, hkstr);
+        }
+    }
+    const char *get_hk(size_t& nkey) const {
+        if (!hkesc) {
+            nkey = hklen_;
+            return hkbuf_;
+        } else {
+            nkey = hkstr.size();
+            return hkstr.c_str();
+        }
+    }
+    void set_hk_loc(Loc& loc) {
+        loc.at = hkbuf_ - 1;
+        loc.length = hklen_ + 2;
+    }
+
 } parse_ctx;
 
 static void push_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
@@ -53,7 +103,7 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
 
     if (action == JSONSL_ACTION_PUSH) {
         /* abs. beginning of token */
-        ctx->curhk = at;
+        ctx->set_unique_begin(st, at);
         return;
     }
 
@@ -77,7 +127,7 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
             return; /* Length mismatch */
         }
 
-        rv = strncmp(ctx->curhk + 1, m->ensure_unique.at + 1, slen-2);
+        rv = strncmp(ctx->get_unique() + 1, m->ensure_unique.at + 1, slen-2);
 
     } else if (st->type == JSONSL_T_SPECIAL) {
         if (m->ensure_unique.length != slen) {
@@ -86,7 +136,7 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
             return;
         }
 
-        rv = strncmp(ctx->curhk, m->ensure_unique.at, slen);
+        rv = strncmp(ctx->get_unique(), m->ensure_unique.at, slen);
 
     } else {
         /* We can't reliably indicate uniqueness for non-primitives */
@@ -116,17 +166,24 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     unsigned prtype = parent->type;
 
     if (st->type == JSONSL_T_HKEY) {
-        ctx->curhk = at+1;
+        ctx->set_hk_begin(st, at);
         return;
     }
 
     // If the parent is a match candidate
     if (parent->mres == M_POSSIBLE) {
         // Key is either the array offset or the dictionary key.
-        size_t nkey = (prtype == JSONSL_T_OBJECT) ? ctx->hklen : parent->nelem - 1;
+        size_t nkey;
+        const char *key;
+        if (prtype == JSONSL_T_OBJECT) {
+            key = ctx->get_hk(nkey);
+        } else {
+            nkey = parent->nelem - 1;
+            key = NULL;
+        }
 
         /* Run the match */
-        st->mres = jsonsl_jpr_match(ctx->jpr, prtype, parent->level, ctx->curhk, nkey);
+        st->mres = jsonsl_jpr_match(ctx->jpr, prtype, parent->level, key, nkey);
 
         // jsonsl's jpr is a bit laxer here. but in our case
         // it's impossible for a primitive to result in a "possible" result,
@@ -147,8 +204,7 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
 
                 // The beginning of the key (for "subdoc" purposes) actually
                 // _includes_ the opening and closing quotes
-                m->loc_key.at = ctx->curhk - 1;
-                m->loc_key.length = ctx->hklen+2;
+                ctx->set_hk_loc(m->loc_key);
 
                 // I'm not sure if it's used.
                 m->position = (st->nelem - 1) / 2;
@@ -203,7 +259,7 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
     if (state->type == JSONSL_T_HKEY) {
         // All we care about is recording the length of the key. We'll use
         // this later on when matching (in the PUSH callback of a new element)
-        ctx->hklen = state->pos_cur - (state->pos_begin + 1);
+        ctx->set_hk_end(state);
         return;
     }
 
