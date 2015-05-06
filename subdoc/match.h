@@ -48,6 +48,30 @@ public:
      */
     unsigned num_siblings;
 
+    /**
+     * Check if match is the first of many
+     * @return true iff match is the first of multiple siblings
+     */
+    bool is_first() const {
+        return num_siblings && position == 0;
+    }
+
+    /**
+     * Check if match is the last of many
+     * @return true iff match is the last of multiple siblings
+     */
+    bool is_last() const {
+        return num_siblings && position == num_siblings;
+    }
+
+    /**
+     * Check if the match is alone in the container
+     * @return true iff match is the only element in the container
+     */
+    bool is_only() const {
+        return num_siblings == 0;
+    }
+
     /** Match is a dictionary value. #loc_key contains the key */
     unsigned char has_key;
 

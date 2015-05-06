@@ -142,13 +142,23 @@ Operation::do_store_dict()
         doc_new[1].begin_at_end(doc_cur, match.loc_match, Loc::NO_OVERLAP);
 
         if (match.num_siblings) {
-            if (match.position + 1 == match.num_siblings) {
-                /* Is the last item */
+            if (match.is_last()) {
+                /*
+                 * NEWDOC[0] = [a,b,c, <-- Strip here
+                 * MATCH     = d
+                 * NEWDOC[1] = ]
+                 */
                 strip_comma(&doc_new[0], STRIP_LAST_COMMA);
             } else {
+                /*
+                 * NEWDOC[0] = [a,b,
+                 * MATCH     = c
+                 * NEWDOC[1] = Strip here -->, d]
+                 */
                 strip_comma(&doc_new[1], STRIP_FIRST_COMMA);
             }
         }
+
         doc_new_len = 2;
 
     } else if (match.matchres == JSONSL_MATCH_COMPLETE) {
@@ -302,7 +312,7 @@ Operation::find_last_element()
     mloc->length--;
 
     /* Finally, set the position */
-    match.position = match.num_siblings-1;
+    match.position = match.num_siblings;
 
     return SUBDOC_STATUS_SUCCESS;
 }
