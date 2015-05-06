@@ -283,6 +283,38 @@ TEST_F(OpTests, testArrayOpsNested)
     EXPECT_EQ("[0,[1],{\"key\":\"val\"}]", getNewDoc());
 }
 
+// Toplevel array with two elements.
+TEST_F(OpTests, testArrayDelete)
+{
+    // Toplevel array deletions
+    const string array("[1,2]");
+    op.set_doc(array);
+    Error rv;
+
+    // Delete beginning element.
+    rv = runOp(Command::REMOVE, "[0]");
+    EXPECT_TRUE(rv.success());
+    EXPECT_EQ("[2]", getNewDoc());
+
+    // Delete end element.
+    rv = runOp(Command::REMOVE, "[1]");
+    EXPECT_TRUE(rv.success());
+    EXPECT_EQ("[1]", getNewDoc());
+
+    // One element array. Delete last (final) element (via [0]).
+    const string array2("[1]");
+    op.set_doc(array2);
+
+    rv = runOp(Command::REMOVE, "[0]");
+    EXPECT_TRUE(rv.success());
+    EXPECT_EQ("[]", getNewDoc());
+
+    // Delete last element via [-1].
+    rv = runOp(Command::REMOVE, "[-1]");
+    EXPECT_TRUE(rv.success());
+    EXPECT_EQ("[]", getNewDoc());
+}
+
 TEST_F(OpTests, testUnique)
 {
     string json = "{}";
