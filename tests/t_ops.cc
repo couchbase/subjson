@@ -8,6 +8,7 @@ using Subdoc::Operation;
 using Subdoc::Match;
 using Subdoc::Loc;
 using Subdoc::Error;
+using Subdoc::Command;
 
 class OpTests : public ::testing::Test {
 protected:
@@ -67,40 +68,40 @@ TEST_F(OpTests, testOperations)
 {
     string newdoc;
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, performNewOp(op, SUBDOC_CMD_GET, "name"));
+    ASSERT_EQ(Error::SUCCESS, performNewOp(op, Command::GET, "name"));
     ASSERT_EQ("\"Allagash Brewing\"", t_subdoc::getMatchString(op.match));
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, performNewOp(op, SUBDOC_CMD_EXISTS, "name"));
+    ASSERT_EQ(Error::SUCCESS, performNewOp(op, Command::EXISTS, "name"));
 
-    subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_DELETE, "address");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    Error rv = performNewOp(op, Command::REMOVE, "address");
+    ASSERT_TRUE(rv.success());
 
     getAssignNewDoc(op, newdoc);
     // Should return in KEY_ENOENT
-    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, performNewOp(op, SUBDOC_CMD_GET, "address"));
+    ASSERT_EQ(Error::PATH_ENOENT, performNewOp(op, Command::GET, "address"));
 
     // Insert something back, maybe :)
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, "address", "\"123 Main St.\"");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::DICT_ADD, "address", "\"123 Main St.\"");
+    ASSERT_TRUE(rv.success());
 
     getAssignNewDoc(op, newdoc);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, performNewOp(op, SUBDOC_CMD_GET, "address"));
+    ASSERT_EQ(Error::SUCCESS, performNewOp(op, Command::GET, "address"));
     ASSERT_EQ("\"123 Main St.\"", t_subdoc::getMatchString(op.match));
 
     // Replace the value now:
-    rv = performNewOp(op, SUBDOC_CMD_REPLACE, "address", "\"33 Marginal Rd.\"");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REPLACE, "address", "\"33 Marginal Rd.\"");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, newdoc);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, performNewOp(op, SUBDOC_CMD_GET, "address"));
+    ASSERT_EQ(Error::SUCCESS, performNewOp(op, Command::GET, "address"));
     ASSERT_EQ("\"33 Marginal Rd.\"", t_subdoc::getMatchString(op.match));
 
     // Get it back:
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
     // add non-existent path
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, "foo.bar.baz", "[1,2,3]");
-    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, rv);
+    rv = performNewOp(op, Command::DICT_ADD, "foo.bar.baz", "[1,2,3]");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "[1,2,3]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "foo.bar.baz", "[1,2,3]");
+    ASSERT_TRUE(rv.success());
     getNewDoc(op);
 }
 
@@ -109,22 +110,22 @@ TEST_F(OpTests, testOperations)
 TEST_F(OpTests, testGenericOps)
 {
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
-    subdoc_ERRORS rv;
+    Error rv;
     string newdoc;
 
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "address[0]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "address[0]");
+    ASSERT_TRUE(rv.success());
 
     getAssignNewDoc(op, newdoc);
-    rv = performNewOp(op, SUBDOC_CMD_GET, "address[0]");
-    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, rv);
+    rv = performNewOp(op, Command::GET, "address[0]");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_REPLACE, "address",
+    rv = performNewOp(op, Command::REPLACE, "address",
         "[\"500 B St.\", \"Anytown\", \"USA\"]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, newdoc);
-    rv = performNewOp(op, SUBDOC_CMD_GET, "address[2]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "address[2]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("\"USA\"", t_subdoc::getMatchString(op.match));
 }
 
@@ -133,61 +134,61 @@ TEST_F(OpTests, testListOps)
     string doc = "{}";
     op.set_doc(doc);
 
-    subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "array", "[]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    Error rv = performNewOp(op, Command::DICT_UPSERT, "array", "[]");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
     // Test append:
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "array", "1");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "array", "1");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "array[0]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "array[0]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("1", t_subdoc::getMatchString(op.match));
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_PREPEND, "array", "0");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_PREPEND, "array", "0");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "array[0]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "array[0]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", t_subdoc::getMatchString(op.match));
-    rv = performNewOp(op, SUBDOC_CMD_GET, "array[1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "array[1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("1", t_subdoc::getMatchString(op.match));
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "array", "2");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "array", "2");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "array[2]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "array[2]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("2", t_subdoc::getMatchString(op.match));
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "array", "{\"foo\":\"bar\"}");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "array", "{\"foo\":\"bar\"}");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "array[3].foo");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "array[3].foo");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("\"bar\"", t_subdoc::getMatchString(op.match));
 
     // Test the various POP commands
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[0]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "array[0]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", t_subdoc::getMatchString(op.match));
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "array[0]");
+    rv = performNewOp(op, Command::GET, "array[0]");
 
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "array[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("{\"foo\":\"bar\"}", t_subdoc::getMatchString(op.match));
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "array[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "array[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("2", t_subdoc::getMatchString(op.match));
 }
 
@@ -197,14 +198,14 @@ TEST_F(OpTests, testArrayOpsNested)
     op.set_doc(array);
     Error rv;
 
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "[1][1][0]");
-    EXPECT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "[1][1][0]");
+    EXPECT_TRUE(rv.success());
     EXPECT_EQ("[0,[1,[]],{\"key\":\"val\"}]", getNewDoc(op));
 
     string array2;
     getAssignNewDoc(op, array2);
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "[1][1]");
-    EXPECT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "[1][1]");
+    EXPECT_TRUE(rv.success());
     EXPECT_EQ("[0,[1],{\"key\":\"val\"}]", getNewDoc(op));
 }
 
@@ -216,27 +217,27 @@ TEST_F(OpTests, testUnique)
 
     op.set_doc(json);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE_P, "unique", "\"value\"");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_ADD_UNIQUE_P, "unique", "\"value\"");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE, "unique", "\"value\"");
-    ASSERT_EQ(SUBDOC_STATUS_DOC_EEXISTS, rv);
+    rv = performNewOp(op, Command::ARRAY_ADD_UNIQUE, "unique", "\"value\"");
+    ASSERT_EQ(Error::DOC_EEXISTS, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE, "unique", "1");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_ADD_UNIQUE, "unique", "1");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE, "unique", "\"1\"");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_ADD_UNIQUE, "unique", "\"1\"");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE, "unique", "[]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_ADD_UNIQUE, "unique", "[]");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_ADD_UNIQUE, "unique", "2");
-    ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
+    rv = performNewOp(op, Command::ARRAY_ADD_UNIQUE, "unique", "2");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
 }
 
 #ifndef INT64_MIN
@@ -251,67 +252,67 @@ TEST_F(OpTests, testNumeric)
     op.set_doc(doc);
 
     // Can we make a simple counter?
-    rv = performArith(op, SUBDOC_CMD_INCREMENT_P, "counter", 1);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performArith(op, Command::INCREMENT_P, "counter", 1);
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performArith(op, SUBDOC_CMD_DECREMENT, "counter", 101);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performArith(op, Command::DECREMENT, "counter", 101);
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", t_subdoc::getMatchString(op.match));
     getAssignNewDoc(op, doc);
 
     // Get it raw
-    rv = performNewOp(op, SUBDOC_CMD_GET, "counter");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "counter");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", t_subdoc::getMatchString(op.match));
 
-    rv = performArith(op, SUBDOC_CMD_INCREMENT, "counter", 1);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performArith(op, Command::INCREMENT, "counter", 1);
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("-99", t_subdoc::getMatchString(op.match));
     getAssignNewDoc(op, doc);
 
     // Try with other things
-    rv = performArith(op, SUBDOC_CMD_DECREMENT, "counter", INT64_MIN);
-    ASSERT_EQ(SUBDOC_STATUS_DELTA_E2BIG, rv);
+    rv = performArith(op, Command::DECREMENT, "counter", INT64_MIN);
+    ASSERT_EQ(Error::DELTA_E2BIG, rv);
 
-    rv = performArith(op, SUBDOC_CMD_DECREMENT, "counter", INT64_MAX-99);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performArith(op, Command::DECREMENT, "counter", INT64_MAX-99);
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performArith(op, SUBDOC_CMD_INCREMENT, "counter", INT64_MAX);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performArith(op, Command::INCREMENT, "counter", INT64_MAX);
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", t_subdoc::getMatchString(op.match));
     getAssignNewDoc(op, doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "counter2", "9999999999999999999999999999999");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "counter2", "9999999999999999999999999999999");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performArith(op, SUBDOC_CMD_INCREMENT, "counter2", 1);
-    ASSERT_EQ(SUBDOC_STATUS_NUM_E2BIG, rv);
+    rv = performArith(op, Command::INCREMENT, "counter2", 1);
+    ASSERT_EQ(Error::NUM_E2BIG, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "counter3", "3.14");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "counter3", "3.14");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performArith(op, SUBDOC_CMD_INCREMENT, "counter3", 1);
-    ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
+    rv = performArith(op, Command::INCREMENT, "counter3", 1);
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
 
     doc = "[]";
     op.set_doc(doc);
-    rv = performArith(op, SUBDOC_CMD_INCREMENT, "[0]", 42);
-    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, rv);
+    rv = performArith(op, Command::INCREMENT, "[0]", 42);
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
 
     // Try with a _P variant. Should still be the same
-    rv = performArith(op, SUBDOC_CMD_INCREMENT_P, "[0]", 42);
-    ASSERT_EQ(SUBDOC_STATUS_PATH_ENOENT, rv);
+    rv = performArith(op, Command::INCREMENT_P, "[0]", 42);
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "-20");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "", "-20");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
-    rv = performArith(op, SUBDOC_CMD_INCREMENT, "[0]", 1);
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performArith(op, Command::INCREMENT, "[0]", 1);
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("-19", t_subdoc::getMatchString(op.match));
 }
 
@@ -322,51 +323,51 @@ TEST_F(OpTests, testValueValidation)
     Error rv;
     op.set_doc(doc);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "INVALID");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "foo.bar.baz", "INVALID");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "1,2,3,4");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "foo.bar.baz", "1,2,3,4");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // FIXME: Should we allow this? Could be more performant, but might also
     // be confusing!
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "foo.bar.baz", "1,\"k2\":2");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "foo.bar.baz", "1,\"k2\":2");
+    ASSERT_TRUE(rv.success());
 
     // Dict key without a colon or value.
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, "bad_dict", "{ \"foo\" }");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD, "bad_dict", "{ \"foo\" }");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, "bad_dict", "{ \"foo\": }");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD, "bad_dict", "{ \"foo\": }");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // Dict without a colon or value.
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_dict", "{ \"foo\" }");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_dict", "{ \"foo\" }");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // Dict without a colon.
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_dict", "{ \"foo\": }");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_dict", "{ \"foo\": }");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // null with incorrect name.
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_null", "nul");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_null", "nul");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // invalid float (more than one decimal point).
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float1", "2.0.0");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_float1", "2.0.0");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // invalid float (no digit after the '.').
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float2", "2.");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_float2", "2.");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // invalid float (no exponential after the 'e').
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float3", "2.0e");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_float3", "2.0e");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // invalid float (no digits after the exponential sign).
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD_P, "bad_float4", "2.0e+");
-    EXPECT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_ADD_P, "bad_float4", "2.0e+");
+    EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 }
 
 
@@ -375,41 +376,41 @@ TEST_F(OpTests, testNegativeIndex)
     string json = "[1,2,3,4,5,6]";
     op.set_doc(json);
 
-    subdoc_ERRORS rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    Error rv = performNewOp(op, Command::GET, "[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("6", t_subdoc::getMatchString(op.match));
 
     json = "[1,2,3,[4,5,6,[7,8,9]]]";
     op.set_doc(json);
-    rv = performNewOp(op, SUBDOC_CMD_GET, "[-1].[-1].[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "[-1].[-1].[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("9", t_subdoc::getMatchString(op.match));
 
     string doc;
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "[-1].[-1].[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::REMOVE, "[-1].[-1].[-1]");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
     // Can we PUSH values with a negative index?
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "[-1].[-1]", "10");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "[-1].[-1]", "10");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, doc);
 
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "[-1].[-1].[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "[-1].[-1].[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("10", t_subdoc::getMatchString(op.match));
 
     // Intermixed paths:
     json = "{\"k1\": [\"first\", {\"k2\":[6,7,8]},\"last\"] }";
     op.set_doc(json);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "k1[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "k1[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("\"last\"", t_subdoc::getMatchString(op.match));
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "k1[1].k2[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "k1[1].k2[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("8", t_subdoc::getMatchString(op.match));
 }
 
@@ -417,61 +418,61 @@ TEST_F(OpTests, testRootOps)
 {
     string json = "[]";
     op.set_doc(json);
-    subdoc_ERRORS rv;
+    Error rv;
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("[]", t_subdoc::getMatchString(op.match));
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "null");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "", "null");
+    ASSERT_TRUE(rv.success());
     getAssignNewDoc(op, json);
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "");
+    rv = performNewOp(op, Command::GET, "");
     ASSERT_EQ("[null]", t_subdoc::getMatchString(op.match));
 
     // Deleting root element should be CANTINSERT
-    rv = performNewOp(op, SUBDOC_CMD_DELETE, "");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::REMOVE, "");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 }
 
 TEST_F(OpTests, testMismatch)
 {
     string doc = "{}";
     op.set_doc(doc);
-    subdoc_ERRORS rv;
+    Error rv;
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND, "", "null");
-    ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND, "", "null");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
 
     doc = "[]";
     op.set_doc(doc);
-    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "", "blah");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_UPSERT, "", "blah");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "key", "blah");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_UPSERT, "key", "blah");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
     doc = "[null]";
     op.set_doc(doc);
-    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "", "blah");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_UPSERT, "", "blah");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_DICT_UPSERT, "key", "blah");
-    ASSERT_EQ(SUBDOC_STATUS_VALUE_CANTINSERT, rv);
+    rv = performNewOp(op, Command::DICT_UPSERT, "key", "blah");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    rv = performNewOp(op, SUBDOC_CMD_ARRAY_APPEND_P, "foo.bar", "null");
-    ASSERT_EQ(SUBDOC_STATUS_PATH_MISMATCH, rv);
+    rv = performNewOp(op, Command::ARRAY_APPEND_P, "foo.bar", "null");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
 }
 
 TEST_F(OpTests, testWhitespace)
 {
     string doc = "[ 1, 2, 3,       4        ]";
     op.set_doc(doc);
-    subdoc_ERRORS rv;
+    Error rv;
 
-    rv = performNewOp(op, SUBDOC_CMD_GET, "[-1]");
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    rv = performNewOp(op, Command::GET, "[-1]");
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("4", t_subdoc::getMatchString(op.match));
 }
 
@@ -487,16 +488,16 @@ TEST_F(OpTests, testTooDeep)
 
     op.set_doc(deep);
 
-    uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, "dummy.path");
-    ASSERT_EQ(SUBDOC_STATUS_DOC_ETOODEEP, rv);
+    Error rv = performNewOp(op, Command::GET, "dummy.path");
+    ASSERT_EQ(Error::DOC_ETOODEEP, rv);
 
     // Try with a really deep path:
     std::string dp = "dummy";
     for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
         dp += ".dummy";
     }
-    rv = performNewOp(op, SUBDOC_CMD_GET, dp.c_str());
-    ASSERT_EQ(SUBDOC_STATUS_PATH_E2BIG, rv);
+    rv = performNewOp(op, Command::GET, dp.c_str());
+    ASSERT_EQ(Error::PATH_E2BIG, rv);
 }
 
 TEST_F(OpTests, testTooDeepDict) {
@@ -521,15 +522,15 @@ TEST_F(OpTests, testTooDeepDict) {
                                      std::to_string(COMPONENTS_ALLOC - 2));
     // Assert we can access elements at the max depth (before we start
     // attempting to add more).
-    uint16_t rv = performNewOp(op, SUBDOC_CMD_GET, max_valid_path.c_str());
-    ASSERT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    Error rv = performNewOp(op, Command::GET, max_valid_path.c_str());
+    ASSERT_TRUE(rv.success());
     ASSERT_EQ("{}", t_subdoc::getMatchString(op.match));
 
     // Should be able to add an element as the same level as the max.
     const std::string equal_max_path(one_less_max_path + ".sibling_max");
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, equal_max_path.c_str(),
+    rv = performNewOp(op, Command::DICT_ADD, equal_max_path.c_str(),
                       "\"also at max depth\"");
-    EXPECT_EQ(SUBDOC_STATUS_SUCCESS, rv);
+    EXPECT_TRUE(rv.success());
     std::string newDoc;
     getAssignNewDoc(op, newDoc);
 
@@ -537,7 +538,7 @@ TEST_F(OpTests, testTooDeepDict) {
     std::string too_long_path(max_valid_path + ".too_long");
     std::cerr << "DEBUG doc: " << newDoc << std::endl;
     std::cerr << "DEBUG path:" << too_long_path << std::endl;
-    rv = performNewOp(op, SUBDOC_CMD_DICT_ADD, too_long_path.c_str(),
+    rv = performNewOp(op, Command::DICT_ADD, too_long_path.c_str(),
                       "\"past max depth\"");
-    EXPECT_EQ(SUBDOC_STATUS_PATH_E2BIG, rv);
+    EXPECT_EQ(Error::PATH_E2BIG, rv);
 }

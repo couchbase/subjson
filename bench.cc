@@ -30,6 +30,8 @@ using namespace cliopts;
 
 using Subdoc::Path;
 using Subdoc::Operation;
+using Subdoc::Command;
+using Subdoc::Error;
 
 struct OpEntry {
     uint8_t opcode;
@@ -73,23 +75,23 @@ public:
 
     void initOpmap() {
         // generic ops:
-        opmap["replace"] = OpEntry(SUBDOC_CMD_REPLACE, "Replace a value");
-        opmap["delete"] = OpEntry(SUBDOC_CMD_DELETE, "Delete a value");
-        opmap["get"] = OpEntry(SUBDOC_CMD_GET, "Retrieve a value");
-        opmap["exists"] = OpEntry(SUBDOC_CMD_EXISTS, "Check if a value exists");
+        opmap["replace"] = OpEntry(Command::REPLACE, "Replace a value");
+        opmap["delete"] = OpEntry(Command::REMOVE, "Delete a value");
+        opmap["get"] = OpEntry(Command::GET, "Retrieve a value");
+        opmap["exists"] = OpEntry(Command::EXISTS, "Check if a value exists");
 
         // dict ops
-        opmap["add"] = OpEntry(SUBDOC_CMD_DICT_ADD, "Create a new dictionary value");
-        opmap["upsert"] = OpEntry(SUBDOC_CMD_DICT_UPSERT, "Create or replace a dictionary value");
+        opmap["add"] = OpEntry(Command::DICT_ADD, "Create a new dictionary value");
+        opmap["upsert"] = OpEntry(Command::DICT_UPSERT, "Create or replace a dictionary value");
 
         // list ops
-        opmap["append"] = OpEntry(SUBDOC_CMD_ARRAY_APPEND, "Insert values to the end of an array");
-        opmap["prepend"] = OpEntry(SUBDOC_CMD_ARRAY_PREPEND, "Insert values to the beginning of an array");
-        opmap["addunique"] = OpEntry(SUBDOC_CMD_ARRAY_ADD_UNIQUE, "Add a unique value to an array");
+        opmap["append"] = OpEntry(Command::ARRAY_APPEND, "Insert values to the end of an array");
+        opmap["prepend"] = OpEntry(Command::ARRAY_PREPEND, "Insert values to the beginning of an array");
+        opmap["addunique"] = OpEntry(Command::ARRAY_ADD_UNIQUE, "Add a unique value to an array");
 
         // arithmetic ops
-        opmap["incr"] = OpEntry(SUBDOC_CMD_INCREMENT, "Increment a value");
-        opmap["decr"] = OpEntry(SUBDOC_CMD_DECREMENT, "Decrement a value");
+        opmap["incr"] = OpEntry(Command::INCREMENT, "Increment a value");
+        opmap["decr"] = OpEntry(Command::DECREMENT, "Decrement a value");
         opmap["path"] = OpEntry(0xff, "Check the validity of a path");
     }
 
@@ -188,10 +190,10 @@ execOperation(Options& o)
     uint64_t dummy;
 
     switch (opcode) {
-    case SUBDOC_CMD_INCREMENT:
-    case SUBDOC_CMD_INCREMENT_P:
-    case SUBDOC_CMD_DECREMENT:
-    case SUBDOC_CMD_DECREMENT_P: {
+    case Command::INCREMENT:
+    case Command::INCREMENT_P:
+    case Command::DECREMENT:
+    case Command::DECREMENT_P: {
         int64_t ctmp = (uint64_t)strtoll(vbuf, NULL, 10);
         if (ctmp == LLONG_MAX && errno == ERANGE) {
             throw string("Invalid delta for arithmetic operation!");
@@ -215,14 +217,14 @@ execOperation(Options& o)
         op->set_doc(curInput);
         op->set_value(vbuf, nvbuf);
 
-        subdoc_ERRORS rv = op->op_exec(path);
-        if (rv != SUBDOC_STATUS_SUCCESS) {
+        Error rv = op->op_exec(path);
+        if (!rv.success()) {
             throw rv;
         }
     }
 
     // Print the result.
-    if (opcode == SUBDOC_CMD_GET || opcode == SUBDOC_CMD_EXISTS) {
+    if (opcode == Command::GET || opcode == Command::EXISTS) {
         string match(op->match.loc_match.at, op->match.loc_match.length);
         printf("%s\n", match.c_str());
     } else {
@@ -311,6 +313,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
     } catch (subdoc_ERRORS& rc) {
-        fprintf(stderr, "Command failed: %s\n", subdoc_strerror(rc));
+        fprintf(stderr, "Command failed: %s\n", rc.description());
     }
 }
