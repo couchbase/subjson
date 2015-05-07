@@ -153,6 +153,52 @@ TEST_F(OpTests, testGenericOps)
     ASSERT_EQ("\"USA\"", Util::match_match(op.match));
 }
 
+TEST_F(OpTests, testReplaceArrayDeep)
+{
+    // Create an array at max level.
+    string deep;
+    for (size_t ii = 0; ii < Limits::MAX_COMPONENTS - 1; ii++) {
+        deep += "[";
+    }
+    deep += "1";
+    for (size_t ii = 0; ii < Limits::MAX_COMPONENTS - 1; ii++) {
+        deep += "]";
+    }
+    op.set_doc(deep);
+
+    // Sanity check - should be able to access maximum depth.
+    string one_minus_max_path;
+    for (size_t ii = 0; ii < Limits::MAX_COMPONENTS - 2; ii++) {
+        one_minus_max_path += "[0]";
+    }
+    string max_path(one_minus_max_path + "[0]");
+    Error rv = runOp(Command::GET, one_minus_max_path.c_str());
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("[1]", Util::match_match(op.match));
+
+    // Should be able to replace the array element with a different one.
+    rv = runOp(Command::REPLACE, max_path.c_str(), "2");
+    ASSERT_TRUE(rv.success());
+    string newdoc;
+    getAssignNewDoc(newdoc);
+    rv = runOp(Command::GET, one_minus_max_path.c_str());
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ("[2]", Util::match_match(op.match));
+
+    // Should be able to replace the last level array with a different
+    // (larger) one.
+    rv = runOp(Command::REPLACE, one_minus_max_path.c_str(), "[3,4]");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(newdoc);
+    rv = runOp(SUBDOC_CMD_GET, one_minus_max_path.c_str());
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("[3,4]", Util::match_match(op.match));
+
+    // Should not be able to make it any deeper (already at maximum).
+    rv = runOp(Command::REPLACE, one_minus_max_path.c_str(), "[[5]]");
+    ASSERT_EQ(Error::VALUE_ETOODEEP, rv);
+}
+
 TEST_F(OpTests, testListOps)
 {
     string doc = "{}";
