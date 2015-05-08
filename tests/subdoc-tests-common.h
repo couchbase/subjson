@@ -29,3 +29,14 @@ namespace t_subdoc {
     std::string getParentString(const subdoc_MATCH& m);
     const char *getJsnErrstr(jsonsl_error_t err);
 }
+
+namespace std {
+inline ostream& operator<<(ostream& os, const Subdoc::Error::Code& err) {
+    os << "0x" << std::hex << static_cast<int>(err)
+       << " (" << Subdoc::Error(err).description() << ")";
+    return os;
+}
+inline ostream& operator<<(ostream& os, const Subdoc::Error& err) {
+    return os << err.code();
+}
+}

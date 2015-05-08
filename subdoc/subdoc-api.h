@@ -62,6 +62,7 @@ public:
     Error(Code c = SUCCESS) : m_code(c) {}
     operator int() const { return static_cast<int>(m_code); }
     bool success() const { return m_code == SUCCESS; }
+    Code code() const { return m_code; }
     const char *description() const;
 };
 
@@ -189,6 +190,7 @@ public:
         INCREMENT_P = 0x8A,
         DECREMENT = 0x0B,
         DECREMENT_P = 0x8B,
+
 
         INVALID = 0xff,
         FLAG_MKDIR_P = 0x80
