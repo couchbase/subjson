@@ -558,3 +558,58 @@ TEST_F(OpTests, testTooDeepDict) {
                       "\"past max depth\"");
     EXPECT_EQ(Error::PATH_E2BIG, rv);
 }
+
+TEST_F(OpTests, testArrayInsert) {
+    string doc("[1,2,4,5]");
+    op.set_doc(doc);
+    Error rv = performNewOp(op, Command::ARRAY_INSERT, "[2]", "3");
+    ASSERT_TRUE(rv.success()) << "Insert op recognized";
+    getAssignNewDoc(op, doc);
+    ASSERT_EQ("[1,2,3,4,5]", doc) << "Insert works correctly in-between";
+
+    // Do an effective 'prepend'
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[0]", "0");
+    ASSERT_TRUE(rv.success()) << "Insert at position 0 OK";
+    getAssignNewDoc(op, doc);
+    ASSERT_EQ("[0,1,2,3,4,5]", doc) << "Insert at posititon 0 matches";
+
+    // Do an effective 'append'
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[6]", "6");
+    ASSERT_TRUE(rv.success()) << "Insert at posititon $SIZE ok";
+    getAssignNewDoc(op, doc);
+    ASSERT_EQ("[0,1,2,3,4,5,6]", doc) << "Insert at position $SIZE matches";
+
+    // Reset the doc
+    doc = "[1,2,3,5]";
+    op.set_doc(doc);
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[-1]", "4");
+    ASSERT_TRUE(rv.success()) << "Insert at position [-1] OK";
+    getAssignNewDoc(op, doc);
+    ASSERT_EQ("[1,2,3,4,5]", doc) << "Insert at position [-1] matches";
+
+    // Insert at out-of-bounds element
+    doc = "[1,2,3]";
+    op.set_doc(doc);
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[4]", "null");
+    ASSERT_EQ(Error::PATH_ENOENT, rv) << "Fails with out-of-bound index";
+
+    // Insert not using array syntax
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[0].anything", "null");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv) << "Using non-array parent in path fails";
+
+    doc = "{}";
+    op.set_doc(doc);
+    // Insert with missing parent
+    rv = performNewOp(op, Command::ARRAY_INSERT, "non_exist[0]", "null");
+    ASSERT_EQ(Error::PATH_ENOENT, rv) << "Fails with missing parent";
+
+    doc = "[]";
+    op.set_doc(doc);
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[0]", "blah");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv) << "CANT_INSERT on invalid JSON value";
+
+    doc = "{}";
+    op.set_doc(doc);
+    rv = performNewOp(op, Command::ARRAY_INSERT, "[0]", "null");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv) << "Fails with dict parent";
+}

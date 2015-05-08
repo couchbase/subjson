@@ -74,6 +74,7 @@ private:
     Error insert_singleton_element();
     Error do_list_op();
     Error do_arith_op();
+    Error do_insert();
 };
 }
 

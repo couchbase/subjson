@@ -172,6 +172,9 @@ public:
         ARRAY_ADD_UNIQUE = 0x08,
         ARRAY_ADD_UNIQUE_P = 0x88,
 
+        /**Inserts a new value at a given position. Existing values will be
+         * pushed back by one */
+        ARRAY_INSERT = 0x09,
 
         /* In the protocol this should contain a 64-bit integer
          *
@@ -182,10 +185,10 @@ public:
          * then a SUBDOC_PATH_MISMATCH error is returned. This is the case for
          * 'floats' and 'exponents' as well. Only whole integers are supported.
          */
-        INCREMENT = 0x09,
-        INCREMENT_P = 0x89,
-        DECREMENT = 0x0A,
-        DECREMENT_P = 0x8A,
+        INCREMENT = 0x0A,
+        INCREMENT_P = 0x8A,
+        DECREMENT = 0x0B,
+        DECREMENT_P = 0x8B,
 
         INVALID = 0xff,
         FLAG_MKDIR_P = 0x80

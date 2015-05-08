@@ -466,6 +466,74 @@ Operation::do_list_op()
 }
 
 Error
+Operation::do_insert()
+{
+    auto& lastcomp = path->get_component(path->size()-1);
+    if (!lastcomp.is_arridx) {
+        return Error::PATH_MISMATCH;
+    }
+
+    Error status = do_match_common();
+    if (!status.success()) {
+        return status;
+    }
+
+    if (match.matchres == JSONSL_MATCH_COMPLETE) {
+        /*
+         * DOCNEW[0] = ... [
+         * DOCNEW[1] = USER
+         * DOCNEW[2] = ,
+         * DOCNEW[3] = MATCH
+         */
+        doc_new_len = 4;
+        doc_new[0].end_at_begin(doc_cur, match.loc_match, Loc::NO_OVERLAP);
+        doc_new[1] = user_in;
+        doc_new[2] = loc_COMMA;
+        doc_new[3].begin_at_begin(doc_cur, match.loc_match);
+        return Error::SUCCESS;
+
+    } else if (match.immediate_parent_found) {
+        // Get the array index.
+        auto lastix = lastcomp.idx;
+
+        if (match.num_siblings == 0 && (lastcomp.is_neg || lastix == 0)) {
+            // Singleton element and requested insertion to one of the "Ends"
+            // of the array
+            /*
+             * DOCNEW[0] = ... [
+             * DOCNEW[1] = USER
+             * DOCNEW[2] = ] ...
+             */
+            doc_new_len = 3;
+            doc_new[0].end_at_begin(doc_cur, match.loc_parent, Loc::OVERLAP);
+            doc_new[1] = user_in;
+            doc_new[2].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
+            return Error::SUCCESS;
+
+        } else if (lastix == match.num_siblings) {
+            /*
+             * (assume DOC = [a,b,c,d,e]
+             * DOCNEW[0] = e (last char before ']')
+             * DOCNEW[1] = , (since there are items in the list)
+             * DOCNEW[2] = USER
+             * DOCNEW[3] = ]
+             */
+            doc_new_len = 4;
+            doc_new[0].end_at_end(doc_cur, match.loc_parent, Loc::NO_OVERLAP);
+            doc_new[1] = loc_COMMA;
+            doc_new[2] = user_in;
+            doc_new[3].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
+            return Error::SUCCESS;
+
+        } else {
+            return Error::PATH_ENOENT;
+        }
+    } else {
+        return Error::PATH_ENOENT;
+    }
+}
+
+Error
 Operation::do_arith_op()
 {
     Error status;
@@ -625,6 +693,16 @@ Operation::op_exec(const char *pth, size_t npth)
             }
         }
         return do_list_op();
+
+    case Command::ARRAY_INSERT:
+        if (user_in.length) {
+            rv = Match::validate(user_in.at, user_in.length, jsn,
+                SUBDOC_VALIDATE_PARENT_ARRAY);
+            if (rv != JSONSL_ERROR_SUCCESS) {
+                return Error::VALUE_CANTINSERT;
+            }
+        }
+        return do_insert();
 
     case Command::INCREMENT:
     case Command::INCREMENT_P:

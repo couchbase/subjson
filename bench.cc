@@ -105,6 +105,7 @@ public:
         opmap["append"] = OpEntry(Command::ARRAY_APPEND, "Insert values to the end of an array");
         opmap["prepend"] = OpEntry(Command::ARRAY_PREPEND, "Insert values to the beginning of an array");
         opmap["addunique"] = OpEntry(Command::ARRAY_ADD_UNIQUE, "Add a unique value to an array");
+        opmap["insert"] = OpEntry(Command::ARRAY_INSERT, "Insert value at given array index");
 
         // arithmetic ops
         opmap["incr"] = OpEntry(Command::INCREMENT, "Increment a value");
