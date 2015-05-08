@@ -311,6 +311,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
     } catch (subdoc_ERRORS& rc) {
-        fprintf(stderr, "Command failed: %s\n", rc.description());
+        fprintf(stderr, "Command failed: %s\n", subdoc_strerror(rc));
     }
 }

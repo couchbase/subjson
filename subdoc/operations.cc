@@ -13,7 +13,6 @@ using Subdoc::Error;
 using Subdoc::Operation;
 using Subdoc::Path;
 using Subdoc::Match;
-using Subdoc::Command;
 
 static Loc loc_COMMA = { ",", 1 };
 static Loc loc_QUOTE = { "\"", 1 };
@@ -25,15 +24,15 @@ Operation::do_match_common()
 {
     match.exec_match(doc_cur, path, jsn);
     if (match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
-        return Error::PATH_MISMATCH;
+        return SUBDOC_STATUS_PATH_MISMATCH;
     } else if (match.status != JSONSL_ERROR_SUCCESS) {
         if (match.status == JSONSL_ERROR_LEVELS_EXCEEDED) {
-            return Error::DOC_ETOODEEP;
+            return SUBDOC_STATUS_DOC_ETOODEEP;
         } else {
-            return Error::DOC_NOTJSON;
+            return SUBDOC_STATUS_DOC_NOTJSON;
         }
     } else {
-        return Error::SUCCESS;
+        return SUBDOC_STATUS_SUCCESS;
     }
 }
 
@@ -41,9 +40,9 @@ Error
 Operation::do_get()
 {
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
-        return Error::PATH_ENOENT;
+        return SUBDOC_STATUS_PATH_ENOENT;
     }
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 /* Start at the beginning of the buffer, stripping first comma */
@@ -88,31 +87,31 @@ Operation::do_store_dict()
     /* Now it's time to get creative */
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
         switch (optype) {
-        case Command::DICT_ADD_P:
-        case Command::DICT_UPSERT_P:
+        case SUBDOC_CMD_DICT_ADD_P:
+        case SUBDOC_CMD_DICT_UPSERT_P:
             break;
 
-        case Command::DICT_ADD:
-        case Command::DICT_UPSERT:
+        case SUBDOC_CMD_DICT_ADD:
+        case SUBDOC_CMD_DICT_UPSERT:
             if (!match.immediate_parent_found) {
-                return Error::PATH_ENOENT;
+                return SUBDOC_STATUS_PATH_ENOENT;
             }
             break;
 
-        case Command::DELETE:
-        case Command::REPLACE:
+        case SUBDOC_CMD_DELETE:
+        case SUBDOC_CMD_REPLACE:
             /* etc. */
         default:
-            return Error::PATH_ENOENT;
+            return SUBDOC_STATUS_PATH_ENOENT;
         }
     } else if (match.matchres == JSONSL_MATCH_COMPLETE) {
-        if ((optype == Command::DICT_ADD) ||
-            (optype == Command::DICT_ADD_P)) {
-            return Error::DOC_EEXISTS;
+        if ((optype == SUBDOC_CMD_DICT_ADD) ||
+            (optype == SUBDOC_CMD_DICT_ADD_P)) {
+            return SUBDOC_STATUS_DOC_EEXISTS;
         }
     }
 
-    if (optype == Command::DELETE) {
+    if (optype == SUBDOC_CMD_DELETE) {
         /*
          * If match is the _last_ item, we need to strip the _last_ comma from
          * doc[0] (since doc[1] will never have a trailing comma); e.g.
@@ -197,7 +196,7 @@ Operation::do_store_dict()
     } else {
         return do_mkdir_p(MKDIR_P_DICT);
     }
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 Error
@@ -235,7 +234,7 @@ Operation::do_mkdir_p(int mode)
     for (ii = match.match_level + 1; ii < jpr->ncomponents; ii++) {
         comp = &jpr->components[ii];
         if (comp->ptype != JSONSL_PATH_STRING) {
-            return Error::PATH_ENOENT;
+            return SUBDOC_STATUS_PATH_ENOENT;
         }
         bkbuf += "{\"";
         bkbuf.append(comp->pstr, comp->len);
@@ -264,7 +263,7 @@ Operation::do_mkdir_p(int mode)
     doc_new[4].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
     doc_new_len = 5;
 
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 Error
@@ -272,19 +271,19 @@ Operation::find_first_element()
 {
     jsonsl_error_t rv = path->add_array_index(0);
     if (rv != JSONSL_ERROR_SUCCESS) {
-        return Error::PATH_E2BIG;
+        return SUBDOC_STATUS_PATH_E2BIG;
     }
 
     Error status = do_match_common();
     path->pop_component();
 
-    if (status != Error::SUCCESS) {
+    if (status != SUBDOC_STATUS_SUCCESS) {
         return status;
     }
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
-        return Error::PATH_ENOENT;
+        return SUBDOC_STATUS_PATH_ENOENT;
     }
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 /* Finds the last element. This normalizes the match structure so that
@@ -297,12 +296,12 @@ Operation::find_last_element()
 
     match.get_last_child_pos = 1;
     Error rv = find_first_element();
-    if (rv != Error::SUCCESS) {
+    if (rv != SUBDOC_STATUS_SUCCESS) {
         return rv;
     }
     if (match.num_siblings == 0) {
         /* first is last */
-        return Error::SUCCESS;
+        return SUBDOC_STATUS_SUCCESS;
     }
 
     mloc->at = doc_cur.at + match.loc_key.length;
@@ -315,7 +314,7 @@ Operation::find_last_element()
     /* Finally, set the position */
     match.position = match.num_siblings;
 
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 /* Inserts a single element into an empty array */
@@ -330,7 +329,7 @@ Operation::insert_singleton_element()
     doc_new[2].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
 
     doc_new_len = 3;
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 
@@ -338,7 +337,7 @@ Error
 Operation::do_list_op()
 {
     #define HANDLE_LISTADD_ENOENT(rv) \
-    if (rv == Error::PATH_ENOENT) { \
+    if (rv == SUBDOC_STATUS_PATH_ENOENT) { \
         if (match.immediate_parent_found) { \
             return insert_singleton_element(); \
         } else { \
@@ -347,7 +346,7 @@ Operation::do_list_op()
     }
 
     #define HANDLE_LISTADD_ENOENT_P(rv) \
-    if (rv == Error::PATH_ENOENT) { \
+    if (rv == SUBDOC_STATUS_PATH_ENOENT) { \
         if (match.immediate_parent_found) { \
             return insert_singleton_element(); \
         } else { \
@@ -356,12 +355,12 @@ Operation::do_list_op()
     }
 
     Error rv;
-    if (optype == Command::ARRAY_PREPEND) {
+    if (optype == SUBDOC_CMD_ARRAY_PREPEND) {
         /* Find the array itself. */
         rv = find_first_element();
 
         HANDLE_LISTADD_ENOENT(rv);
-        if (rv != Error::SUCCESS) {
+        if (rv != SUBDOC_STATUS_SUCCESS) {
             return rv;
         }
 
@@ -383,13 +382,13 @@ Operation::do_list_op()
         doc_new[3].begin_at_begin(doc_cur, match.loc_match);
 
         doc_new_len = 4;
-        return Error::SUCCESS;
+        return SUBDOC_STATUS_SUCCESS;
 
-    } else if (optype == Command::ARRAY_APPEND) {
+    } else if (optype == SUBDOC_CMD_ARRAY_APPEND) {
         rv = find_last_element();
 
         HANDLE_LISTADD_ENOENT(rv);
-        if (rv != Error::SUCCESS) {
+        if (rv != SUBDOC_STATUS_SUCCESS) {
             return rv;
         }
 
@@ -404,11 +403,11 @@ Operation::do_list_op()
         doc_new[3].begin_at_end(doc_cur, match.loc_parent, Loc::OVERLAP);
 
         doc_new_len = 4;
-        return Error::SUCCESS;
+        return SUBDOC_STATUS_SUCCESS;
 
-    } else if (optype == Command::ARRAY_PREPEND_P) {
+    } else if (optype == SUBDOC_CMD_ARRAY_PREPEND_P) {
         rv = find_first_element();
-        if (rv == Error::SUCCESS) {
+        if (rv == SUBDOC_STATUS_SUCCESS) {
             goto GT_PREPEND_FOUND;
         }
 
@@ -416,36 +415,36 @@ Operation::do_list_op()
         HANDLE_LISTADD_ENOENT_P(rv);
         return rv;
 
-    } else if (optype == Command::ARRAY_APPEND_P) {
+    } else if (optype == SUBDOC_CMD_ARRAY_APPEND_P) {
         rv = find_last_element();
-        if (rv == Error::SUCCESS) {
+        if (rv == SUBDOC_STATUS_SUCCESS) {
             goto GT_APPEND_FOUND;
         }
         goto GT_ARR_P_COMMON;
 
-    } else if (optype == Command::ARRAY_ADD_UNIQUE) {
+    } else if (optype == SUBDOC_CMD_ARRAY_ADD_UNIQUE) {
         match.ensure_unique = user_in;
         rv = find_first_element();
         HANDLE_LISTADD_ENOENT(rv);
 
         GT_ADD_UNIQUE:
-        if (rv != Error::SUCCESS) {
+        if (rv != SUBDOC_STATUS_SUCCESS) {
             /* mismatch, perhaps? */
             return rv;
         }
         if (match.unique_item_found) {
-            return Error::DOC_EEXISTS;
+            return SUBDOC_STATUS_DOC_EEXISTS;
         }
         goto GT_PREPEND_FOUND;
 
-    } else if (optype == Command::ARRAY_ADD_UNIQUE_P) {
+    } else if (optype == SUBDOC_CMD_ARRAY_ADD_UNIQUE_P) {
         match.ensure_unique = user_in;
         rv = find_first_element();
         HANDLE_LISTADD_ENOENT_P(rv);
         goto GT_ADD_UNIQUE;
     }
 
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 Error
@@ -458,37 +457,37 @@ Operation::do_arith_op()
 
     /* Scan the match first */
     if (user_in.length != 8) {
-        return Error::GLOBAL_EINVAL;
+        return SUBDOC_STATUS_GLOBAL_EINVAL;
     }
 
     memcpy(&tmp, user_in.at, 8);
     tmp = ntohll(tmp);
     if (tmp > std::numeric_limits<int64_t>::max()) {
-        return Error::DELTA_E2BIG;
+        return SUBDOC_STATUS_DELTA_E2BIG;
     }
 
     delta = tmp;
 
-    if ((optype == Command::DECREMENT) ||
-        (optype == Command::DECREMENT_P)) {
+    if ((optype == SUBDOC_CMD_DECREMENT) ||
+        (optype == SUBDOC_CMD_DECREMENT_P)) {
         delta *= -1;
     }
 
     /* Find the number first */
     status = do_match_common();
-    if (status != Error::SUCCESS) {
+    if (status != SUBDOC_STATUS_SUCCESS) {
         return status;
     }
 
     if (match.matchres == JSONSL_MATCH_COMPLETE) {
         if (match.type != JSONSL_T_SPECIAL) {
-            return Error::PATH_MISMATCH;
+            return SUBDOC_STATUS_PATH_MISMATCH;
         } else if (match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
-            return Error::PATH_MISMATCH;
+            return SUBDOC_STATUS_PATH_MISMATCH;
         } else  {
             num_i = strtoll(match.loc_match.at, NULL, 10);
             if (num_i == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
-                return Error::NUM_E2BIG;
+                return SUBDOC_STATUS_NUM_E2BIG;
             }
 
             /* Calculate what to place inside the buffer. We want to be gentle here
@@ -496,11 +495,11 @@ Operation::do_arith_op()
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
             if (delta >= 0 && num_i >= 0) {
                 if (std::numeric_limits<int64_t>::max() - delta <= num_i) {
-                    return Error::DELTA_E2BIG;
+                    return SUBDOC_STATUS_DELTA_E2BIG;
                 }
             } else if (delta < 0 && num_i < 0) {
                 if (delta <= std::numeric_limits<int64_t>::min() - num_i) {
-                    return Error::DELTA_E2BIG;
+                    return SUBDOC_STATUS_DELTA_E2BIG;
                 }
             }
 
@@ -508,26 +507,26 @@ Operation::do_arith_op()
             numbuf = std::to_string(num_i);
         }
     } else {
-        if ((optype == Command::INCREMENT) ||
-            (optype == Command::DECREMENT)) {
+        if ((optype == SUBDOC_CMD_INCREMENT) ||
+            (optype == SUBDOC_CMD_DECREMENT)) {
             if (!match.immediate_parent_found) {
-                return Error::PATH_ENOENT;
+                return SUBDOC_STATUS_PATH_ENOENT;
             }
         }
 
         if (match.type != JSONSL_T_OBJECT) {
-            return Error::PATH_ENOENT;
+            return SUBDOC_STATUS_PATH_ENOENT;
         }
 
         numbuf = std::to_string(delta);
         user_in.at = numbuf.data();
         user_in.length = numbuf.size();
-        optype = Command::DICT_ADD_P;
-        if ((status = do_store_dict()) != Error::SUCCESS) {
+        optype = SUBDOC_CMD_DICT_ADD_P;
+        if ((status = do_store_dict()) != SUBDOC_STATUS_SUCCESS) {
             return status;
         }
         match.loc_match = user_in;
-        return Error::SUCCESS;
+        return SUBDOC_STATUS_SUCCESS;
     }
 
 
@@ -544,7 +543,7 @@ Operation::do_arith_op()
 
     match.loc_match.at = numbuf.data();
     match.loc_match.length = numbuf.size();
-    return Error::SUCCESS;
+    return SUBDOC_STATUS_SUCCESS;
 }
 
 Error
@@ -555,68 +554,68 @@ Operation::op_exec(const char *pth, size_t npth)
 
     if (rv != 0) {
         if (rv == JSONSL_ERROR_LEVELS_EXCEEDED) {
-            return Error::PATH_E2BIG;
+            return SUBDOC_STATUS_PATH_E2BIG;
         } else {
-            return Error::PATH_EINVAL;
+            return SUBDOC_STATUS_PATH_EINVAL;
         }
     }
 
     switch (optype) {
-    case Command::GET:
-    case Command::EXISTS:
+    case SUBDOC_CMD_GET:
+    case SUBDOC_CMD_EXISTS:
         status = do_match_common();
-        if (status != Error::SUCCESS) {
+        if (status != SUBDOC_STATUS_SUCCESS) {
             return status;
         }
         return do_get();
 
-    case Command::DICT_ADD:
-    case Command::DICT_ADD_P:
-    case Command::DICT_UPSERT:
-    case Command::DICT_UPSERT_P:
-    case Command::REPLACE:
-    case Command::DELETE:
+    case SUBDOC_CMD_DICT_ADD:
+    case SUBDOC_CMD_DICT_ADD_P:
+    case SUBDOC_CMD_DICT_UPSERT:
+    case SUBDOC_CMD_DICT_UPSERT_P:
+    case SUBDOC_CMD_REPLACE:
+    case SUBDOC_CMD_DELETE:
         if (path->jpr_base.ncomponents == 1) {
             /* Can't perform these operations on the root element since they
              * will invalidate the JSON or are otherwise meaningless. */
-            return Error::VALUE_CANTINSERT;
+            return SUBDOC_STATUS_VALUE_CANTINSERT;
         }
 
         if (user_in.length) {
             rv = Match::validate(user_in.at, user_in.length, jsn,
                 SUBDOC_VALIDATE_PARENT_DICT);
             if (rv != JSONSL_ERROR_SUCCESS) {
-                return Error::VALUE_CANTINSERT;
+                return SUBDOC_STATUS_VALUE_CANTINSERT;
             }
         }
         status = do_match_common();
-        if (status != Error::SUCCESS) {
+        if (status != SUBDOC_STATUS_SUCCESS) {
             return status;
         }
         return do_store_dict();
-    case Command::ARRAY_APPEND:
-    case Command::ARRAY_PREPEND:
-    case Command::ARRAY_APPEND_P:
-    case Command::ARRAY_PREPEND_P:
-    case Command::ARRAY_ADD_UNIQUE:
-    case Command::ARRAY_ADD_UNIQUE_P:
+    case SUBDOC_CMD_ARRAY_APPEND:
+    case SUBDOC_CMD_ARRAY_PREPEND:
+    case SUBDOC_CMD_ARRAY_APPEND_P:
+    case SUBDOC_CMD_ARRAY_PREPEND_P:
+    case SUBDOC_CMD_ARRAY_ADD_UNIQUE:
+    case SUBDOC_CMD_ARRAY_ADD_UNIQUE_P:
         if (user_in.length) {
             rv = Match::validate(user_in.at, user_in.length, jsn,
                 SUBDOC_VALIDATE_PARENT_ARRAY);
             if (rv != JSONSL_ERROR_SUCCESS) {
-                return Error::VALUE_CANTINSERT;
+                return SUBDOC_STATUS_VALUE_CANTINSERT;
             }
         }
         return do_list_op();
 
-    case Command::INCREMENT:
-    case Command::INCREMENT_P:
-    case Command::DECREMENT:
-    case Command::DECREMENT_P:
+    case SUBDOC_CMD_INCREMENT:
+    case SUBDOC_CMD_INCREMENT_P:
+    case SUBDOC_CMD_DECREMENT:
+    case SUBDOC_CMD_DECREMENT_P:
         return do_arith_op();
 
     default:
-        return Error::GLOBAL_ENOSUPPORT;
+        return SUBDOC_STATUS_GLOBAL_ENOSUPPORT;
 
     }
 }
@@ -624,7 +623,7 @@ Operation::op_exec(const char *pth, size_t npth)
 Operation::Operation()
 : path(new Path()),
   jsn(Match::jsn_alloc()),
-  optype(Command::GET),
+  optype(SUBDOC_CMD_GET),
   doc_new_len(0)
 {
 }
@@ -645,7 +644,7 @@ Operation::clear()
     user_in.length = 0;
     user_in.at = NULL;
     doc_new_len = 0;
-    optype = Command::GET;
+    optype = SUBDOC_CMD_GET;
 }
 
 Operation *
@@ -662,34 +661,34 @@ subdoc_op_free(Operation *op)
 
 /* Misc */
 const char *
-Error::description() const
+subdoc_strerror(Error rc)
 {
-    switch (m_code) {
-    case Error::SUCCESS:
+    switch (rc) {
+    case SUBDOC_STATUS_SUCCESS:
         return "Success";
-    case Error::PATH_ENOENT:
+    case SUBDOC_STATUS_PATH_ENOENT:
         return "Requested path does not exist in document";
-    case Error::PATH_MISMATCH:
+    case SUBDOC_STATUS_PATH_MISMATCH:
         return "The path specified treats an existing document entry as the wrong type";
-    case Error::PATH_EINVAL:
+    case SUBDOC_STATUS_PATH_EINVAL:
         return "Path syntax error";
-    case Error::DOC_NOTJSON:
+    case SUBDOC_STATUS_DOC_NOTJSON:
         return "The document is not JSON";
-    case Error::DOC_EEXISTS:
+    case SUBDOC_STATUS_DOC_EEXISTS:
         return "The requested path already exists";
-    case Error::PATH_E2BIG:
+    case SUBDOC_STATUS_PATH_E2BIG:
         return "The path is too big";
-    case Error::NUM_E2BIG:
+    case SUBDOC_STATUS_NUM_E2BIG:
         return "The number specified by the path is too big";
-    case Error::DELTA_E2BIG:
+    case SUBDOC_STATUS_DELTA_E2BIG:
         return "The combination of the existing number and the delta will result in an underflow or overflow";
-    case Error::VALUE_CANTINSERT:
+    case SUBDOC_STATUS_VALUE_CANTINSERT:
         return "The new value cannot be inserted in the context of the path, as it would invalidate the JSON";
-    case Error::GLOBAL_ENOMEM:
+    case SUBDOC_STATUS_GLOBAL_ENOMEM:
         return "Couldn't allocate memory";
-    case Error::GLOBAL_ENOSUPPORT:
+    case SUBDOC_STATUS_GLOBAL_ENOSUPPORT:
         return "Operation not implemented";
-    case Error::GLOBAL_UNKNOWN_COMMAND:
+    case SUBDOC_STATUS_GLOBAL_UNKNOWN_COMMAND:
         return "Unrecognized command code";
     default:
         return "Unknown error code";

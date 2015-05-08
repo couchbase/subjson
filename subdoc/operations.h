@@ -19,7 +19,7 @@ public:
     Match match;
 
     /* opcode */
-    Command optype;
+    subdoc_OPTYPE optype;
 
     /* Location of original document */
     Loc doc_cur;
@@ -42,7 +42,7 @@ public:
     void set_doc(const char *s, size_t n) { doc_cur.assign(s, n); }
     void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
 
-    void set_code(uint8_t code) { optype = code; }
+    void set_code(uint8_t code) { optype = subdoc_OPTYPE(code); }
 
 private:
     std::string bkbuf;
@@ -65,7 +65,9 @@ typedef Subdoc::Loc subdoc_LOC;
 typedef Subdoc::Path subdoc_PATH, subdoc_PATH_st;
 typedef Subdoc::Operation subdoc_OPERATION;
 typedef Subdoc::Match subdoc_MATCH;
-typedef Subdoc::Error subdoc_ERRORS;
-typedef Subdoc::Command::Code subdoc_OPTYPE;
+
+const char *
+subdoc_strerror(subdoc_ERRORS rc);
+
 
 #endif
