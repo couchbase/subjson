@@ -6,11 +6,6 @@
 #include <string>
 #include <list>
 
-#ifdef _MSC_VER
-// There is no ssize_t in Visual Studio 2013, but size_t is signed
-#define ssize_t size_t
-#endif
-
 // Maximum number of components in a path. Set to 33 to allow 32 'actual'
 // components plus the implicit root element.
 #define COMPONENTS_ALLOC 33
@@ -28,7 +23,7 @@ public:
     int parse(const char *s) { return parse(s, strlen(s)); }
     int parse(const std::string& s) { return parse(s.c_str(), s.size()); }
     void pop_component() { jpr_base.ncomponents--; }
-    jsonsl_error_t add_array_index(ssize_t ixnum);
+    jsonsl_error_t add_array_index(long ixnum);
     size_t size() const { return jpr_base.ncomponents; }
     Component& get_component(int ix) const { return jpr_base.components[ix]; }
     Component& operator[](size_t ix) const { return get_component(ix); }
