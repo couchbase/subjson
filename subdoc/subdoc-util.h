@@ -1,6 +1,10 @@
 #ifndef SUBDOC_STRING_H
 #define SUBDOC_STRING_H
 
+#ifdef COUCHBASE_BUILD
+#include <platform/platform.h>
+#else
+
 #ifdef INCLUDE_SUBDOC_NTOHLL
     #ifndef ntohll
         #if defined(__linux__)
@@ -16,6 +20,8 @@
             #error "Missing ntohll implementation!"
         #endif
     #endif
+#endif
+
 #endif
 
 #endif /* SUBDOC_STRING_H */
