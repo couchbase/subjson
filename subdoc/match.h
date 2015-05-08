@@ -62,6 +62,9 @@ public:
      *
      * This is used by insertion/deletion operations to determine if any
      * trailing tokens from surrounding items should be stripped.
+     * If a match is found, then this _excludes_ the match (in other words,
+     * this is not the size of the container, but rather how many elements
+     * in the container are not the match)
      */
     unsigned num_siblings;
 
