@@ -23,6 +23,7 @@
 #include "subdoc-api.h"
 #include "match.h"
 #include "uescape.h"
+#include "validate.h"
 
 using namespace Subdoc;
 
@@ -595,6 +596,7 @@ typedef struct {
     int err;
     int rootcount;
     int flags;
+    int maxdepth;
 } validate_ctx;
 
 static int
@@ -610,38 +612,47 @@ validate_err_callback(jsonsl_t jsn, jsonsl_error_t err,
 
 static void
 validate_callback(jsonsl_t jsn, jsonsl_action_t action,
-    struct jsonsl_state_st *state, const jsonsl_char_t *at)
+    jsonsl_state_st *state, const jsonsl_char_t *)
 {
-    validate_ctx *ctx = (validate_ctx *)jsn->data;
+    validate_ctx *ctx = reinterpret_cast<validate_ctx*>(jsn->data);
+
+    if (ctx->maxdepth > -1 &&
+            state->level - 1 == static_cast<unsigned>(ctx->maxdepth)) {
+        ctx->err = Validator::ETOODEEP;
+        jsonsl_stop(jsn);
+        return;
+    }
 
     if (state->level == 1) {
+        // Root element
         ctx->rootcount++;
 
-    } else if (action == JSONSL_ACTION_PUSH) {
-        assert(state->level == 2);
-        if (ctx->flags & SUBDOC_VALIDATE_F_PRIMITIVE) {
+    } else if (state->level == 2 && action == JSONSL_ACTION_PUSH) {
+        if (action != JSONSL_ACTION_PUSH) {
+            return;
+        }
+        if (ctx->flags & Validator::VALUE_PRIMITIVE) {
             if (JSONSL_STATE_IS_CONTAINER(state)) {
-                ctx->err = SUBDOC_VALIDATE_ENOTPRIMITIVE;
-                jsn->max_callback_level = 1;
+                ctx->err = Validator::ENOTPRIMITIVE;
+                jsonsl_stop(jsn);
             }
         }
 
-        if (ctx->flags & SUBDOC_VALIDATE_F_SINGLE) {
-            const struct jsonsl_state_st *parent = jsonsl_last_state(jsn, state);
+        if (ctx->flags & Validator::VALUE_SINGLE) {
+            auto *parent = jsonsl_last_state(jsn, state);
             int has_multielem = 0;
             if (parent->type == JSONSL_T_LIST && parent->nelem > 1) {
                 has_multielem = 1;
             } else if (parent->type == JSONSL_T_OBJECT && parent->nelem > 2) {
                 has_multielem = 1;
             }
+
             if (has_multielem) {
-                ctx->err = SUBDOC_VALIDATE_EMULTIELEM;
-                jsn->max_callback_level = 1;
+                ctx->err = Validator::EMULTIELEM;
+                jsonsl_stop(jsn);
             }
         }
-
     }
-    (void)state;(void)at;
 }
 
 static const Loc validate_ARRAY_PRE = { "[", 1 };
@@ -650,12 +661,12 @@ static const Loc validate_DICT_PRE = { "{\"k\":", 5 };
 static const Loc validate_DICT_POST = { "}", 1 };
 static const Loc validate_NOOP = { NULL, 0 };
 
-jsonsl_error_t
-Match::validate(const char *s, size_t n, jsonsl_t jsn, int mode)
+int
+Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mode)
 {
     int need_free_jsn = 0;
-    int type = mode & SUBDOC_VALIDATE_MODEMASK;
-    int flags = mode & SUBDOC_VALIDATE_FLAGMASK;
+    int type = mode & PARENT_MASK;
+    int flags = mode & VALUE_MASK;
     const Loc *l_pre, *l_post;
 
     validate_ctx ctx = { 0,0 };
@@ -670,12 +681,18 @@ Match::validate(const char *s, size_t n, jsonsl_t jsn, int mode)
     jsn->action_callback = validate_callback;
     jsn->error_callback = validate_err_callback;
 
-    if (flags) {
-        ctx.flags = flags;
-        jsn->max_callback_level = 3;
-    } else {
-        jsn->max_callback_level = 2;
+    if (maxdepth == -1) {
+        if (flags) {
+            jsn->max_callback_level = 3;
+        } else {
+            jsn->max_callback_level = 2;
+        }
+    } else if (type != PARENT_NONE) {
+        maxdepth++;
     }
+
+    ctx.maxdepth = maxdepth;
+    ctx.flags = flags;
 
     jsn->call_OBJECT = 1;
     jsn->call_LIST = 1;
@@ -685,12 +702,12 @@ Match::validate(const char *s, size_t n, jsonsl_t jsn, int mode)
     jsn->call_UESCAPE = 0;
     jsn->data = &ctx;
 
-    if (type == SUBDOC_VALIDATE_PARENT_NONE) {
+    if (type == PARENT_NONE) {
         l_pre = l_post = &validate_NOOP;
-    } else if (type == SUBDOC_VALIDATE_PARENT_ARRAY) {
+    } else if (type == PARENT_ARRAY) {
         l_pre = &validate_ARRAY_PRE;
         l_post = &validate_ARRAY_POST;
-    } else if (type == SUBDOC_VALIDATE_PARENT_DICT) {
+    } else if (type == PARENT_DICT) {
         l_pre = &validate_DICT_PRE;
         l_post = &validate_DICT_POST;
     } else {
@@ -700,13 +717,16 @@ Match::validate(const char *s, size_t n, jsonsl_t jsn, int mode)
 
     jsonsl_feed(jsn, l_pre->at, l_pre->length);
     jsonsl_feed(jsn, s, n);
-    jsonsl_feed(jsn, l_post->at, l_post->length);
+
+    if (ctx.err == JSONSL_ERROR_SUCCESS) {
+        jsonsl_feed(jsn, l_post->at, l_post->length);
+    }
 
     if (ctx.err == JSONSL_ERROR_SUCCESS) {
         if (ctx.rootcount < 2) {
-            ctx.err = SUBDOC_VALIDATE_EPARTIAL;
+            ctx.err = Validator::EPARTIAL;
         } else if (ctx.rootcount > 2) {
-            ctx.err = SUBDOC_VALIDATE_EMULTIELEM;
+            ctx.err = Validator::EMULTIELEM;
         }
     }
 
@@ -716,5 +736,21 @@ Match::validate(const char *s, size_t n, jsonsl_t jsn, int mode)
     } else {
         jsonsl_reset(jsn);
     }
-    return (jsonsl_error_t)ctx.err;
+    return ctx.err;
+}
+
+const char *
+Validator::errstr(int rv)
+{
+    if (rv <= JSONSL_ERROR_GENERIC) {
+        return jsonsl_strerror(static_cast<jsonsl_error_t>(rv));
+    }
+    switch (rv) {
+    case EMULTIELEM:
+        return "Found multiple elements (single expected)";
+    case EPARTIAL:
+        return "Found incomplete JSON";
+    default:
+        return "UNKNOWN";
+    }
 }

@@ -16,7 +16,7 @@
 */
 #define INCLUDE_SUBDOC_NTOHLL
 #include "subdoc-tests-common.h"
-
+#include "subdoc/validate.h"
 using std::string;
 using std::cerr;
 using std::endl;
@@ -25,6 +25,7 @@ using Subdoc::Match;
 using Subdoc::Loc;
 using Subdoc::Error;
 using Subdoc::Command;
+using Subdoc::Validator;
 
 class OpTests : public ::testing::Test {
 protected:
@@ -45,9 +46,9 @@ getNewDoc(const Operation& op)
     }
 
     // validate
-    jsonsl_error_t rv = Match::validate(
-        ret.c_str(), ret.size(), op.jsn, SUBDOC_VALIDATE_PARENT_NONE);
-    EXPECT_EQ(JSONSL_ERROR_SUCCESS, rv) << t_subdoc::getJsnErrstr(rv);
+    int rv = Validator::validate(ret, op.jsn);
+    EXPECT_EQ(JSONSL_ERROR_SUCCESS, rv)
+        << t_subdoc::getJsnErrstr(static_cast<jsonsl_error_t>(rv));
     return ret;
 }
 

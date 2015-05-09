@@ -150,54 +150,10 @@ public:
 
     static jsonsl_t jsn_alloc();
     static void jsn_free(jsonsl_t jsn);
-
-    /**
-     * Convenience function to scan an item and see if it's json.
-     *
-     * @param s Buffer to check
-     * @param n Size of buffer
-     * @param jsn Parser. If NULL, one will be allocated and freed internally
-     * @param mode The context in which the value should be checked. This is one of
-     * the `SUBDOC_VALIDATE_PARENT_*` constants. The mode may also be combined
-     * with one of the flags to add additional constraints on the added value.
-     *
-     * @return JSONSL_ERROR_SUCCESS if JSON, error code otherwise.
-     */
-    static jsonsl_error_t validate(const char *s, size_t n, jsonsl_t jsn, int mode);
 private:
     inline int exec_match_simple(const char *value, size_t nvalue, const Path::CompInfo *jpr, jsonsl_t jsn);
     inline int exec_match_negix(const char *value, size_t nvalue, const Path *pth, jsonsl_t jsn);
 };
 }
-
-/* Treats the value as a top-level object */
-#define SUBDOC_VALIDATE_PARENT_NONE 0x01
-
-/* Treats the value as one or more array elements */
-#define SUBDOC_VALIDATE_PARENT_ARRAY 0x02
-
-/* Treats the value as a dictionary value */
-#define SUBDOC_VALIDATE_PARENT_DICT 0x03
-
-/* New value must be a single element only */
-#define SUBDOC_VALIDATE_F_SINGLE 0x100
-
-/* New value must be a JSON primitive */
-#define SUBDOC_VALIDATE_F_PRIMITIVE 0x200
-
-#define SUBDOC_VALIDATE_MODEMASK 0xFF
-#define SUBDOC_VALIDATE_FLAGMASK 0xFF00
-
-/* Error codes */
-typedef enum {
-    /* Requested a primitive, but item is not a primitive */
-    SUBDOC_VALIDATE_ENOTPRIMITIVE = JSONSL_ERROR_GENERIC + 1,
-    /* Requested only a single item, but multiple found. Also returned if
-     * PARENT_NONE is specified, and multiple items are found! */
-    SUBDOC_VALIDATE_EMULTIELEM,
-    /* No parse error, but a full JSON value could not be parsed */
-    SUBDOC_VALIDATE_EPARTIAL
-} subdoc_VALIDSTATUS;
-
 
 #endif /* SUBDOC_MATCH_H */

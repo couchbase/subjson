@@ -1,0 +1,89 @@
+/* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
+/*
+*     Copyright 2015 Couchbase, Inc
+*
+*   Licensed under the Apache License, Version 2.0 (the "License");
+*   you may not use this file except in compliance with the License.
+*   You may obtain a copy of the License at
+*
+*       http://www.apache.org/licenses/LICENSE-2.0
+*
+*   Unless required by applicable law or agreed to in writing, software
+*   distributed under the License is distributed on an "AS IS" BASIS,
+*   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*   See the License for the specific language governing permissions and
+*   limitations under the License.
+*/
+
+#ifndef SUBDOC_VALIDATE_H
+#define SUBDOC_VALIDATE_H
+
+namespace Subdoc {
+class Validator {
+public:
+    /// Possible values to pass as the 'flags' argument to ::validate().
+    /// The `PARENT_` and `VALUE_` flags may be bitwise-OR'd together.
+    enum Options {
+        /// Value should be valid in its own context
+        PARENT_NONE = 0x00,
+
+        /// Value should be a valid series of array elements
+        PARENT_ARRAY = 0x02,
+
+        /// Value should be a valid dictionary value
+        PARENT_DICT = 0x03,
+
+        /// No constraint on the value type
+        VALUE_ANY = 0x000,
+
+        /// Value must be a single item (not series)
+        VALUE_SINGLE = 0x100,
+
+        /// Value must be a JSON primitive (not a container)
+        VALUE_PRIMITIVE = 0x200,
+
+    };
+
+    enum Status {
+        /// Requested a primitive, but value is not a primitive
+        ENOTPRIMITIVE = JSONSL_ERROR_GENERIC + 1,
+        /// Buffer contains more than a single top-level object
+        EMULTIELEM,
+        /// A full JSON value could not be obtained
+        EPARTIAL,
+        /// Max depth exceeded
+        ETOODEEP = JSONSL_ERROR_LEVELS_EXCEEDED
+    };
+
+    /**
+     * Convenience function to scan an item and see if it's JSON.
+     *
+     * @param s Buffer to check
+     * @param n Size of buffer
+     * @param jsn Parser. If NULL, one will be allocated and freed internally
+     * @param maxdepth The maximum allowable depth of the value. This should
+     *        less than COMPONENTS_ALLOC
+     * @param mode The context in which the value should be checked. This is one of
+     * the @ref Option constants. The mode may also be combined
+     * with one of the flags to add additional constraints on the added value.
+     *
+     * @return JSONSL_ERROR_SUCCESS if JSON, error code otherwise.
+     */
+    static int validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth = -1, int flags = 0);
+
+    static int validate(const std::string& s, jsonsl_t jsn, int maxdepth = -1, int flags = 0) {
+        return validate(s.c_str(), s.size(), jsn, maxdepth, flags);
+    }
+
+    static int validate(const Loc& loc, jsonsl_t jsn, int maxdepth = -1, int flags = 0) {
+        return validate(loc.at, loc.length, jsn, maxdepth, flags);
+    }
+
+    static const char *errstr(int);
+
+private:
+    static const int VALUE_MASK = 0xFF00;
+    static const int PARENT_MASK = 0xFF;
+};
+}
+#endif

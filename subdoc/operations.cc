@@ -20,6 +20,7 @@
 #define NOMINMAX // For Visual Studio
 
 #include "operations.h"
+#include "validate.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <string>
@@ -668,8 +669,7 @@ Operation::op_exec(const char *pth, size_t npth)
         }
 
         if (user_in.length) {
-            rv = Match::validate(user_in.at, user_in.length, jsn,
-                SUBDOC_VALIDATE_PARENT_DICT);
+            rv = Validator::validate(user_in, jsn, -1, Validator::PARENT_DICT);
             if (rv != JSONSL_ERROR_SUCCESS) {
                 return Error::VALUE_CANTINSERT;
             }
@@ -686,8 +686,7 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::ARRAY_ADD_UNIQUE:
     case Command::ARRAY_ADD_UNIQUE_P:
         if (user_in.length) {
-            rv = Match::validate(user_in.at, user_in.length, jsn,
-                SUBDOC_VALIDATE_PARENT_ARRAY);
+            rv = Validator::validate(user_in, jsn, -1, Validator::PARENT_ARRAY);
             if (rv != JSONSL_ERROR_SUCCESS) {
                 return Error::VALUE_CANTINSERT;
             }
@@ -696,8 +695,7 @@ Operation::op_exec(const char *pth, size_t npth)
 
     case Command::ARRAY_INSERT:
         if (user_in.length) {
-            rv = Match::validate(user_in.at, user_in.length, jsn,
-                SUBDOC_VALIDATE_PARENT_ARRAY);
+            rv = Validator::validate(user_in, jsn, -1, Validator::PARENT_ARRAY);
             if (rv != JSONSL_ERROR_SUCCESS) {
                 return Error::VALUE_CANTINSERT;
             }
