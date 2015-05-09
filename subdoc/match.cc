@@ -9,19 +9,23 @@
 
 using namespace Subdoc;
 
-typedef struct {
+namespace {
+struct ParseContext {
+    ParseContext(Match *match, jsonsl_jpr_t jpr) : jpr(jpr), match(match){
+    }
+
     jsonsl_jpr_t jpr;
 
     // Internal pointer/length pair used to hold the pointer of either the
     // current key, or the unique array value (if in "unique" mode).
     // These are actually accessed by get_hk()
-    const char *hkbuf_;
-    unsigned hklen_;
+    const char *hkbuf_ = NULL;
+    unsigned hklen_ = 0;
 
     // Internal flag set to true if the current key is actually found in
     // 'hkstr' (in which case `hkstr` contains the properly unescaped version
     // of the key).
-    bool hkesc;
+    bool hkesc = false;
 
     Match *match;
 
@@ -62,22 +66,22 @@ typedef struct {
         loc.at = hkbuf_ - 1;
         loc.length = hklen_ + 2;
     }
-
-} parse_ctx;
+};
+}
 
 static void push_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
 static void pop_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
 
-static parse_ctx *get_ctx(const jsonsl_t jsn)
+static ParseContext *get_ctx(const jsonsl_t jsn)
 {
-    return (parse_ctx *)jsn->data;
+    return (ParseContext *)jsn->data;
 }
 
 static int
 err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
     jsonsl_char_t *at)
 {
-    parse_ctx *ctx = get_ctx(jsn);
+    ParseContext *ctx = get_ctx(jsn);
     ctx->match->status = err;
     (void)state; (void)at;
     return 0;
@@ -86,7 +90,7 @@ err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
 // Updates the state to reflect information on the parent. This is used by
 // the subdoc code for insertion/deletion operations.
 static void
-update_possible(parse_ctx *ctx, const struct jsonsl_state_st *state, const char *at)
+update_possible(ParseContext *ctx, const struct jsonsl_state_st *state, const char *at)
 {
     ctx->match->loc_parent.at = at;
     ctx->match->match_level = state->level;
@@ -96,7 +100,7 @@ static void
 unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = get_ctx(jsn);
+    ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
     int rv;
     size_t slen;
@@ -160,7 +164,7 @@ static void
 push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = get_ctx(jsn);
+    ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
     struct jsonsl_state_st *parent = jsonsl_last_state(jsn, st);
     unsigned prtype = parent->type;
@@ -252,7 +256,7 @@ static void
 pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
     const jsonsl_char_t *)
 {
-    parse_ctx *ctx = get_ctx(jsn);
+    ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
     size_t end_pos = jsn->pos;
 
@@ -368,7 +372,7 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
 static void initial_callback(jsonsl_t jsn, jsonsl_action_t action,
     struct jsonsl_state_st *state, const jsonsl_char_t *at)
 {
-    parse_ctx *ctx = get_ctx(jsn);
+    ParseContext *ctx = get_ctx(jsn);
     /* state is the parent */
     state->mres = jsonsl_jpr_match(ctx->jpr, JSONSL_T_UNKNOWN, 0, NULL, 0);
     jsn->action_callback_PUSH = push_callback;
@@ -394,10 +398,7 @@ int
 Match::exec_match_simple(const char *value, size_t nvalue,
     const Path::CompInfo *jpr, jsonsl_t jsn)
 {
-    parse_ctx ctx = { NULL };
-
-    ctx.match = this;
-    ctx.jpr = (jsonsl_jpr_t)jpr;
+    ParseContext ctx(this, const_cast<Path::CompInfo*>(jpr));
     status = JSONSL_ERROR_SUCCESS;
 
     jsonsl_enable_all_callbacks(jsn);
