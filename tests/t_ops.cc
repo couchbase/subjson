@@ -619,3 +619,13 @@ TEST_F(OpTests, testArrayInsert) {
     rv = runOp(Command::ARRAY_INSERT, "[0]", "null");
     ASSERT_EQ(Error::PATH_MISMATCH, rv) << "Fails with dict parent";
 }
+
+TEST_F(OpTests, testEmpty) {
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::DICT_ADD, "p"));
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::DICT_UPSERT, "p"));
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::REPLACE, "p"));
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::ARRAY_APPEND, "p"));
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::ARRAY_PREPEND, "p"));
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::ARRAY_ADD_UNIQUE, "p"));
+    ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::ARRAY_INSERT, "p[0]"));
+}

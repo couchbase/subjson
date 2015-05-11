@@ -51,6 +51,12 @@ public:
         /** Document too deep to parse */
         DOC_ETOODEEP = 0x50A,
 
+        /** Missing a value */
+        VALUE_EMPTY = 0x50B,
+
+        /** Inserting the value would cause the document to be too deep */
+        VALUE_ETOODEEP = 0x50C,
+
         /* MEMCACHED ERROR CODES */
         GLOBAL_UNKNOWN_COMMAND = 0x81,
         GLOBAL_ENOMEM = 0x82,

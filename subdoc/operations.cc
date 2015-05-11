@@ -634,6 +634,24 @@ Operation::do_arith_op()
 }
 
 Error
+Operation::validate(int mode, int depth)
+{
+    if (!user_in.empty()) {
+        int rv = Validator::validate(user_in, jsn, depth, mode);
+        switch (rv) {
+        case JSONSL_ERROR_SUCCESS:
+            return Error::SUCCESS;
+        case JSONSL_ERROR_LEVELS_EXCEEDED:
+            return Error::VALUE_ETOODEEP;
+        default:
+            return Error::VALUE_CANTINSERT;
+        }
+    } else {
+        return Error::VALUE_EMPTY;
+    }
+}
+
+Error
 Operation::op_exec(const char *pth, size_t npth)
 {
     int rv = path->parse(pth, npth);
@@ -662,16 +680,16 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::DICT_UPSERT_P:
     case Command::REPLACE:
     case Command::REMOVE:
-        if (path->jpr_base.ncomponents == 1) {
+        if (path->size() == 1) {
             /* Can't perform these operations on the root element since they
              * will invalidate the JSON or are otherwise meaningless. */
             return Error::VALUE_CANTINSERT;
         }
 
-        if (user_in.length) {
-            rv = Validator::validate(user_in, jsn, -1, Validator::PARENT_DICT);
-            if (rv != JSONSL_ERROR_SUCCESS) {
-                return Error::VALUE_CANTINSERT;
+        if (optype != Command::REMOVE) {
+            status = validate(Validator::PARENT_DICT);
+            if (!status.success()) {
+                return status;
             }
         }
         status = do_match_common();
@@ -685,20 +703,16 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::ARRAY_PREPEND_P:
     case Command::ARRAY_ADD_UNIQUE:
     case Command::ARRAY_ADD_UNIQUE_P:
-        if (user_in.length) {
-            rv = Validator::validate(user_in, jsn, -1, Validator::PARENT_ARRAY);
-            if (rv != JSONSL_ERROR_SUCCESS) {
-                return Error::VALUE_CANTINSERT;
-            }
+        status = validate(Validator::PARENT_ARRAY);
+        if (!status.success()) {
+            return status;
         }
         return do_list_op();
 
     case Command::ARRAY_INSERT:
-        if (user_in.length) {
-            rv = Validator::validate(user_in, jsn, -1, Validator::PARENT_ARRAY);
-            if (rv != JSONSL_ERROR_SUCCESS) {
-                return Error::VALUE_CANTINSERT;
-            }
+        status = validate(Validator::PARENT_ARRAY);
+        if (!status.success()) {
+            return status;
         }
         return do_insert();
 
@@ -778,6 +792,10 @@ Error::description() const
         return "The combination of the existing number and the delta will result in an underflow or overflow";
     case Error::VALUE_CANTINSERT:
         return "The new value cannot be inserted in the context of the path, as it would invalidate the JSON";
+    case Error::VALUE_EMPTY:
+        return "Expected non-empty value for command";
+    case Error::VALUE_ETOODEEP:
+        return "Adding this value would make the document too deep";
     case Error::GLOBAL_ENOMEM:
         return "Couldn't allocate memory";
     case Error::GLOBAL_ENOSUPPORT:

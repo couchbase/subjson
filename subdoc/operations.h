@@ -75,6 +75,11 @@ private:
     Error do_list_op();
     Error do_arith_op();
     Error do_insert();
+
+    // Wrapper around Validator::validate(), this omits the
+    // passing of arguments we already have (for example, the new object)
+    // and also wraps the error code
+    Error validate(int mode, int depth = -1);
 };
 }
 
