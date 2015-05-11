@@ -12,7 +12,7 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/src)
 INCLUDE_DIRECTORIES(${gtest_SOURCE_DIR} ${gtest_SOURCE_DIR}/include)
 
-FILE(GLOB T_SUBJS_SRC t_*.cc)
+SET(T_SUBJS_SRC t_match.cc t_ops.cc t_path.cc t_uescape.cc)
 ADD_EXECUTABLE(subjson-test ${T_SUBJS_SRC} subdoc-tests-common.cc)
 
 TARGET_LINK_LIBRARIES(subjson-test subjson gtest gtest_main)
