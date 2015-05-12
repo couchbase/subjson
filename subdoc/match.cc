@@ -600,13 +600,12 @@ typedef struct {
 } validate_ctx;
 
 static int
-validate_err_callback(jsonsl_t jsn, jsonsl_error_t err,
-    struct jsonsl_state_st *state, jsonsl_char_t *at)
+validate_err_callback(jsonsl_t jsn,
+    jsonsl_error_t err, jsonsl_state_st *, jsonsl_char_t *)
 {
     validate_ctx *ctx = (validate_ctx *)jsn->data;
     ctx->err = err;
-    printf("ERROR: AT=%s\n", at);
-    (void)at; (void)state;
+    // printf("ERROR: AT=%s\n", at);
     return 0;
 }
 

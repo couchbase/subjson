@@ -558,10 +558,7 @@ TEST_F(OpTests, testTooDeepDict) {
 
     // Attempts to add one level deeper should fail.
     std::string too_long_path(max_valid_path + ".too_long");
-    std::cerr << "DEBUG doc: " << newDoc << std::endl;
-    std::cerr << "DEBUG path:" << too_long_path << std::endl;
-    rv = runOp(Command::DICT_ADD, too_long_path.c_str(),
-                      "\"past max depth\"");
+    rv = runOp(Command::DICT_ADD, too_long_path.c_str(), "\"past max depth\"");
     EXPECT_EQ(Error::PATH_E2BIG, rv);
 }
 
