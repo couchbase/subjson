@@ -14,36 +14,59 @@
 *   See the License for the specific language governing permissions and
 *   limitations under the License.
 */
-#include "subdoc-tests-common.h"
 
-namespace t_subdoc {
+#include "util.h"
+using namespace Subdoc;
 using std::string;
+
 string
-getMatchString(const subdoc_MATCH& m)
+Util::match_match(const Match& m)
 {
-    return string(m.loc_match.at, m.loc_match.length);
+    return m.loc_match.to_string();
 }
 
 string
-getMatchKey(const subdoc_MATCH& m)
+Util::match_key(const Match& m)
 {
     if (m.has_key) {
-        return string(m.loc_key.at, m.loc_key.length);
+        return m.loc_key.to_string();
     } else {
         return string();
     }
 }
+
 string
-getParentString(const subdoc_MATCH& m)
+Util::match_parent(const Match& m)
 {
-    return string(m.loc_parent.at, m.loc_parent.length);
+    return m.loc_parent.to_string();
+}
+
+void
+Util::dump_newdoc(const Operation& op, std::ostream& os)
+{
+    os << "Dumping doc with "
+       << std::dec << op.doc_new_len << " segments" << std::endl;
+    for (size_t ii = 0; ii < op.doc_new_len; ++ii) {
+        os << "[" << std::dec << ii << "]: ";
+        os.write(op.doc_new[ii].at, op.doc_new[ii].length);
+        os << std::endl;
+    }
 }
 
 const char *
-getJsnErrstr(jsonsl_error_t err) {
+Util::jsonerr(jsonsl_error_t err)
+{
 #define X(n) if (err == JSONSL_ERROR_##n) { return #n; }
     JSONSL_XERR;
 #undef X
     return "UNKNOWN";
+}
+
+namespace std {
+ostream&
+operator<<(ostream& os, const Subdoc::Error::Code& err) {
+    os << "0x" << std::hex << static_cast<int>(err)
+       << " (" << Subdoc::Error(err).description() << ")";
+    return os;
 }
 }

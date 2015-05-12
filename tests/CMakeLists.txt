@@ -13,7 +13,7 @@ INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/src)
 INCLUDE_DIRECTORIES(${gtest_SOURCE_DIR} ${gtest_SOURCE_DIR}/include)
 
 SET(T_SUBJS_SRC t_match.cc t_ops.cc t_path.cc t_uescape.cc t_validate.cc)
-ADD_EXECUTABLE(subjson-test ${T_SUBJS_SRC} subdoc-tests-common.cc)
+ADD_EXECUTABLE(subjson-test ${T_SUBJS_SRC})
 
 TARGET_LINK_LIBRARIES(subjson-test subjson gtest gtest_main)
 ADD_TEST(NAME subjson-all-tests COMMAND subjson-test)

@@ -21,6 +21,7 @@ using std::cerr;
 using std::endl;
 using Subdoc::Path;
 using Subdoc::Match;
+using Subdoc::Util;
 
 #define JQ(s) "\"" s "\""
 
@@ -54,8 +55,8 @@ TEST_F(MatchTests, testToplevelDict)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
-    ASSERT_EQ("\"val1\"", t_subdoc::getMatchString(m));
-    ASSERT_EQ("\"key1\"", t_subdoc::getMatchKey(m));
+    ASSERT_EQ("\"val1\"", Util::match_match(m));
+    ASSERT_EQ("\"key1\"", Util::match_key(m));
 }
 
 TEST_F(MatchTests, testNestedDict)
@@ -64,8 +65,8 @@ TEST_F(MatchTests, testNestedDict)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
-    ASSERT_EQ("\"subval1\"", t_subdoc::getMatchString(m));
-    ASSERT_EQ("\"subkey1\"", t_subdoc::getMatchKey(m));
+    ASSERT_EQ("\"subval1\"", Util::match_match(m));
+    ASSERT_EQ("\"subkey1\"", Util::match_key(m));
 }
 
 TEST_F(MatchTests, testArrayIndex)
@@ -74,7 +75,7 @@ TEST_F(MatchTests, testArrayIndex)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
-    ASSERT_EQ("\"elem2\"", t_subdoc::getMatchString(m));
+    ASSERT_EQ("\"elem2\"", Util::match_match(m));
     ASSERT_EQ(0, m.has_key);
 }
 
@@ -97,7 +98,7 @@ TEST_F(MatchTests, testMatchContainerValue)
     pth.parse("numbers");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
-    ASSERT_EQ("[1,2,3,4,5,6,7,8,9,0]", t_subdoc::getMatchString(m));
+    ASSERT_EQ("[1,2,3,4,5,6,7,8,9,0]", Util::match_match(m));
 }
 
 TEST_F(MatchTests, testFinalComponentNotFound)
@@ -106,7 +107,7 @@ TEST_F(MatchTests, testFinalComponentNotFound)
     m.exec_match(json, pth, jsn);
     ASSERT_NE(0, m.immediate_parent_found);
     ASSERT_EQ(2, m.match_level);
-    ASSERT_EQ("{}", t_subdoc::getParentString(m));
+    ASSERT_EQ("{}", Util::match_parent(m));
 }
 
 TEST_F(MatchTests, testOOBArrayIndex)
@@ -115,7 +116,7 @@ TEST_F(MatchTests, testOOBArrayIndex)
     m.exec_match(json, pth, jsn);
     ASSERT_NE(0, m.immediate_parent_found);
     ASSERT_EQ(2, m.match_level);
-    ASSERT_EQ("[\"elem1\",\"elem2\",\"elem3\"]", t_subdoc::getParentString(m));
+    ASSERT_EQ("[\"elem1\",\"elem2\",\"elem3\"]", Util::match_parent(m));
 }
 
 TEST_F(MatchTests, testAllComponentsNotFound)
@@ -124,7 +125,7 @@ TEST_F(MatchTests, testAllComponentsNotFound)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(0, m.immediate_parent_found);
     ASSERT_EQ(1, m.match_level);
-    ASSERT_EQ(json, t_subdoc::getParentString(m));
+    ASSERT_EQ(json, Util::match_parent(m));
 }
 
 TEST_F(MatchTests, testSingletonComponentNotFound)
@@ -133,7 +134,7 @@ TEST_F(MatchTests, testSingletonComponentNotFound)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(1, m.match_level);
     ASSERT_NE(0, m.immediate_parent_found);
-    ASSERT_EQ(json, t_subdoc::getParentString(m));
+    ASSERT_EQ(json, Util::match_parent(m));
 }
 
 TEST_F(MatchTests, testUescape)

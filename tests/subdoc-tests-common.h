@@ -20,23 +20,6 @@
 #include "subdoc/path.h"
 #include "subdoc/match.h"
 #include "subdoc/operations.h"
+#include "subdoc/util.h"
 #include <string>
 #include <iostream>
-
-namespace t_subdoc {
-    std::string getMatchString(const subdoc_MATCH& m);
-    std::string getMatchKey(const subdoc_MATCH& m);
-    std::string getParentString(const subdoc_MATCH& m);
-    const char *getJsnErrstr(jsonsl_error_t err);
-}
-
-namespace std {
-inline ostream& operator<<(ostream& os, const Subdoc::Error::Code& err) {
-    os << "0x" << std::hex << static_cast<int>(err)
-       << " (" << Subdoc::Error(err).description() << ")";
-    return os;
-}
-inline ostream& operator<<(ostream& os, const Subdoc::Error& err) {
-    return os << err.code();
-}
-}
