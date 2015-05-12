@@ -549,7 +549,7 @@ Operation::do_arith_op()
 
     memcpy(&tmp, user_in.at, 8);
     tmp = ntohll(tmp);
-    if (tmp > std::numeric_limits<int64_t>::max()) {
+    if (tmp > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
         return Error::DELTA_E2BIG;
     }
 

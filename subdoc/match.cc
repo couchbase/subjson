@@ -200,7 +200,7 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
         if (prtype == JSONSL_T_OBJECT) {
             key = ctx->get_hk(nkey);
         } else {
-            nkey = parent->nelem - 1;
+            nkey = static_cast<size_t>(parent->nelem - 1);
             key = NULL;
         }
 
@@ -229,13 +229,13 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
                 ctx->set_hk_loc(m->loc_key);
 
                 // I'm not sure if it's used.
-                m->position = (parent->nelem - 1) / 2;
+                m->position = static_cast<unsigned>((parent->nelem - 1) / 2);
             } else {
 
                 // Array doesn't have a key
                 m->has_key = 0;
                 // array[n]
-                m->position = parent->nelem - 1;
+                m->position = static_cast<unsigned>(parent->nelem - 1);
             }
 
             if (m->ensure_unique.at) {
@@ -329,9 +329,9 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
     // insertion/removal operations to determine comma placement, if any,
     // before or after the current match.
     if (state->type == JSONSL_T_OBJECT) {
-        m->num_siblings = state->nelem / 2;
+        m->num_siblings = static_cast<unsigned>(state->nelem / 2);
     } else {
-        m->num_siblings = state->nelem;
+        m->num_siblings = static_cast<unsigned>(state->nelem);
 
         // For array-based APPEND operations we need the position of the
         // last child (which may not exist if the base array is empty).
