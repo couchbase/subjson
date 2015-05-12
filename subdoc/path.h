@@ -23,11 +23,44 @@
 #include <string>
 #include <list>
 
-// Maximum number of components in a path. Set to 33 to allow 32 'actual'
-// components plus the implicit root element.
-#define COMPONENTS_ALLOC 33
 
 namespace Subdoc {
+/**
+ * Path limits:
+ *
+ * Path limits are designed to avoid abuse of the server by making paths too
+ * deep. The jsonsl parser has a fixed limit of depth (adjustable at runtime,
+ * but it is still fixed when allocating it).
+ *
+ * In the context of JSONSL, each JSON document contains an ephemeral "root"
+ * object which is at level 0. The actual top-level object (the list or object)
+ * is considered to be at level 1, and any of its children are considered to be
+ * level 2 and so on. Thus for example
+ *
+ * @code
+ * L0
+ *    L1
+ *    {
+ *       L2
+ *       "foo"
+ *       :
+ *       "bar"
+ *    }
+ * @endcode
+ *
+ * and so on.
+ *
+ * It also follows that a maximum depth of 1 only allows a top level (empty)
+ * object.
+ *
+ */
+class Limits {
+public:
+    static const size_t MAX_COMPONENTS = 32;
+    static const size_t PARSER_DEPTH = MAX_COMPONENTS + 1;
+    static const size_t PATH_COMPONENTS_ALLOC = MAX_COMPONENTS + 1;
+};
+
 class Path {
 public:
     typedef jsonsl_jpr_component_st Component;
@@ -46,7 +79,7 @@ public:
     Component& operator[](size_t ix) const { return get_component(ix); }
 
     CompInfo jpr_base;
-    Component components_s[COMPONENTS_ALLOC];
+    Component components_s[Limits::PATH_COMPONENTS_ALLOC];
     bool has_negix; /* True if there is a negative array index in the path */
 private:
     inline const char * convert_escaped(const char *src, size_t &len);

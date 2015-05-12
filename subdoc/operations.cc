@@ -651,6 +651,16 @@ Operation::validate(int mode, int depth)
     }
 }
 
+int
+Operation::get_maxdepth(DepthMode mode) const
+{
+    if (mode == DepthMode::PATH_HAS_NEWKEY) {
+        return (Limits::MAX_COMPONENTS + 1) - path->size();
+    } else {
+        return Limits::MAX_COMPONENTS - path->size();
+    }
+}
+
 Error
 Operation::op_exec(const char *pth, size_t npth)
 {
@@ -687,7 +697,7 @@ Operation::op_exec(const char *pth, size_t npth)
         }
 
         if (optype != Command::REMOVE) {
-            status = validate(Validator::PARENT_DICT);
+            status = validate(Validator::PARENT_DICT, get_maxdepth(PATH_HAS_NEWKEY));
             if (!status.success()) {
                 return status;
             }
@@ -703,14 +713,14 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::ARRAY_PREPEND_P:
     case Command::ARRAY_ADD_UNIQUE:
     case Command::ARRAY_ADD_UNIQUE_P:
-        status = validate(Validator::PARENT_ARRAY);
+        status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_IS_PARENT));
         if (!status.success()) {
             return status;
         }
         return do_list_op();
 
     case Command::ARRAY_INSERT:
-        status = validate(Validator::PARENT_ARRAY);
+        status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_HAS_NEWKEY));
         if (!status.success()) {
             return status;
         }
@@ -720,6 +730,8 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::INCREMENT_P:
     case Command::DECREMENT:
     case Command::DECREMENT_P:
+        // no need to check for depth here, since if the path itself is too
+        // big, it will fail during path parse-time
         return do_arith_op();
 
     default:

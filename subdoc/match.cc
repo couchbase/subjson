@@ -442,7 +442,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     size_t level_offset = 0;
 
     const jsonsl_jpr_t orig_jpr = (const jsonsl_jpr_t)&pth->jpr_base;
-    struct jsonsl_jpr_component_st comp_s[COMPONENTS_ALLOC];
+    struct jsonsl_jpr_component_st comp_s[Limits::PATH_COMPONENTS_ALLOC];
 
     /* Last length of the subdocument */
     size_t last_len = nvalue;
@@ -583,7 +583,7 @@ Match::clear()
 jsonsl_t
 Match::jsn_alloc()
 {
-    return jsonsl_new(COMPONENTS_ALLOC);
+    return jsonsl_new(Limits::PARSER_DEPTH);
 }
 
 void
@@ -670,7 +670,7 @@ Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mod
 
     validate_ctx ctx = { 0,0 };
     if (jsn == NULL) {
-        jsn = jsonsl_new(COMPONENTS_ALLOC);
+        jsn = jsonsl_new(Limits::PARSER_DEPTH);
         need_free_jsn = 1;
     }
 
@@ -680,14 +680,25 @@ Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mod
     jsn->action_callback = validate_callback;
     jsn->error_callback = validate_err_callback;
 
-    if (maxdepth == -1) {
-        if (flags) {
-            jsn->max_callback_level = 3;
-        } else {
-            jsn->max_callback_level = 2;
+    // Set the maximum level. This name is a bit misleading as it's
+    // actually the level number (inclusive) beyond which we won't get
+    // called. Cutting down on the number of callbacks can significantly
+    // benefit CPU, especially for larger JSON documents with many tokens.
+    if (maxdepth != -1) {
+        if (type != PARENT_NONE) {
+            // Don't count the wrapper in the depth
+            maxdepth++;
         }
-    } else if (type != PARENT_NONE) {
-        maxdepth++;
+        // Set the callback to be 1 more (i.e. max_level+2) so we can
+        // get notified about depth violations
+        jsn->max_callback_level = maxdepth + 2;
+    } else if (flags) {
+        // Set the callback to include the "wrapper" container and our
+        // actual value
+        jsn->max_callback_level = 3;
+    } else {
+        // only care about the actual value.
+        jsn->max_callback_level = 2;
     }
 
     ctx.maxdepth = maxdepth;

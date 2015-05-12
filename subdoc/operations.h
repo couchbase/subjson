@@ -80,6 +80,14 @@ private:
     // passing of arguments we already have (for example, the new object)
     // and also wraps the error code
     Error validate(int mode, int depth = -1);
+
+    enum DepthMode {
+        /// Last component of the path is the key for the new item
+        PATH_HAS_NEWKEY,
+        /// Path consists only of parent elements
+        PATH_IS_PARENT
+    };
+    inline int get_maxdepth(DepthMode mode) const;
 };
 }
 

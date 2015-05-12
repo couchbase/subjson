@@ -97,7 +97,7 @@ Path::add_str_component(const char *component, size_t len, int n_backtick)
         len -= 2;
     }
 
-    if (jpr_base.ncomponents == COMPONENTS_ALLOC - 1) {
+    if (size() == Limits::MAX_COMPONENTS) {
         return JSONSL_ERROR_LEVELS_EXCEEDED;
     }
     if (len == 0) {
@@ -120,7 +120,7 @@ Path::add_str_component(const char *component, size_t len, int n_backtick)
 jsonsl_error_t
 Path::add_array_index(long ixnum)
 {
-    if (size() == COMPONENTS_ALLOC - 1) {
+    if (size() == Limits::MAX_COMPONENTS) {
         return JSONSL_ERROR_LEVELS_EXCEEDED;
     }
 

@@ -27,6 +27,7 @@ using Subdoc::Error;
 using Subdoc::Command;
 using Subdoc::Validator;
 using Subdoc::Util;
+using Subdoc::Limits;
 
 class OpTests : public ::testing::Test {
 protected:
@@ -502,10 +503,10 @@ TEST_F(OpTests, testWhitespace)
 TEST_F(OpTests, testTooDeep)
 {
     std::string deep = "{\"array\":";
-    for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
+    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS+1) * 2; ii++) {
         deep += "[";
     }
-    for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
+    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS+1) * 2; ii++) {
         deep += "]";
     }
 
@@ -516,7 +517,7 @@ TEST_F(OpTests, testTooDeep)
 
     // Try with a really deep path:
     std::string dp = "dummy";
-    for (size_t ii = 0; ii < COMPONENTS_ALLOC * 2; ii++) {
+    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS+1) * 2; ii++) {
         dp += ".dummy";
     }
     rv = runOp(Command::GET, dp.c_str());
@@ -527,22 +528,22 @@ TEST_F(OpTests, testTooDeepDict) {
     // Verify that we cannot create too deep a document with DICT_ADD
     // Should be able to do the maximum depth:
     std::string deep_dict("{");
-    for (size_t ii = 1; ii < COMPONENTS_ALLOC - 1; ii++) {
+    for (size_t ii = 1; ii < Limits::MAX_COMPONENTS; ii++) {
         deep_dict += "\"" + std::to_string(ii) + "\": {";
     }
-    for (size_t ii = 0; ii < COMPONENTS_ALLOC - 1; ii++) {
+    for (size_t ii = 0; ii < Limits::MAX_COMPONENTS; ii++) {
         deep_dict += "}";
     }
     op.set_doc(deep_dict);
 
     // Create base path at one less than the max.
     std::string one_less_max_path(std::to_string(1));
-    for (int depth = 2; depth < COMPONENTS_ALLOC - 2; depth++) {
+    for (size_t depth = 2; depth < Limits::MAX_COMPONENTS -1; depth++) {
         one_less_max_path += std::string(".") + std::to_string(depth);
     }
 
     const std::string max_valid_path(one_less_max_path + "." +
-                                     std::to_string(COMPONENTS_ALLOC - 2));
+                                     std::to_string(Limits::MAX_COMPONENTS-1));
     // Assert we can access elements at the max depth (before we start
     // attempting to add more).
     Error rv = runOp(Command::GET, max_valid_path.c_str());
@@ -551,9 +552,8 @@ TEST_F(OpTests, testTooDeepDict) {
 
     // Should be able to add an element as the same level as the max.
     const std::string equal_max_path(one_less_max_path + ".sibling_max");
-    rv = runOp(Command::DICT_ADD, equal_max_path.c_str(),
-                      "\"also at max depth\"");
-    EXPECT_TRUE(rv.success());
+    rv = runOp(Command::DICT_ADD, equal_max_path.c_str(), "\"also at max depth\"");
+    EXPECT_TRUE(rv.success()) << rv;
     std::string newDoc;
     getAssignNewDoc(newDoc);
 
