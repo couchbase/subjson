@@ -46,9 +46,6 @@ public:
      */
     uint16_t match_level;
 
-    /* Value of 'nelem' */
-    uint64_t numval;
-
     /**
      * The current position of the match. This value is 0-based and works
      * in conjunction with #num_siblings to determine how to handle

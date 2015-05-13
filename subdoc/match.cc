@@ -293,7 +293,6 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
             m->loc_match.length++; /* Include the terminating token */
         } else {
             m->sflags = state->special_flags;
-            m->numval = state->nelem;
         }
 
         // Don't care about more data
@@ -347,7 +346,6 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
             // Set information about the last child itself.
             m->type = child->type;
             m->sflags = child->special_flags;
-            m->numval = child->nelem;
         }
     }
     if (m->matchres == JSONSL_MATCH_COMPLETE) {
