@@ -78,15 +78,6 @@ Path::add_num_component(const char *component, size_t len)
     return add_array_index(numval);
 }
 
-Path::Component&
-Path::alloc_component(jsonsl_jpr_type_t type)
-{
-    Component& ret = components_s[jpr_base.ncomponents];
-    ret.ptype = type;
-    jpr_base.ncomponents++;
-    return ret;
-}
-
 int
 Path::add_str_component(const char *component, size_t len, int n_backtick)
 {
@@ -109,7 +100,7 @@ Path::add_str_component(const char *component, size_t len, int n_backtick)
         component = convert_escaped(component, len);
     }
 
-    Component& jpr_comp = alloc_component(JSONSL_PATH_STRING);
+    Component& jpr_comp = add(JSONSL_PATH_STRING);
     jpr_comp.pstr = const_cast<char*>(component);
     jpr_comp.len = len;
     jpr_comp.is_arridx = 0;
@@ -124,7 +115,7 @@ Path::add_array_index(long ixnum)
         return JSONSL_ERROR_LEVELS_EXCEEDED;
     }
 
-    Component& comp = alloc_component(JSONSL_PATH_NUMERIC);
+    Component& comp = add(JSONSL_PATH_NUMERIC);
     comp.len = 0;
     comp.is_arridx = 1;
     comp.idx = ixnum;
@@ -149,13 +140,9 @@ Path::parse(const char *path, size_t len)
     int n_backtick = 0;
     int rv;
 
-    jpr_base.ncomponents = 0;
-    jpr_base.components = components_s;
-    jpr_base.orig = const_cast<char*>(path);
-    jpr_base.norig = len;
+    ncomponents = 0;
     has_negix = false;
-
-    alloc_component(JSONSL_PATH_ROOT);
+    add(JSONSL_PATH_ROOT);
 
     if (!len) {
         return 0;
@@ -239,17 +226,15 @@ Path::parse(const char *path, size_t len)
     }
 }
 
-Path::Path() {
-    memset(&jpr_base, 0, sizeof jpr_base);
-    memset(components_s, 0, sizeof components_s);
+Path::Path() : PathComponentInfo(components_s, 0) {
     has_negix = false;
+    memset(components_s, 0, sizeof components_s);
 }
 
 Path::~Path() {
     clear();
-    std::list<std::string*>::iterator ii = m_cached.begin();
-    for (; ii != m_cached.end(); ++ii) {
-        delete *ii;
+    for (auto ii : m_cached) {
+        delete ii;
     }
 }
 
@@ -261,6 +246,7 @@ Path::clear() {
         comp.pstr = NULL;
         comp.is_arridx = 0;
     }
+
     m_cached.insert(m_cached.end(), m_used.begin(), m_used.end());
     m_used.clear();
 }

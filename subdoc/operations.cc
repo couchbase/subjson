@@ -101,8 +101,6 @@ Operation::do_store_dict()
     /* we can't do a simple get here, since it's a bit more complex than that */
     /* TODO: Validate new value! */
 
-    const jsonsl_jpr_t jpr = &path->jpr_base;
-
     /* Now it's time to get creative */
     if (match.matchres != JSONSL_MATCH_COMPLETE) {
         switch (optype) {
@@ -201,8 +199,9 @@ Operation::do_store_dict()
         }
 
         /* Create the actual key: */
-        doc_new[2].at = jpr->components[jpr->ncomponents-1].pstr;
-        doc_new[2].length = jpr->components[jpr->ncomponents-1].len;
+        auto& comp = path->back();
+        doc_new[2].at = comp.pstr;
+        doc_new[2].length = comp.len;
 
         /* Close the quote and add the dictionary key */
         doc_new[3] = loc_QUOTE_COLON; /* ": */
@@ -221,8 +220,6 @@ Operation::do_store_dict()
 Error
 Operation::do_mkdir_p(int mode)
 {
-    const struct jsonsl_jpr_component_st *comp;
-    jsonsl_jpr_t jpr = &path->jpr_base;
     unsigned ii;
     doc_new[0].end_at_end(doc_cur, match.loc_parent, Loc::NO_OVERLAP);
 
@@ -243,15 +240,15 @@ Operation::do_mkdir_p(int mode)
 
     /* Insert the first item. This is a dictionary key without any object
      * wrapper: */
-    comp = &jpr->components[match.match_level];
+    const Path::Component* comp = &path->get_component(match.match_level);
     bkbuf += '"';
     bkbuf.append(comp->pstr, comp->len);
     bkbuf += "\":";
 
     /* The next set of components must be created as entries within the
      * newly created key */
-    for (ii = match.match_level + 1; ii < jpr->ncomponents; ii++) {
-        comp = &jpr->components[ii];
+    for (ii = match.match_level + 1; ii < path->size(); ii++) {
+        comp = &path->get_component(ii);
         if (comp->ptype != JSONSL_PATH_STRING) {
             return Error::PATH_ENOENT;
         }
@@ -269,7 +266,7 @@ Operation::do_mkdir_p(int mode)
         bkbuf += ']';
     }
 
-    for (ii = match.match_level+1; ii < jpr->ncomponents; ii++) {
+    for (ii = match.match_level+1; ii < path->size(); ii++) {
         bkbuf += '}';
     }
     doc_new[3].length = bkbuf.size() - doc_new[1].length;
@@ -294,7 +291,7 @@ Operation::find_first_element()
     }
 
     Error status = do_match_common();
-    path->pop_component();
+    path->pop();
 
     if (status != Error::SUCCESS) {
         return status;

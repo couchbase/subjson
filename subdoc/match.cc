@@ -29,10 +29,10 @@ using namespace Subdoc;
 
 namespace {
 struct ParseContext {
-    ParseContext(Match *match, jsonsl_jpr_t jpr) : jpr(jpr), match(match){
+    ParseContext(Match *match, Path::CompInfo *jpr) : jpr(jpr), match(match){
     }
 
-    jsonsl_jpr_t jpr;
+    Path::CompInfo* jpr;
 
     // Internal pointer/length pair used to hold the pointer of either the
     // current key, or the unique array value (if in "unique" mode).
@@ -441,20 +441,18 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     /* For levels, compensate this much for the match level */
     size_t level_offset = 0;
 
-    const jsonsl_jpr_t orig_jpr = (const jsonsl_jpr_t)&pth->jpr_base;
-    struct jsonsl_jpr_component_st comp_s[Limits::PATH_COMPONENTS_ALLOC];
+    const Path::CompInfo& orig = *pth;
+    Path::Component comp_s[Limits::PATH_COMPONENTS_ALLOC];
 
     /* Last length of the subdocument */
     size_t last_len = nvalue;
     /* Pointer to the beginning of the current subdocument */
     const char *last_start = value;
+    std::copy(orig.begin(), orig.end(), comp_s);
 
-    memcpy(comp_s, orig_jpr->components, sizeof(comp_s[0]) * orig_jpr->ncomponents);
-
-    while (cur_start < orig_jpr->ncomponents) {
+    while (cur_start < orig.size()) {
         size_t ii;
         int rv, is_last_neg = 0;
-        struct jsonsl_jpr_st tmp_jpr = { NULL };
 
         /* If the last match was not a list or an object,
          * but we still need to descend, then throw an error now. */
@@ -463,23 +461,24 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             return 0;
         }
 
-        for (ii = cur_start; ii < orig_jpr->ncomponents; ii++) {
+        for (ii = cur_start; ii < orig.size(); ii++) {
             /* Seek to the next negative index */
-            if (orig_jpr->components[ii].is_neg) {
+            if (orig[ii].is_neg) {
                 /* Convert this to the first array index; then switch it
                  * around to extract parent information */
                 is_last_neg = 1;
                 break;
             }
         }
-        /* Assign the new list. Use one before for the ROOT element */
-        tmp_jpr.components = &comp_s[cur_start-1];
+        Path::CompInfo tmp(
+            /* Assign the new list. Use one before for the ROOT element */
+            &comp_s[cur_start-1],
+            /* Adjust for root again */
+            (ii - cur_start) + 1);
 
-        /* Adjust for root again */
-        tmp_jpr.ncomponents = (ii - cur_start) + 1;
         level_offset += (ii - cur_start);
 
-        tmp_jpr.components[0].ptype = JSONSL_PATH_ROOT;
+        tmp[0].ptype = JSONSL_PATH_ROOT;
 
         /* Clear the match. There's no good way to preserve info here,
          * unfortunately. */
@@ -494,15 +493,12 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
          * guarantee a valid parent). Then, once the match is done, the last
          * item can be derived (see below). */
         if (is_last_neg) {
-            struct jsonsl_jpr_component_st *comp;
-
-            comp = &tmp_jpr.components[tmp_jpr.ncomponents++];
-            comp->ptype = JSONSL_PATH_NUMERIC;
-            comp->is_arridx = 1;
-            comp->idx = 0;
+            Path::Component& comp = tmp.add(JSONSL_PATH_NUMERIC);
+            comp.is_arridx = 1;
+            comp.idx = 0;
         }
 
-        rv = exec_match_simple(last_start, last_len, &tmp_jpr, jsn);
+        rv = exec_match_simple(last_start, last_len, &tmp, jsn);
         match_level += level_offset;
 
         if (rv != 0) { /* error */
@@ -557,8 +553,7 @@ int
 Match::exec_match(const char *value, size_t nvalue, const Path *pth, jsonsl_t jsn)
 {
     if (!pth->has_negix) {
-        return exec_match_simple(value, nvalue,
-            (const jsonsl_jpr_t)&pth->jpr_base, jsn);
+        return exec_match_simple(value, nvalue, pth, jsn);
     } else {
         return exec_match_negix(value, nvalue, pth, jsn);
     }

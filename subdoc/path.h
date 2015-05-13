@@ -24,6 +24,44 @@
 #include <list>
 
 
+typedef jsonsl_jpr_component_st PathComponent;
+
+class PathComponentInfo : public jsonsl_jpr_st {
+public:
+    PathComponentInfo(PathComponent *comps = NULL, size_t n = 0) {
+        components = comps;
+        ncomponents = n;
+        basestr = NULL;
+        orig = NULL;
+        norig = 0;
+    }
+
+    size_t size() const { return ncomponents; }
+
+    bool empty() const { return size() == 0; }
+
+    PathComponent& operator[](size_t ix) const { return get_component(ix); }
+    PathComponent& get_component(size_t ix) const { return components[ix]; }
+    PathComponent& back() const { return get_component(size()-1); }
+
+    /**Adds a component (without bounds checking)
+     * @return the newly added component*/
+    PathComponent& add(jsonsl_jpr_type_t ptype) {
+        PathComponent& ret = get_component(size());
+        ret.ptype = ptype;
+        ncomponents++;
+        return ret;
+    }
+
+    void pop() {
+        ncomponents--;
+    }
+
+    typedef PathComponent *iterator;
+    iterator begin() const { return components; }
+    iterator end() const { return components + size(); }
+};
+
 namespace Subdoc {
 /**
  * Path limits:
@@ -61,10 +99,10 @@ public:
     static const size_t PATH_COMPONENTS_ALLOC = MAX_COMPONENTS + 1;
 };
 
-class Path {
+class Path : public PathComponentInfo {
 public:
-    typedef jsonsl_jpr_component_st Component;
-    typedef jsonsl_jpr_st CompInfo;
+    typedef PathComponent Component;
+    typedef PathComponentInfo CompInfo;
 
     Path();
     ~Path();
@@ -72,20 +110,14 @@ public:
     int parse(const char *, size_t);
     int parse(const char *s) { return parse(s, strlen(s)); }
     int parse(const std::string& s) { return parse(s.c_str(), s.size()); }
-    void pop_component() { jpr_base.ncomponents--; }
-    jsonsl_error_t add_array_index(long ixnum);
-    size_t size() const { return jpr_base.ncomponents; }
-    Component& get_component(int ix) const { return jpr_base.components[ix]; }
-    Component& operator[](size_t ix) const { return get_component(ix); }
 
-    CompInfo jpr_base;
     Component components_s[Limits::PATH_COMPONENTS_ALLOC];
+    jsonsl_error_t add_array_index(long ixnum);
     bool has_negix; /* True if there is a negative array index in the path */
 private:
     inline const char * convert_escaped(const char *src, size_t &len);
     inline int add_num_component(const char *component, size_t len);
     inline int add_str_component(const char *component, size_t len, int n_backtick);
-    inline Component& alloc_component(jsonsl_jpr_type_t type);
 
     std::list<std::string*> m_cached;
     std::list<std::string*> m_used;
