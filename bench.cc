@@ -31,6 +31,7 @@
 #include <istream>
 #include <ostream>
 #include <sstream>
+#include <chrono>
 
 #define CLIOPTS_ENABLE_CXX
 #define INCLUDE_SUBDOC_NTOHLL
@@ -123,35 +124,6 @@ public:
     Parser parser;
     size_t totalBytes;
 };
-
-#ifdef _WIN32
-#include <windows.h>
-static uint64_t
-get_nstime(void) {
-    double ret;
-    static LARGE_INTEGER pf = { 0 };
-    static double freq;
-    LARGE_INTEGER currtime;
-
-    if (pf.QuadPart == 0) {
-        QueryPerformanceFrequency(&pf);
-        freq = 1.0e9 / (double)pf.QuadPart;
-    }
-
-    QueryPerformanceCounter(&currtime);
-
-    ret = (double)currtime.QuadPart * freq ;
-    return (uint64_t)ret;
-}
-#else
-#include <sys/time.h>
-static uint64_t
-get_nstime(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (tv.tv_sec * 1000000000) + (tv.tv_usec * 1000);
-}
-#endif
 
 static void
 readJsonFile(string& name, vector<string>& out)
@@ -280,14 +252,15 @@ execPathParse(Options& o)
 
 void runMain(int argc, char **argv)
 {
+    using namespace std::chrono;
+
     Options o;
     if (!o.parser.parse(argc, argv)) {
         throw string("Bad options!");
     }
     // Determine the command
     string cmdStr = o.o_cmd.const_result();
-
-    uint64_t t_begin = get_nstime();
+    auto t_begin = steady_clock::now();
 
     if (cmdStr == "help") {
         map<string,OpEntry>::const_iterator iter = o.opmap.begin();
@@ -314,11 +287,16 @@ void runMain(int argc, char **argv)
         throw string("Unknown command!");
     }
 
-    uint64_t t_total = get_nstime() - t_begin;
+    auto total = duration_cast<duration<double>>(steady_clock::now() - t_begin);
+
     // Get the number of seconds:
-    double n_seconds = t_total / 1000000000.0;
-    double ops_per_sec = (double)o.o_iter.result() / n_seconds;
-    double mb_per_sec = ((double)o.totalBytes * (double)o.o_iter.result()) / n_seconds;
+    double n_seconds = total.count();
+    double ops_per_sec = static_cast<double>(o.o_iter.result()) / n_seconds;
+    double mb_per_sec = (
+            static_cast<double>(o.totalBytes) *
+            static_cast<double>(o.o_iter.result())) /
+                    n_seconds;
+
     mb_per_sec /= (1024 * 1024);
 
     fprintf(stderr, "DURATION=%.2lfs. OPS=%u\n", n_seconds, o.o_iter.result());
