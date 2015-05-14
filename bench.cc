@@ -196,22 +196,22 @@ execOperation(Options& o)
     }
     }
 
-    subdoc_OPERATION *op = subdoc_op_alloc();
+    Operation op;
 
 
     size_t itermax = o.o_iter.result();
     for (size_t ii = 0; ii < itermax; ii++) {
-        op->clear();
+        op.clear();
         const string& curInput = inputStrs[ii % inputStrs.size()];
-        op->set_code(opcode);
-        op->set_doc(curInput);
+        op.set_code(opcode);
+        op.set_doc(curInput);
         if (has_delta) {
-            op->set_delta(delta);
+            op.set_delta(delta);
         } else {
-            op->set_value(vbuf, nvbuf);
+            op.set_value(vbuf, nvbuf);
         }
 
-        Error rv = op->op_exec(path);
+        Error rv = op.op_exec(path);
         if (!rv.success()) {
             throw rv;
         }
@@ -219,18 +219,15 @@ execOperation(Options& o)
 
     // Print the result.
     if (opcode == Command::GET || opcode == Command::EXISTS) {
-        string match(op->match.loc_match.at, op->match.loc_match.length);
+        string match = op.match.loc_match.to_string();
         printf("%s\n", match.c_str());
     } else {
         string newdoc;
-        for (size_t ii = 0; ii < op->doc_new_len; ii++) {
-            const subdoc_LOC *loc = &op->doc_new[ii];
-            newdoc.append(loc->at, loc->length);
+        for (size_t ii = 0; ii < op.doc_new_len; ii++) {
+            newdoc.append(op.doc_new[ii].at, op.doc_new[ii].length);
         }
         printf("%s\n", newdoc.c_str());
     }
-
-    subdoc_op_free(op);
 }
 
 static void
@@ -312,7 +309,7 @@ int main(int argc, char **argv)
     } catch (string& exc) {
         fprintf(stderr, "%s\n", exc.c_str());
         return EXIT_FAILURE;
-    } catch (subdoc_ERRORS& rc) {
+    } catch (Error& rc) {
         fprintf(stderr, "Command failed: %s\n", rc.description());
     } catch (std::exception& ex) {
         fprintf(stderr, "Command failed: %s\n", ex.what());
