@@ -68,7 +68,12 @@ private:
     Error do_match_common();
     Error do_get();
     Error do_store_dict();
-    Error do_mkdir_p(int mode);
+
+    enum MkdirPMode {
+        MKDIR_P_ARRAY, //!< Insert ... "key": [ value ]
+        MKDIR_P_DICT //!< Insert ... "key":value
+    };
+    Error do_mkdir_p(MkdirPMode mode);
     Error find_first_element();
     Error find_last_element();
     Error insert_singleton_element();

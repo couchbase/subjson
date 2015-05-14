@@ -92,9 +92,6 @@ strip_comma(Loc *loc, int mode)
     }
 }
 
-#define MKDIR_P_ARRAY 0
-#define MKDIR_P_DICT 1
-
 Error
 Operation::do_store_dict()
 {
@@ -216,8 +213,23 @@ Operation::do_store_dict()
     return Error::SUCCESS;
 }
 
+/**
+ * This function will inspect the match to find the deepest most parent
+ * and add missing entries in the document from the path. It will then
+ * insert the given value (either as a value to the dictionary key, or
+ * as an array with a single element (being the value) as the value for
+ * the dictionary key.
+ *
+ * In all cases, intermediate non-existing path elements must all refer
+ * to dictionary keys, not array elements (since array elements are in
+ * sequence there is no course of action if the array is empty and the
+ * path refers to a middle element).
+ *
+ * @param mode How to insert the value
+ * @return status
+ */
 Error
-Operation::do_mkdir_p(int mode)
+Operation::do_mkdir_p(MkdirPMode mode)
 {
     unsigned ii;
     doc_new[0].end_at_end(doc_cur, match.loc_parent, Loc::NO_OVERLAP);
