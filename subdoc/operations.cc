@@ -122,8 +122,7 @@ Operation::do_store_dict()
             return Error::PATH_ENOENT;
         }
     } else if (match.matchres == JSONSL_MATCH_COMPLETE) {
-        if ((optype == Command::DICT_ADD) ||
-            (optype == Command::DICT_ADD_P)) {
+        if (optype.base() == Command::DICT_ADD) {
             return Error::DOC_EEXISTS;
         }
     }
@@ -551,9 +550,7 @@ Operation::do_arith_op()
     }
 
     delta = tmp;
-
-    if ((optype == Command::DECREMENT) ||
-        (optype == Command::DECREMENT_P)) {
+    if (optype.base() == Command::DECREMENT) {
         delta *= -1;
     }
 
@@ -591,11 +588,8 @@ Operation::do_arith_op()
             numbuf = std::to_string(num_i);
         }
     } else {
-        if ((optype == Command::INCREMENT) ||
-            (optype == Command::DECREMENT)) {
-            if (!match.immediate_parent_found) {
-                return Error::PATH_ENOENT;
-            }
+        if (!optype.is_mkdir_p() && !match.immediate_parent_found) {
+            return Error::PATH_ENOENT;
         }
 
         if (match.type != JSONSL_T_OBJECT) {

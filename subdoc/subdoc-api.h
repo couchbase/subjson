@@ -206,7 +206,12 @@ public:
     Command(uint8_t code = GET) : code(code) {}
     operator uint8_t() const { return code; }
 
+    /// Whether the command should create intermediates
     bool is_mkdir_p() const { return (code & FLAG_MKDIR_P) != 0; }
+
+    /// Return the base command (with any modifiers stripped)
+    Code base() const { return static_cast<Code>(code & ~FLAG_MKDIR_P); }
+
 };
 
 #define SUBDOC_XOPCODES(X) \
