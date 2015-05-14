@@ -14,7 +14,6 @@
 *   See the License for the specific language governing permissions and
 *   limitations under the License.
 */
-#define INCLUDE_SUBDOC_NTOHLL
 #include "subdoc-tests-common.h"
 #include "subdoc/validate.h"
 using std::string;
@@ -40,7 +39,7 @@ protected:
   string getNewDoc();
   void getAssignNewDoc(string& newdoc);
   Error runOp(Command, const char *path, const char *value = NULL, size_t nvalue = 0);
-  Error runNumop(Command, const char *path, uint64_t delta);
+  Error runOp(Command, const char *path, uint64_t delta);
 };
 
 string
@@ -81,10 +80,12 @@ OpTests::runOp(Command opcode, const char *path, const char *value, size_t nvalu
 }
 
 Error
-OpTests::runNumop(Command opcode, const char *path, uint64_t delta)
+OpTests::runOp(Command opcode, const char *path, uint64_t delta)
 {
-    uint64_t ntmp = htonll(delta);
-    return runOp(opcode, path, (const char *)&ntmp, sizeof ntmp);
+    op.clear();
+    op.set_delta(delta);
+    op.set_code(opcode);
+    return op.op_exec(path, strlen(path));
 }
 
 #include "big_json.inc.h"
@@ -322,13 +323,14 @@ TEST_F(OpTests, testNumeric)
     op.set_doc(doc);
 
     // Can we make a simple counter?
-    rv = runNumop( Command::INCREMENT_P, "counter", 1);
+    rv = runOp( Command::INCREMENT_P, "counter", 1);
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runNumop( Command::DECREMENT, "counter", 101);
+    rv = runOp( Command::DECREMENT, "counter", 101);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", Util::match_match(op.match));
+    ASSERT_EQ(-100, op.get_numresult());
     getAssignNewDoc(doc);
 
     // Get it raw
@@ -336,54 +338,57 @@ TEST_F(OpTests, testNumeric)
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", Util::match_match(op.match));
 
-    rv = runNumop( Command::INCREMENT, "counter", 1);
+    rv = runOp( Command::INCREMENT, "counter", 1);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-99", Util::match_match(op.match));
+    ASSERT_EQ(-99, op.get_numresult());
     getAssignNewDoc(doc);
 
     // Try with other things
-    rv = runNumop( Command::DECREMENT, "counter", INT64_MIN);
+    rv = runOp( Command::DECREMENT, "counter", INT64_MIN);
     ASSERT_EQ(Error::DELTA_E2BIG, rv);
 
-    rv = runNumop( Command::DECREMENT, "counter", INT64_MAX-99);
+    rv = runOp( Command::DECREMENT, "counter", INT64_MAX-99);
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runNumop( Command::INCREMENT, "counter", INT64_MAX);
+    rv = runOp( Command::INCREMENT, "counter", INT64_MAX);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", Util::match_match(op.match));
+    ASSERT_EQ(0, op.get_numresult());
     getAssignNewDoc(doc);
 
     rv = runOp(Command::DICT_ADD_P, "counter2", "9999999999999999999999999999999");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runNumop( Command::INCREMENT, "counter2", 1);
+    rv = runOp( Command::INCREMENT, "counter2", 1);
     ASSERT_EQ(Error::NUM_E2BIG, rv);
 
     rv = runOp(Command::DICT_ADD_P, "counter3", "3.14");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runNumop( Command::INCREMENT, "counter3", 1);
+    rv = runOp( Command::INCREMENT, "counter3", 1);
     ASSERT_EQ(Error::PATH_MISMATCH, rv);
 
     doc = "[]";
     op.set_doc(doc);
-    rv = runNumop( Command::INCREMENT, "[0]", 42);
+    rv = runOp( Command::INCREMENT, "[0]", 42);
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 
     // Try with a _P variant. Should still be the same
-    rv = runNumop( Command::INCREMENT_P, "[0]", 42);
+    rv = runOp( Command::INCREMENT_P, "[0]", 42);
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 
     rv = runOp(Command::ARRAY_APPEND, "", "-20");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runNumop( Command::INCREMENT, "[0]", 1);
+    rv = runOp( Command::INCREMENT, "[0]", 1);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-19", Util::match_match(op.match));
+    ASSERT_EQ(-19, op.get_numresult());
 }
 
 TEST_F(OpTests, testValueValidation)

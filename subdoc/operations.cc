@@ -516,22 +516,13 @@ Error
 Operation::do_arith_op()
 {
     Error status;
-    int64_t num_i;
     int64_t delta;
-    uint64_t tmp;
 
-    /* Scan the match first */
-    if (user_in.length != 8) {
-        return Error::GLOBAL_EINVAL;
-    }
-
-    memcpy(&tmp, user_in.at, 8);
-    tmp = ntohll(tmp);
-    if (tmp > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+    if (arith.delta_in > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
         return Error::DELTA_E2BIG;
     }
 
-    delta = tmp;
+    delta = static_cast<int64_t>(arith.delta_in);
     if (optype.base() == Command::DECREMENT) {
         delta *= -1;
     }
@@ -548,26 +539,26 @@ Operation::do_arith_op()
         } else if (match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
             return Error::PATH_MISMATCH;
         } else  {
-            num_i = strtoll(match.loc_match.at, NULL, 10);
-            if (num_i == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
+            arith.cur = strtoll(match.loc_match.at, NULL, 10);
+            if (arith.cur == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
                 return Error::NUM_E2BIG;
             }
 
             /* Calculate what to place inside the buffer. We want to be gentle here
              * and not force 64 bit C arithmetic to confuse users, so use proper
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
-            if (delta >= 0 && num_i >= 0) {
-                if (std::numeric_limits<int64_t>::max() - delta <= num_i) {
+            if (delta >= 0 && arith.cur >= 0) {
+                if (std::numeric_limits<int64_t>::max() - delta <= arith.cur) {
                     return Error::DELTA_E2BIG;
                 }
-            } else if (delta < 0 && num_i < 0) {
-                if (delta <= std::numeric_limits<int64_t>::min() - num_i) {
+            } else if (delta < 0 && arith.cur < 0) {
+                if (delta <= std::numeric_limits<int64_t>::min() - arith.cur) {
                     return Error::DELTA_E2BIG;
                 }
             }
 
-            num_i += delta;
-            numbuf = std::to_string(num_i);
+            arith.cur += delta;
+            numbuf = std::to_string(arith.cur);
         }
     } else {
         if (!optype.is_mkdir_p() && !match.immediate_parent_found) {

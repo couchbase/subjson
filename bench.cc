@@ -205,21 +205,21 @@ execOperation(Options& o)
     string path = o.o_path.const_result();
     const char *vbuf = value.c_str();
     size_t nvbuf = value.length();
-    uint64_t dummy;
+    uint64_t delta = 0;
+    bool has_delta = false;
 
     switch (opcode) {
     case Command::INCREMENT:
     case Command::INCREMENT_P:
     case Command::DECREMENT:
     case Command::DECREMENT_P: {
-        int64_t ctmp = (uint64_t)strtoll(vbuf, NULL, 10);
-        if (ctmp == LLONG_MAX && errno == ERANGE) {
-            throw string("Invalid delta for arithmetic operation!");
+        // Exceptions are caught and printed by main()
+        size_t tmppos = 0;
+        delta = std::stoul(value, &tmppos);
+        if (tmppos != value.size()) {
+            throw string("Invalid numeric value: " + value);
         }
-        dummy = ctmp;
-        dummy = htonll(dummy);
-        vbuf = (const char *)&dummy;
-        nvbuf = sizeof dummy;
+        has_delta = true;
         break;
     }
     }
@@ -233,7 +233,11 @@ execOperation(Options& o)
         const string& curInput = inputStrs[ii % inputStrs.size()];
         op->set_code(opcode);
         op->set_doc(curInput);
-        op->set_value(vbuf, nvbuf);
+        if (has_delta) {
+            op->set_delta(delta);
+        } else {
+            op->set_value(vbuf, nvbuf);
+        }
 
         Error rv = op->op_exec(path);
         if (!rv.success()) {
@@ -332,5 +336,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     } catch (subdoc_ERRORS& rc) {
         fprintf(stderr, "Command failed: %s\n", rc.description());
+    } catch (std::exception& ex) {
+        fprintf(stderr, "Command failed: %s\n", ex.what());
     }
 }
