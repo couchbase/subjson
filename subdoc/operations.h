@@ -77,6 +77,7 @@ private:
     Error find_first_element();
     Error find_last_element();
     Error insert_singleton_element();
+    Error do_list_enoent();
     Error do_list_op();
     Error do_arith_op();
     Error do_insert();

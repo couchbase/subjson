@@ -359,35 +359,29 @@ Operation::insert_singleton_element()
     return Error::SUCCESS;
 }
 
+Error
+Operation::do_list_enoent()
+{
+    if (match.immediate_parent_found) {
+        return insert_singleton_element();
+    } else if (optype.is_mkdir_p()) {
+        return do_mkdir_p(MKDIR_P_ARRAY);
+    } else {
+        return Error::PATH_ENOENT;
+    }
+}
 
 Error
 Operation::do_list_op()
 {
-    #define HANDLE_LISTADD_ENOENT(rv) \
-    if (rv == Error::PATH_ENOENT) { \
-        if (match.immediate_parent_found) { \
-            return insert_singleton_element(); \
-        } else { \
-            return rv; \
-        } \
-    }
-
-    #define HANDLE_LISTADD_ENOENT_P(rv) \
-    if (rv == Error::PATH_ENOENT) { \
-        if (match.immediate_parent_found) { \
-            return insert_singleton_element(); \
-        } else { \
-            return do_mkdir_p(MKDIR_P_ARRAY); \
-        } \
-    }
-
     Error rv;
-    if (optype == Command::ARRAY_PREPEND) {
+
+    if (optype.base() == Command::ARRAY_PREPEND) {
         /* Find the array itself. */
         rv = find_first_element();
-
-        HANDLE_LISTADD_ENOENT(rv);
-        if (rv != Error::SUCCESS) {
+        if (rv == Error::PATH_ENOENT) {
+            return do_list_enoent();
+        } else if (!rv.success()) {
             return rv;
         }
 
@@ -411,15 +405,14 @@ Operation::do_list_op()
         doc_new_len = 4;
         return Error::SUCCESS;
 
-    } else if (optype == Command::ARRAY_APPEND) {
+    } else if (optype.base() == Command::ARRAY_APPEND) {
         rv = find_last_element();
-
-        HANDLE_LISTADD_ENOENT(rv);
-        if (rv != Error::SUCCESS) {
+        if (rv == Error::PATH_ENOENT) {
+            return do_list_enoent();
+        } else if (!rv.success()) {
             return rv;
         }
 
-        GT_APPEND_FOUND:
         /* Last element */
         doc_new[0].end_at_end(doc_cur, match.loc_match, Loc::OVERLAP);
         /* Insert comma */
@@ -432,43 +425,20 @@ Operation::do_list_op()
         doc_new_len = 4;
         return Error::SUCCESS;
 
-    } else if (optype == Command::ARRAY_PREPEND_P) {
-        rv = find_first_element();
-        if (rv == Error::SUCCESS) {
-            goto GT_PREPEND_FOUND;
-        }
-
-        GT_ARR_P_COMMON:
-        HANDLE_LISTADD_ENOENT_P(rv);
-        return rv;
-
-    } else if (optype == Command::ARRAY_APPEND_P) {
-        rv = find_last_element();
-        if (rv == Error::SUCCESS) {
-            goto GT_APPEND_FOUND;
-        }
-        goto GT_ARR_P_COMMON;
-
-    } else if (optype == Command::ARRAY_ADD_UNIQUE) {
+    } else if (optype.base() == Command::ARRAY_ADD_UNIQUE) {
         match.ensure_unique = user_in;
-        rv = find_first_element();
-        HANDLE_LISTADD_ENOENT(rv);
 
-        GT_ADD_UNIQUE:
-        if (rv != Error::SUCCESS) {
-            /* mismatch, perhaps? */
+        rv = find_first_element();
+        if (rv == Error::PATH_ENOENT) {
+            return do_list_enoent();
+        } else if (!rv.success()) {
             return rv;
         }
+
         if (match.unique_item_found) {
             return Error::DOC_EEXISTS;
         }
         goto GT_PREPEND_FOUND;
-
-    } else if (optype == Command::ARRAY_ADD_UNIQUE_P) {
-        match.ensure_unique = user_in;
-        rv = find_first_element();
-        HANDLE_LISTADD_ENOENT_P(rv);
-        goto GT_ADD_UNIQUE;
     }
 
     return Error::SUCCESS;
