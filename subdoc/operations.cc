@@ -38,6 +38,14 @@ static Loc loc_QUOTE = { "\"", 1 };
 static Loc loc_COMMA_QUOTE = { ",\"", 2 };
 static Loc loc_QUOTE_COLON = { "\":", 2 };
 
+/**
+ * Performs common matching using the currently designated path. Note that
+ * unlike do_get(), a missing match is not an error. This is the reason do_get()
+ * and do_match_common() are separate functions, as do_get() (i.e. a simple get
+ * operation) considers a non-complete match as a failure.
+ *
+ * @return success if no parse error or mismatch happened, failure otherwise.
+ */
 Error
 Operation::do_match_common()
 {
