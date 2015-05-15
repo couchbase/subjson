@@ -67,13 +67,15 @@ private:
     /* Location of original document */
     Loc m_doc;
 
+    struct ArithInfo {
+        uint64_t delta_in;
+        int64_t cur;
+    };
+
     /* Location of the user's "Value" (if applicable) */
     union {
         Loc m_userval;
-        struct {
-            uint64_t delta_in;
-            int64_t cur;
-        } arith;
+        ArithInfo arith;
     };
 
     /* Location of the fragments consisting of the _new_ value */
