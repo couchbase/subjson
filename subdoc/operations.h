@@ -71,6 +71,14 @@ public:
 
     void set_code(uint8_t code) { optype = code; }
 
+    const Buffer<Loc> newdoc() const {
+        return Buffer<Loc>(doc_new, doc_new_len);
+    }
+
+    Loc matchloc() const {
+        return match.loc_match;
+    }
+
 private:
     std::string bkbuf;
     std::string numbuf;
