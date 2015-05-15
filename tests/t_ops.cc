@@ -46,13 +46,12 @@ string
 OpTests::getNewDoc()
 {
     string ret;
-    for (size_t ii = 0; ii < op.doc_new_len; ii++) {
-        const Loc& loc = op.doc_new[ii];
-        ret.append(loc.at, loc.length);
+    for (auto ii : op.newdoc()) {
+        ret.append(ii.at, ii.length);
     }
 
     // validate
-    int rv = Validator::validate(ret, op.jsn);
+    int rv = Validator::validate(ret, op.parser());
     EXPECT_EQ(JSONSL_ERROR_SUCCESS, rv)
         << Util::jsonerr(static_cast<jsonsl_error_t>(rv));
     return ret;
@@ -94,7 +93,7 @@ TEST_F(OpTests, testOperations)
     string newdoc;
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "name"));
-    ASSERT_EQ("\"Allagash Brewing\"", Util::match_match(op.match));
+    ASSERT_EQ("\"Allagash Brewing\"", Util::match_match(op.match()));
     ASSERT_EQ(Error::SUCCESS, runOp(Command::EXISTS, "name"));
 
     Error rv = runOp(Command::REMOVE, "address");
@@ -110,14 +109,14 @@ TEST_F(OpTests, testOperations)
 
     getAssignNewDoc(newdoc);
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "address"));
-    ASSERT_EQ("\"123 Main St.\"", Util::match_match(op.match));
+    ASSERT_EQ("\"123 Main St.\"", Util::match_match(op.match()));
 
     // Replace the value now:
     rv = runOp(Command::REPLACE, "address", "\"33 Marginal Rd.\"");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(newdoc);
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "address"));
-    ASSERT_EQ("\"33 Marginal Rd.\"", Util::match_match(op.match));
+    ASSERT_EQ("\"33 Marginal Rd.\"", Util::match_match(op.match()));
 
     // Get it back:
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
@@ -151,7 +150,7 @@ TEST_F(OpTests, testGenericOps)
     getAssignNewDoc(newdoc);
     rv = runOp(Command::GET, "address[2]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("\"USA\"", Util::match_match(op.match));
+    ASSERT_EQ("\"USA\"", Util::match_match(op.match()));
 }
 
 TEST_F(OpTests, testReplaceArrayDeep)
@@ -175,7 +174,7 @@ TEST_F(OpTests, testReplaceArrayDeep)
     string max_path(one_minus_max_path + "[0]");
     Error rv = runOp(Command::GET, one_minus_max_path.c_str());
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("[1]", Util::match_match(op.match));
+    ASSERT_EQ("[1]", Util::match_match(op.match()));
 
     // Should be able to replace the array element with a different one.
     rv = runOp(Command::REPLACE, max_path.c_str(), "2");
@@ -184,7 +183,7 @@ TEST_F(OpTests, testReplaceArrayDeep)
     getAssignNewDoc(newdoc);
     rv = runOp(Command::GET, one_minus_max_path.c_str());
     ASSERT_TRUE(rv.success());
-    EXPECT_EQ("[2]", Util::match_match(op.match));
+    EXPECT_EQ("[2]", Util::match_match(op.match()));
 
     // Should be able to replace the last level array with a different
     // (larger) one.
@@ -193,7 +192,7 @@ TEST_F(OpTests, testReplaceArrayDeep)
     getAssignNewDoc(newdoc);
     rv = runOp(SUBDOC_CMD_GET, one_minus_max_path.c_str());
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("[3,4]", Util::match_match(op.match));
+    ASSERT_EQ("[3,4]", Util::match_match(op.match()));
 
     // Should not be able to make it any deeper (already at maximum).
     rv = runOp(Command::REPLACE, one_minus_max_path.c_str(), "[[5]]");
@@ -216,7 +215,7 @@ TEST_F(OpTests, testListOps)
 
     rv = runOp(Command::GET, "array[0]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("1", Util::match_match(op.match));
+    ASSERT_EQ("1", Util::match_match(op.match()));
 
     rv = runOp(Command::ARRAY_PREPEND, "array", "0");
     ASSERT_TRUE(rv.success());
@@ -224,10 +223,10 @@ TEST_F(OpTests, testListOps)
 
     rv = runOp(Command::GET, "array[0]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("0", Util::match_match(op.match));
+    ASSERT_EQ("0", Util::match_match(op.match()));
     rv = runOp(Command::GET, "array[1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("1", Util::match_match(op.match));
+    ASSERT_EQ("1", Util::match_match(op.match()));
 
     rv = runOp(Command::ARRAY_APPEND, "array", "2");
     ASSERT_TRUE(rv.success());
@@ -235,7 +234,7 @@ TEST_F(OpTests, testListOps)
 
     rv = runOp(Command::GET, "array[2]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("2", Util::match_match(op.match));
+    ASSERT_EQ("2", Util::match_match(op.match()));
 
     rv = runOp(Command::ARRAY_APPEND, "array", "{\"foo\":\"bar\"}");
     ASSERT_TRUE(rv.success());
@@ -243,24 +242,24 @@ TEST_F(OpTests, testListOps)
 
     rv = runOp(Command::GET, "array[3].foo");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("\"bar\"", Util::match_match(op.match));
+    ASSERT_EQ("\"bar\"", Util::match_match(op.match()));
 
     // Test the various POP commands
     rv = runOp(Command::REMOVE, "array[0]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("0", Util::match_match(op.match));
+    ASSERT_EQ("0", Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
     rv = runOp(Command::GET, "array[0]");
 
     rv = runOp(Command::REMOVE, "array[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("{\"foo\":\"bar\"}", Util::match_match(op.match));
+    ASSERT_EQ("{\"foo\":\"bar\"}", Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
     rv = runOp(Command::REMOVE, "array[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("2", Util::match_match(op.match));
+    ASSERT_EQ("2", Util::match_match(op.match()));
 }
 
 TEST_F(OpTests, testArrayOpsNested)
@@ -329,18 +328,18 @@ TEST_F(OpTests, testNumeric)
 
     rv = runOp( Command::DECREMENT, "counter", 101);
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("-100", Util::match_match(op.match));
+    ASSERT_EQ("-100", Util::match_match(op.match()));
     ASSERT_EQ(-100, op.get_numresult());
     getAssignNewDoc(doc);
 
     // Get it raw
     rv = runOp(Command::GET, "counter");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("-100", Util::match_match(op.match));
+    ASSERT_EQ("-100", Util::match_match(op.match()));
 
     rv = runOp( Command::INCREMENT, "counter", 1);
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("-99", Util::match_match(op.match));
+    ASSERT_EQ("-99", Util::match_match(op.match()));
     ASSERT_EQ(-99, op.get_numresult());
     getAssignNewDoc(doc);
 
@@ -354,7 +353,7 @@ TEST_F(OpTests, testNumeric)
 
     rv = runOp( Command::INCREMENT, "counter", INT64_MAX);
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("0", Util::match_match(op.match));
+    ASSERT_EQ("0", Util::match_match(op.match()));
     ASSERT_EQ(0, op.get_numresult());
     getAssignNewDoc(doc);
 
@@ -387,7 +386,7 @@ TEST_F(OpTests, testNumeric)
 
     rv = runOp( Command::INCREMENT, "[0]", 1);
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("-19", Util::match_match(op.match));
+    ASSERT_EQ("-19", Util::match_match(op.match()));
     ASSERT_EQ(-19, op.get_numresult());
 }
 
@@ -453,13 +452,13 @@ TEST_F(OpTests, testNegativeIndex)
 
     Error rv = runOp(Command::GET, "[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("6", Util::match_match(op.match));
+    ASSERT_EQ("6", Util::match_match(op.match()));
 
     json = "[1,2,3,[4,5,6,[7,8,9]]]";
     op.set_doc(json);
     rv = runOp(Command::GET, "[-1].[-1].[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("9", Util::match_match(op.match));
+    ASSERT_EQ("9", Util::match_match(op.match()));
 
     string doc;
     rv = runOp(Command::REMOVE, "[-1].[-1].[-1]");
@@ -474,7 +473,7 @@ TEST_F(OpTests, testNegativeIndex)
 
     rv = runOp(Command::GET, "[-1].[-1].[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("10", Util::match_match(op.match));
+    ASSERT_EQ("10", Util::match_match(op.match()));
 
     // Intermixed paths:
     json = "{\"k1\": [\"first\", {\"k2\":[6,7,8]},\"last\"] }";
@@ -482,11 +481,11 @@ TEST_F(OpTests, testNegativeIndex)
 
     rv = runOp(Command::GET, "k1[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("\"last\"", Util::match_match(op.match));
+    ASSERT_EQ("\"last\"", Util::match_match(op.match()));
 
     rv = runOp(Command::GET, "k1[1].k2[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("8", Util::match_match(op.match));
+    ASSERT_EQ("8", Util::match_match(op.match()));
 }
 
 TEST_F(OpTests, testRootOps)
@@ -497,14 +496,14 @@ TEST_F(OpTests, testRootOps)
 
     rv = runOp(Command::GET, "");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("[]", Util::match_match(op.match));
+    ASSERT_EQ("[]", Util::match_match(op.match()));
 
     rv = runOp(Command::ARRAY_APPEND, "", "null");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(json);
 
     rv = runOp(Command::GET, "");
-    ASSERT_EQ("[null]", Util::match_match(op.match));
+    ASSERT_EQ("[null]", Util::match_match(op.match()));
 
     // Deleting root element should be CANTINSERT
     rv = runOp(Command::REMOVE, "");
@@ -548,7 +547,7 @@ TEST_F(OpTests, testWhitespace)
 
     rv = runOp(Command::GET, "[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("4", Util::match_match(op.match));
+    ASSERT_EQ("4", Util::match_match(op.match()));
 }
 
 TEST_F(OpTests, testTooDeep)
@@ -599,7 +598,7 @@ TEST_F(OpTests, testTooDeepDict) {
     // attempting to add more).
     Error rv = runOp(Command::GET, max_valid_path.c_str());
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("{}", Util::match_match(op.match));
+    ASSERT_EQ("{}", Util::match_match(op.match()));
 
     // Should be able to add an element as the same level as the max.
     const std::string equal_max_path(one_less_max_path + ".sibling_max");

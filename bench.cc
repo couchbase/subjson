@@ -219,12 +219,12 @@ execOperation(Options& o)
 
     // Print the result.
     if (opcode == Command::GET || opcode == Command::EXISTS) {
-        string match = op.match.loc_match.to_string();
+        string match = op.matchloc().to_string();
         printf("%s\n", match.c_str());
     } else {
         string newdoc;
-        for (size_t ii = 0; ii < op.doc_new_len; ii++) {
-            newdoc.append(op.doc_new[ii].at, op.doc_new[ii].length);
+        for (auto ii : op.newdoc()) {
+            newdoc.append(ii.at, ii.length);
         }
         printf("%s\n", newdoc.c_str());
     }

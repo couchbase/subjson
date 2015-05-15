@@ -44,11 +44,12 @@ Util::match_parent(const Match& m)
 void
 Util::dump_newdoc(const Operation& op, std::ostream& os)
 {
+    auto newdoc = op.newdoc();
     os << "Dumping doc with "
-       << std::dec << op.doc_new_len << " segments" << std::endl;
-    for (size_t ii = 0; ii < op.doc_new_len; ++ii) {
+       << std::dec << newdoc.size() << " segments" << std::endl;
+    for (size_t ii = 0; ii < newdoc.size(); ++ii) {
         os << "[" << std::dec << ii << "]: ";
-        os.write(op.doc_new[ii].at, op.doc_new[ii].length);
+        os.write(newdoc[ii].at, newdoc[ii].length);
         os << std::endl;
     }
 }

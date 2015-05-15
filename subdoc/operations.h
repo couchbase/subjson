@@ -28,22 +28,48 @@
 namespace Subdoc {
 class Operation {
 public:
-    /* malloc'd because this block is pretty big (several k) */
-    Path *path;
-    /* cached JSON parser */
-    jsonsl_t jsn;
+    Operation();
+    void clear();
+    ~Operation();
+    Error op_exec(const char *pth, size_t npth);
+    Error op_exec(const std::string& s) { return op_exec(s.c_str(), s.size()); }
 
-    Match match;
+    void set_value(const char *s, size_t n) { m_userval.assign(s, n); }
+    void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
+    void set_delta(uint64_t delta) { arith.delta_in = delta; }
+    int64_t get_numresult() const { return arith.cur; }
+
+    void set_doc(const char *s, size_t n) { m_doc.assign(s, n); }
+    void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
+
+    void set_code(uint8_t code) { m_optype = code; }
+
+    const Buffer<Loc> newdoc() const {
+        return Buffer<Loc>(m_newdoc, m_newdoc_len);
+    }
+
+    Loc matchloc() const { return m_match.loc_match; }
+    const Match& match() const { return m_match; }
+    const Path& path() const { return *m_path; }
+    jsonsl_t parser() const { return m_jsn; }
+
+private:
+    /* malloc'd because this block is pretty big (several k) */
+    Path *m_path;
+    /* cached JSON parser */
+    jsonsl_t m_jsn;
+
+    Match m_match;
 
     /* opcode */
-    Command optype;
+    Command m_optype;
 
     /* Location of original document */
-    Loc doc_cur;
+    Loc m_doc;
 
     /* Location of the user's "Value" (if applicable) */
     union {
-        Loc user_in;
+        Loc m_userval;
         struct {
             uint64_t delta_in;
             int64_t cur;
@@ -51,37 +77,12 @@ public:
     };
 
     /* Location of the fragments consisting of the _new_ value */
-    Loc doc_new[8];
+    Loc m_newdoc[8];
     /* Number of fragments active */
-    size_t doc_new_len;
+    size_t m_newdoc_len;
 
-    Operation();
-    void clear();
-    ~Operation();
-    Error op_exec(const char *pth, size_t npth);
-    Error op_exec(const std::string& s) { return op_exec(s.c_str(), s.size()); }
-
-    void set_value(const char *s, size_t n) { user_in.assign(s, n); }
-    void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
-    void set_delta(uint64_t delta) { arith.delta_in = delta; }
-    int64_t get_numresult() const { return arith.cur; }
-
-    void set_doc(const char *s, size_t n) { doc_cur.assign(s, n); }
-    void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
-
-    void set_code(uint8_t code) { optype = code; }
-
-    const Buffer<Loc> newdoc() const {
-        return Buffer<Loc>(doc_new, doc_new_len);
-    }
-
-    Loc matchloc() const {
-        return match.loc_match;
-    }
-
-private:
-    std::string bkbuf;
-    std::string numbuf;
+    std::string m_bkbuf;
+    std::string m_numbuf;
 
     Error do_match_common();
     Error do_get();
