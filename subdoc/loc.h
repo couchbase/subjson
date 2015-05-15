@@ -150,5 +150,21 @@ public:
     }
 };
 
+// similar to boost::buffer
+template <typename T> class Buffer {
+public:
+    Buffer(const T* buf, size_t n) : m_buf(buf), m_size(n) {
+    }
+
+    const T& operator[](size_t ix) const { return m_buf[ix]; }
+    size_t size() const { return m_size; }
+    typedef const T* const_iterator;
+    const_iterator begin() const { return m_buf; }
+    const_iterator end() const { return m_buf + m_size; }
+protected:
+    const T *m_buf;
+    size_t m_size;
+};
+
 } // namespace Subdoc
 #endif
