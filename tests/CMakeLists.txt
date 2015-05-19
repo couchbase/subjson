@@ -4,7 +4,7 @@ IF(WIN32)
 ENDIF()
 
 # Only add the embedded gtest submodule if it isn't already present.
-IF(EXISTS ${SUBJSON_GTEST})
+IF(NOT COUCHBASE_SERVER_BUILD AND EXISTS ${SUBJSON_GTEST})
     ADD_SUBDIRECTORY(${SUBJSON_GTEST} gtest)
 ENDIF()
 
