@@ -26,6 +26,45 @@
 #include "subdoc-util.h"
 
 namespace Subdoc {
+
+/**
+ * This class acts as a user-allocated buffer region for the Operation
+ * object to store results.
+ *
+ * This will be treated as an "out" param
+ */
+class Result {
+public:
+    Result() : m_newlen(0), m_numres(0) {}
+    Result(const Result&) = delete;
+    Result& operator=(const Result&) = delete;
+
+    /**
+     * Returns the segments of the new document. Note that the underlying
+     * buffer (the one used in Operation::set_doc()) as well as this object
+     * itself (i.e. the Result object) must both still remain valid for
+     * the returned buffer's contents to be considered valid.
+     * @return a Buffer object representing the layout of the new document.
+     */
+    const Buffer<Loc> newdoc() const {
+        return Buffer<Loc>(m_newdoc, m_newlen);
+    }
+    const Loc& matchloc() const { return m_match; }
+    int64_t numres() const { return m_numres; }
+    void clear() {
+        m_bkbuf.clear();
+        m_numbuf.clear();
+    }
+private:
+    friend class Operation;
+    std::string m_bkbuf;
+    std::string m_numbuf;
+    Loc m_newdoc[8];
+    size_t m_newlen = 0;
+    Loc m_match;
+    int64_t m_numres = 0;
+};
+
 class Operation {
 public:
     Operation();
@@ -36,19 +75,20 @@ public:
 
     void set_value(const char *s, size_t n) { m_userval.assign(s, n); }
     void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
-    void set_delta(uint64_t delta) { arith.delta_in = delta; }
-    int64_t get_numresult() const { return arith.cur; }
+    void set_delta(uint64_t delta) { m_userdelta = delta; }
+    void set_result_buf(Result *res) { m_result = res; }
+
+    //! Sets the result object used to store the results for the
+    //! operation.
+    int64_t get_numresult() const { return m_result->numres(); }
 
     void set_doc(const char *s, size_t n) { m_doc.assign(s, n); }
     void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
 
     void set_code(uint8_t code) { m_optype = code; }
 
-    const Buffer<Loc> newdoc() const {
-        return Buffer<Loc>(m_newdoc, m_newdoc_len);
-    }
-
-    Loc matchloc() const { return m_match.loc_match; }
+    const Buffer<Loc> newdoc() const { return m_result->newdoc(); }
+    Loc matchloc() const { return m_result->matchloc(); }
     const Match& match() const { return m_match; }
     const Path& path() const { return *m_path; }
     jsonsl_t parser() const { return m_jsn; }
@@ -67,24 +107,17 @@ private:
     /* Location of original document */
     Loc m_doc;
 
-    struct ArithInfo {
-        uint64_t delta_in;
-        int64_t cur;
-    };
-
     /* Location of the user's "Value" (if applicable) */
     union {
         Loc m_userval;
-        ArithInfo arith;
+        uint64_t m_userdelta;
     };
 
-    /* Location of the fragments consisting of the _new_ value */
-    Loc m_newdoc[8];
-    /* Number of fragments active */
-    size_t m_newdoc_len;
+    //! Pointer to result given by user
+    Result *m_result;
 
-    std::string m_bkbuf;
-    std::string m_numbuf;
+    //! Crutch for old API; if no result is passed, this one is used instead.
+    Result *result_s;
 
     Error do_match_common();
     Error do_get();
@@ -115,6 +148,10 @@ private:
         PATH_IS_PARENT
     };
     inline int get_maxdepth(DepthMode mode) const;
+
+    //! Equivalent to m_newdoc[n]. This is here so our frequent access
+    //! can occupy less line space.
+    Loc& newdoc_at(size_t n) { return m_result->m_newdoc[n]; }
 };
 }
 

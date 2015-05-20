@@ -50,6 +50,8 @@ Error
 Operation::do_match_common()
 {
     m_match.exec_match(m_doc, m_path, m_jsn);
+    m_result->m_match = m_match.loc_match;
+
     if (m_match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
         return Error::PATH_MISMATCH;
     } else if (m_match.status != JSONSL_ERROR_SUCCESS) {
@@ -155,12 +157,12 @@ Operation::do_store_dict()
 
         /* Remove the matches, starting from the beginning of the key */
         if (m_match.has_key) {
-            m_newdoc[0].end_at_begin(m_doc, m_match.loc_key, Loc::NO_OVERLAP);
+            newdoc_at(0).end_at_begin(m_doc, m_match.loc_key, Loc::NO_OVERLAP);
         } else {
-            m_newdoc[0].end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+            newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
         }
 
-        m_newdoc[1].begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(1).begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
 
         if (m_match.num_siblings) {
             if (m_match.is_last()) {
@@ -169,51 +171,51 @@ Operation::do_store_dict()
                  * MATCH     = d
                  * NEWDOC[1] = ]
                  */
-                strip_comma(&m_newdoc[0], STRIP_LAST_COMMA);
+                strip_comma(&newdoc_at(0), STRIP_LAST_COMMA);
             } else {
                 /*
                  * NEWDOC[0] = [a,b,
                  * MATCH     = c
                  * NEWDOC[1] = Strip here -->, d]
                  */
-                strip_comma(&m_newdoc[1], STRIP_FIRST_COMMA);
+                strip_comma(&newdoc_at(1), STRIP_FIRST_COMMA);
             }
         }
 
-        m_newdoc_len = 2;
+        m_result->m_newlen = 2;
 
     } else if (m_match.matchres == JSONSL_MATCH_COMPLETE) {
         /* 1. Remove the old value from the first segment */
-        m_newdoc[0].end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
 
         /* 2. Insert the new value */
-        m_newdoc[1] = m_userval;
+        newdoc_at(1) = m_userval;
 
         /* 3. Insert the rest of the document */
-        m_newdoc[2].begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
-        m_newdoc_len = 3;
+        newdoc_at(2).begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        m_result->m_newlen = 3;
 
     } else if (m_match.immediate_parent_found) {
-        m_newdoc[0].end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
+        newdoc_at(0).end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
         /*TODO: The key might have a literal '"' in it, which has been escaped? */
         if (m_match.num_siblings) {
-            m_newdoc[1] = loc_COMMA_QUOTE; /* ," */
+            newdoc_at(1) = loc_COMMA_QUOTE; /* ," */
         } else {
-            m_newdoc[1] = loc_QUOTE /* " */;
+            newdoc_at(1) = loc_QUOTE /* " */;
         }
 
         /* Create the actual key: */
         auto& comp = m_path->back();
-        m_newdoc[2].at = comp.pstr;
-        m_newdoc[2].length = comp.len;
+        newdoc_at(2).at = comp.pstr;
+        newdoc_at(2).length = comp.len;
 
         /* Close the quote and add the dictionary key */
-        m_newdoc[3] = loc_QUOTE_COLON; /* ": */
+        newdoc_at(3) = loc_QUOTE_COLON; /* ": */
         /* new value */
-        m_newdoc[4] = m_userval;
+        newdoc_at(4) = m_userval;
         /* Closing tokens */
-        m_newdoc[5].begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
-        m_newdoc_len = 6;
+        newdoc_at(5).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+        m_result->m_newlen = 6;
 
     } else {
         return do_mkdir_p(MKDIR_P_DICT);
@@ -240,7 +242,7 @@ Error
 Operation::do_mkdir_p(MkdirPMode mode)
 {
     unsigned ii;
-    m_newdoc[0].end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
+    newdoc_at(0).end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
 
     /* doc_new LAYOUT:
      *
@@ -254,15 +256,15 @@ Operation::do_mkdir_p(MkdirPMode mode)
     /* figure out the components missing */
     /* THIS IS RESERVED FOR doc_new[1]! */
     if (m_match.num_siblings) {
-        m_bkbuf += ',';
+        m_result->m_bkbuf += ',';
     }
 
     /* Insert the first item. This is a dictionary key without any object
      * wrapper: */
     const Path::Component* comp = &m_path->get_component(m_match.match_level);
-    m_bkbuf += '"';
-    m_bkbuf.append(comp->pstr, comp->len);
-    m_bkbuf += "\":";
+    m_result->m_bkbuf += '"';
+    m_result->m_bkbuf.append(comp->pstr, comp->len);
+    m_result->m_bkbuf += "\":";
 
     /* The next set of components must be created as entries within the
      * newly created key */
@@ -271,32 +273,32 @@ Operation::do_mkdir_p(MkdirPMode mode)
         if (comp->ptype != JSONSL_PATH_STRING) {
             return Error::PATH_ENOENT;
         }
-        m_bkbuf += "{\"";
-        m_bkbuf.append(comp->pstr, comp->len);
-        m_bkbuf += "\":";
+        m_result->m_bkbuf += "{\"";
+        m_result->m_bkbuf.append(comp->pstr, comp->len);
+        m_result->m_bkbuf += "\":";
     }
     if (mode == MKDIR_P_ARRAY) {
-        m_bkbuf += '[';
+        m_result->m_bkbuf += '[';
     }
 
-    m_newdoc[1].length = m_bkbuf.size();
+    newdoc_at(1).length = m_result->m_bkbuf.size();
 
     if (mode == MKDIR_P_ARRAY) {
-        m_bkbuf += ']';
+        m_result->m_bkbuf += ']';
     }
 
     for (ii = m_match.match_level+1; ii < m_path->size(); ii++) {
-        m_bkbuf += '}';
+        m_result->m_bkbuf += '}';
     }
-    m_newdoc[3].length = m_bkbuf.size() - m_newdoc[1].length;
+    newdoc_at(3).length = m_result->m_bkbuf.size() - newdoc_at(1).length;
 
     /* Set the buffers */
-    m_newdoc[1].at = m_bkbuf.data();
-    m_newdoc[3].at = m_bkbuf.data() + m_newdoc[1].length;
-    m_newdoc[2] = m_userval;
+    newdoc_at(1).at = m_result->m_bkbuf.data();
+    newdoc_at(3).at = m_result->m_bkbuf.data() + newdoc_at(1).length;
+    newdoc_at(2) = m_userval;
 
-    m_newdoc[4].begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
-    m_newdoc_len = 5;
+    newdoc_at(4).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+    m_result->m_newlen = 5;
 
     return Error::SUCCESS;
 }
@@ -357,13 +359,13 @@ Error
 Operation::insert_singleton_element()
 {
     /* First segment is ... [ */
-    m_newdoc[0].end_at_begin(m_doc, m_match.loc_parent, Loc::OVERLAP);
+    newdoc_at(0).end_at_begin(m_doc, m_match.loc_parent, Loc::OVERLAP);
     /* User: */
-    m_newdoc[1] = m_userval;
+    newdoc_at(1) = m_userval;
     /* Last segment is ... ] */
-    m_newdoc[2].begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+    newdoc_at(2).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
 
-    m_newdoc_len = 3;
+    m_result->m_newlen = 3;
     return Error::SUCCESS;
 }
 
@@ -402,15 +404,15 @@ Operation::do_list_op()
 
         GT_PREPEND_FOUND:
         /* Right before the first element */
-        m_newdoc[0].end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
         /* User data */
-        m_newdoc[1] = m_userval;
+        newdoc_at(1) = m_userval;
         /* Comma */
-        m_newdoc[2] = loc_COMMA;
+        newdoc_at(2) = loc_COMMA;
         /* Next element */
-        m_newdoc[3].begin_at_begin(m_doc, m_match.loc_match);
+        newdoc_at(3).begin_at_begin(m_doc, m_match.loc_match);
 
-        m_newdoc_len = 4;
+        m_result->m_newlen = 4;
         return Error::SUCCESS;
 
     } else if (m_optype.base() == Command::ARRAY_APPEND) {
@@ -422,15 +424,15 @@ Operation::do_list_op()
         }
 
         /* Last element */
-        m_newdoc[0].end_at_end(m_doc, m_match.loc_match, Loc::OVERLAP);
+        newdoc_at(0).end_at_end(m_doc, m_match.loc_match, Loc::OVERLAP);
         /* Insert comma */
-        m_newdoc[1] = loc_COMMA;
+        newdoc_at(1) = loc_COMMA;
         /* User */
-        m_newdoc[2] = m_userval;
+        newdoc_at(2) = m_userval;
         /* Parent end */
-        m_newdoc[3].begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+        newdoc_at(3).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
 
-        m_newdoc_len = 4;
+        m_result->m_newlen = 4;
         return Error::SUCCESS;
 
     } else if (m_optype.base() == Command::ARRAY_ADD_UNIQUE) {
@@ -472,11 +474,11 @@ Operation::do_insert()
          * DOCNEW[2] = ,
          * DOCNEW[3] = MATCH
          */
-        m_newdoc_len = 4;
-        m_newdoc[0].end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
-        m_newdoc[1] = m_userval;
-        m_newdoc[2] = loc_COMMA;
-        m_newdoc[3].begin_at_begin(m_doc, m_match.loc_match);
+        m_result->m_newlen = 4;
+        newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(1) = m_userval;
+        newdoc_at(2) = loc_COMMA;
+        newdoc_at(3).begin_at_begin(m_doc, m_match.loc_match);
         return Error::SUCCESS;
 
     } else if (m_match.immediate_parent_found) {
@@ -491,10 +493,10 @@ Operation::do_insert()
              * DOCNEW[1] = USER
              * DOCNEW[2] = ] ...
              */
-            m_newdoc_len = 3;
-            m_newdoc[0].end_at_begin(m_doc, m_match.loc_parent, Loc::OVERLAP);
-            m_newdoc[1] = m_userval;
-            m_newdoc[2].begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+            m_result->m_newlen = 3;
+            newdoc_at(0).end_at_begin(m_doc, m_match.loc_parent, Loc::OVERLAP);
+            newdoc_at(1) = m_userval;
+            newdoc_at(2).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
             return Error::SUCCESS;
 
         } else if (lastix == m_match.num_siblings) {
@@ -505,11 +507,11 @@ Operation::do_insert()
              * DOCNEW[2] = USER
              * DOCNEW[3] = ]
              */
-            m_newdoc_len = 4;
-            m_newdoc[0].end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
-            m_newdoc[1] = loc_COMMA;
-            m_newdoc[2] = m_userval;
-            m_newdoc[3].begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+            m_result->m_newlen = 4;
+            newdoc_at(0).end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
+            newdoc_at(1) = loc_COMMA;
+            newdoc_at(2) = m_userval;
+            newdoc_at(3).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
             return Error::SUCCESS;
 
         } else {
@@ -526,11 +528,11 @@ Operation::do_arith_op()
     Error status;
     int64_t delta;
 
-    if (arith.delta_in > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+    if (m_userdelta > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
         return Error::DELTA_E2BIG;
     }
 
-    delta = static_cast<int64_t>(arith.delta_in);
+    delta = static_cast<int64_t>(m_userdelta);
     if (m_optype.base() == Command::DECREMENT) {
         delta *= -1;
     }
@@ -547,26 +549,27 @@ Operation::do_arith_op()
         } else if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
             return Error::PATH_MISMATCH;
         } else  {
-            arith.cur = strtoll(m_match.loc_match.at, NULL, 10);
-            if (arith.cur == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
+            m_result->m_numres = strtoll(m_match.loc_match.at, NULL, 10);
+            if (m_result->m_numres == std::numeric_limits<int64_t>::max() &&
+                    errno == ERANGE) {
                 return Error::NUM_E2BIG;
             }
 
             /* Calculate what to place inside the buffer. We want to be gentle here
              * and not force 64 bit C arithmetic to confuse users, so use proper
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
-            if (delta >= 0 && arith.cur >= 0) {
-                if (std::numeric_limits<int64_t>::max() - delta <= arith.cur) {
+            if (delta >= 0 && m_result->m_numres >= 0) {
+                if (std::numeric_limits<int64_t>::max() - delta <= m_result->m_numres) {
                     return Error::DELTA_E2BIG;
                 }
-            } else if (delta < 0 && arith.cur < 0) {
-                if (delta <= std::numeric_limits<int64_t>::min() - arith.cur) {
+            } else if (delta < 0 && m_result->m_numres < 0) {
+                if (delta <= std::numeric_limits<int64_t>::min() - m_result->m_numres) {
                     return Error::DELTA_E2BIG;
                 }
             }
 
-            arith.cur += delta;
-            m_numbuf = std::to_string(arith.cur);
+            m_result->m_numres += delta;
+            m_result->m_numbuf = std::to_string(m_result->m_numres);
         }
     } else {
         if (!m_optype.is_mkdir_p() && !m_match.immediate_parent_found) {
@@ -577,31 +580,31 @@ Operation::do_arith_op()
             return Error::PATH_ENOENT;
         }
 
-        m_numbuf = std::to_string(delta);
-        m_userval.at = m_numbuf.data();
-        m_userval.length = m_numbuf.size();
+        m_result->m_numbuf = std::to_string(delta);
+        m_userval.at = m_result->m_numbuf.data();
+        m_userval.length = m_result->m_numbuf.size();
         m_optype = Command::DICT_ADD_P;
         if ((status = do_store_dict()) != Error::SUCCESS) {
             return status;
         }
-        m_match.loc_match = m_userval;
+        m_result->m_match = m_match.loc_match = m_userval;
         return Error::SUCCESS;
     }
 
 
     /* Preamble */
-    m_newdoc[0].end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+    newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
 
     /* New number */
-    m_newdoc[1].at = m_numbuf.data();
-    m_newdoc[1].length = m_numbuf.size();
+    newdoc_at(1).at = m_result->m_numbuf.data();
+    newdoc_at(1).length = m_result->m_numbuf.size();
 
     /* Postamble */
-    m_newdoc[2].begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
-    m_newdoc_len = 3;
+    newdoc_at(2).begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+    m_result->m_newlen = 3;
 
-    m_match.loc_match.at = m_numbuf.data();
-    m_match.loc_match.length = m_numbuf.size();
+    m_match.loc_match.at = m_result->m_numbuf.data();
+    m_match.loc_match.length = m_result->m_numbuf.size();
     return Error::SUCCESS;
 }
 
@@ -636,6 +639,11 @@ Operation::get_maxdepth(DepthMode mode) const
 Error
 Operation::op_exec(const char *pth, size_t npth)
 {
+    if (m_result == NULL) {
+        result_s->clear();
+        m_result = result_s;
+    }
+
     int rv = m_path->parse(pth, npth);
     Error status;
 
@@ -716,7 +724,8 @@ Operation::Operation()
 : m_path(new Path()),
   m_jsn(Match::jsn_alloc()),
   m_optype(Command::GET),
-  m_newdoc_len(0)
+  m_result(NULL),
+  result_s(new Result())
 {
 }
 
@@ -724,6 +733,7 @@ Operation::~Operation()
 {
     clear();
     delete m_path;
+    delete result_s;
     Match::jsn_free(m_jsn);
 }
 
@@ -731,11 +741,9 @@ void
 Operation::clear()
 {
     m_path->clear();
-    m_bkbuf.clear();
     m_match.clear();
     m_userval.length = 0;
     m_userval.at = NULL;
-    m_newdoc_len = 0;
     m_optype = Command::GET;
 }
 

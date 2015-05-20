@@ -50,6 +50,7 @@ using Subdoc::Path;
 using Subdoc::Operation;
 using Subdoc::Command;
 using Subdoc::Error;
+using Subdoc::Result;
 
 struct OpEntry {
     uint8_t opcode;
@@ -197,14 +198,16 @@ execOperation(Options& o)
     }
 
     Operation op;
-
+    Result res;
 
     size_t itermax = o.o_iter.result();
     for (size_t ii = 0; ii < itermax; ii++) {
         op.clear();
+        res.clear();
         const string& curInput = inputStrs[ii % inputStrs.size()];
         op.set_code(opcode);
         op.set_doc(curInput);
+        op.set_result_buf(&res);
         if (has_delta) {
             op.set_delta(delta);
         } else {
