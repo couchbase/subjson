@@ -639,11 +639,6 @@ Operation::get_maxdepth(DepthMode mode) const
 Error
 Operation::op_exec(const char *pth, size_t npth)
 {
-    if (m_result == NULL) {
-        result_s->clear();
-        m_result = result_s;
-    }
-
     int rv = m_path->parse(pth, npth);
     Error status;
 
@@ -724,8 +719,7 @@ Operation::Operation()
 : m_path(new Path()),
   m_jsn(Match::jsn_alloc()),
   m_optype(Command::GET),
-  m_result(NULL),
-  result_s(new Result())
+  m_result(NULL)
 {
 }
 
@@ -733,7 +727,6 @@ Operation::~Operation()
 {
     clear();
     delete m_path;
-    delete result_s;
     Match::jsn_free(m_jsn);
 }
 

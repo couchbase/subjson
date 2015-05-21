@@ -42,7 +42,7 @@ Util::match_parent(const Match& m)
 }
 
 void
-Util::dump_newdoc(const Operation& op, std::ostream& os)
+Util::dump_newdoc(const Result& op, std::ostream& os)
 {
     auto newdoc = op.newdoc();
     os << "Dumping doc with "

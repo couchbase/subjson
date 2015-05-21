@@ -77,18 +77,10 @@ public:
     void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
     void set_delta(uint64_t delta) { m_userdelta = delta; }
     void set_result_buf(Result *res) { m_result = res; }
-
-    //! Sets the result object used to store the results for the
-    //! operation.
-    int64_t get_numresult() const { return m_result->numres(); }
-
     void set_doc(const char *s, size_t n) { m_doc.assign(s, n); }
     void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
-
     void set_code(uint8_t code) { m_optype = code; }
 
-    const Buffer<Loc> newdoc() const { return m_result->newdoc(); }
-    Loc matchloc() const { return m_result->matchloc(); }
     const Match& match() const { return m_match; }
     const Path& path() const { return *m_path; }
     jsonsl_t parser() const { return m_jsn; }
@@ -115,9 +107,6 @@ private:
 
     //! Pointer to result given by user
     Result *m_result;
-
-    //! Crutch for old API; if no result is passed, this one is used instead.
-    Result *result_s;
 
     Error do_match_common();
     Error do_get();

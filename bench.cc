@@ -222,11 +222,11 @@ execOperation(Options& o)
 
     // Print the result.
     if (opcode == Command::GET || opcode == Command::EXISTS) {
-        string match = op.matchloc().to_string();
+        string match = res.matchloc().to_string();
         printf("%s\n", match.c_str());
     } else {
         string newdoc;
-        for (auto ii : op.newdoc()) {
+        for (auto ii : res.newdoc()) {
             newdoc.append(ii.at, ii.length);
         }
         printf("%s\n", newdoc.c_str());

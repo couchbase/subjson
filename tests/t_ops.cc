@@ -27,6 +27,7 @@ using Subdoc::Command;
 using Subdoc::Validator;
 using Subdoc::Util;
 using Subdoc::Limits;
+using Subdoc::Result;
 
 class OpTests : public ::testing::Test {
 protected:
@@ -35,6 +36,7 @@ protected:
   }
 
   Operation op;
+  Result res;
 
   string getNewDoc();
   void getAssignNewDoc(string& newdoc);
@@ -46,7 +48,7 @@ string
 OpTests::getNewDoc()
 {
     string ret;
-    for (auto ii : op.newdoc()) {
+    for (auto ii : res.newdoc()) {
         ret.append(ii.at, ii.length);
     }
 
@@ -75,6 +77,7 @@ OpTests::runOp(Command opcode, const char *path, const char *value, size_t nvalu
         op.set_value(value, nvalue);
     }
     op.set_code(opcode);
+    op.set_result_buf(&res);
     return op.op_exec(path, strlen(path));
 }
 
@@ -82,6 +85,7 @@ Error
 OpTests::runOp(Command opcode, const char *path, uint64_t delta)
 {
     op.clear();
+    op.set_result_buf(&res);
     op.set_delta(delta);
     op.set_code(opcode);
     return op.op_exec(path, strlen(path));
@@ -329,7 +333,7 @@ TEST_F(OpTests, testNumeric)
     rv = runOp( Command::DECREMENT, "counter", 101);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", Util::match_match(op.match()));
-    ASSERT_EQ(-100, op.get_numresult());
+    ASSERT_EQ(-100, res.numres());
     getAssignNewDoc(doc);
 
     // Get it raw
@@ -340,7 +344,7 @@ TEST_F(OpTests, testNumeric)
     rv = runOp( Command::INCREMENT, "counter", 1);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-99", Util::match_match(op.match()));
-    ASSERT_EQ(-99, op.get_numresult());
+    ASSERT_EQ(-99, res.numres());
     getAssignNewDoc(doc);
 
     // Try with other things
@@ -354,7 +358,7 @@ TEST_F(OpTests, testNumeric)
     rv = runOp( Command::INCREMENT, "counter", INT64_MAX);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", Util::match_match(op.match()));
-    ASSERT_EQ(0, op.get_numresult());
+    ASSERT_EQ(0, res.numres());
     getAssignNewDoc(doc);
 
     rv = runOp(Command::DICT_ADD_P, "counter2", "9999999999999999999999999999999");
@@ -387,7 +391,7 @@ TEST_F(OpTests, testNumeric)
     rv = runOp( Command::INCREMENT, "[0]", 1);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-19", Util::match_match(op.match()));
-    ASSERT_EQ(-19, op.get_numresult());
+    ASSERT_EQ(-19, res.numres());
 }
 
 TEST_F(OpTests, testValueValidation)
@@ -688,6 +692,8 @@ TEST_F(OpTests, ensureRepeatable) {
     rv = runOp(Command::DICT_UPSERT_P, "foo.bar", "true");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
+
+    res.clear();
     rv = runOp(Command::DICT_UPSERT_P, "bar.baz", "false");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);

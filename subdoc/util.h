@@ -33,7 +33,7 @@ public:
     static std::string match_key(const Match&);
 
     /// Prints a representation of the various segments of the new document
-    static void dump_newdoc(const Operation&, std::ostream& = std::cerr);
+    static void dump_newdoc(const Result&, std::ostream& = std::cerr);
 
     static const char *jsonerr(jsonsl_error_t err);
 private:
