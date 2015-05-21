@@ -744,6 +744,7 @@ Operation::clear()
     m_match.clear();
     m_userval.length = 0;
     m_userval.at = NULL;
+    m_result = NULL;
     m_optype = Command::GET;
 }
 

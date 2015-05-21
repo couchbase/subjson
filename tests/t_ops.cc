@@ -677,3 +677,18 @@ TEST_F(OpTests, testEmpty) {
     ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::ARRAY_ADD_UNIQUE, "p"));
     ASSERT_EQ(Error::VALUE_EMPTY, runOp(Command::ARRAY_INSERT, "p[0]"));
 }
+
+// When using the built-in result context, ensure the internal buffers are
+// cleared between operations
+TEST_F(OpTests, ensureRepeatable) {
+    string doc = "{}";
+    Error rv;
+
+    op.set_doc(doc);
+    rv = runOp(Command::DICT_UPSERT_P, "foo.bar", "true");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+    rv = runOp(Command::DICT_UPSERT_P, "bar.baz", "false");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+}
