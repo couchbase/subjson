@@ -144,12 +144,4 @@ private:
 };
 }
 
-typedef Subdoc::Operation subdoc_OPERATION;
-typedef Subdoc::Loc subdoc_LOC;
-typedef Subdoc::Path subdoc_PATH, subdoc_PATH_st;
-typedef Subdoc::Operation subdoc_OPERATION;
-typedef Subdoc::Match subdoc_MATCH;
-typedef Subdoc::Error subdoc_ERRORS;
-typedef Subdoc::Command::Code subdoc_OPTYPE;
-
 #endif
