@@ -675,10 +675,9 @@ TEST_F(OpTests, testArrayInsert) {
     // Reset the doc
     doc = "[1,2,3,5]";
     op.set_doc(doc);
+    // -1 is not a valid insertion point.
     rv = runOp(Command::ARRAY_INSERT, "[-1]", "4");
-    ASSERT_TRUE(rv.success()) << "Insert at position [-1] OK";
-    getAssignNewDoc(doc);
-    ASSERT_EQ("[1,2,3,4,5]", doc) << "Insert at position [-1] matches";
+    ASSERT_EQ(Error::PATH_EINVAL, rv) << "Terminal negative index invalid for insert.";
 
     // Insert at out-of-bounds element
     doc = "[1,2,3]";

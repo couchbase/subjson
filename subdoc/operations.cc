@@ -461,6 +461,10 @@ Operation::do_insert()
     if (!lastcomp.is_arridx) {
         return Error::PATH_MISMATCH;
     }
+    if (lastcomp.is_neg) {
+        // Negative paths are invalid for insert operations
+        return Error::PATH_EINVAL;
+    }
 
     Error status = do_match_common();
     if (!status.success()) {
@@ -482,12 +486,8 @@ Operation::do_insert()
         return Error::SUCCESS;
 
     } else if (m_match.immediate_parent_found) {
-        // Get the array index.
-        auto lastix = lastcomp.idx;
-
-        if (m_match.num_siblings == 0 && (lastcomp.is_neg || lastix == 0)) {
-            // Singleton element and requested insertion to one of the "Ends"
-            // of the array
+        if (m_match.num_siblings == 0 && lastcomp.idx == 0) {
+            // Equivalent to prepend/push_first
             /*
              * DOCNEW[0] = ... [
              * DOCNEW[1] = USER
@@ -499,7 +499,8 @@ Operation::do_insert()
             newdoc_at(2).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
             return Error::SUCCESS;
 
-        } else if (lastix == m_match.num_siblings) {
+        } else if (lastcomp.idx == m_match.num_siblings) {
+            // Equivalent to append/push_last
             /*
              * (assume DOC = [a,b,c,d,e]
              * DOCNEW[0] = e (last char before ']')
