@@ -394,6 +394,41 @@ TEST_F(OpTests, testNumeric)
     ASSERT_EQ(-19, res.numres());
 }
 
+TEST_F(OpTests, testNumericLimits)
+{
+    // Check we can increment from int64_t::max()-1 to max() successfully.
+    const int64_t max = std::numeric_limits<int64_t>::max();
+    const string one_minus_max("{\"counter\":" + std::to_string(max - 1) + "}");
+    op.set_doc(one_minus_max);
+
+    Error rv = runOp(Command::INCREMENT, "counter", 1);
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ(std::to_string(max), Util::match_match(op.match()));
+    ASSERT_EQ(max, res.numres());
+
+    // Incrementing across the limit (max()-1 incremented by 2) should fail.
+    op.set_doc(one_minus_max);
+
+    rv = runOp(Command::INCREMENT, "counter", 2);
+    ASSERT_EQ(Error::DELTA_E2BIG, rv);
+
+    // Same for int64_t::min() - 1 and decrement.
+    const int64_t min = std::numeric_limits<int64_t>::min();
+    const string one_plus_min("{\"counter\":" + std::to_string(min + 1) + "}");
+    op.set_doc(one_plus_min);
+
+    rv = runOp(Command::DECREMENT, "counter", 1);
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ(std::to_string(min), Util::match_match(op.match()));
+    ASSERT_EQ(min, res.numres());
+
+    // Decrementing across the limit (min()-1 decremented by 2) should fail.
+    op.set_doc(one_plus_min);
+
+    rv = runOp(Command::DECREMENT, "counter", 2);
+    ASSERT_EQ(Error::DELTA_E2BIG, rv);
+}
+
 TEST_F(OpTests, testValueValidation)
 {
     string json = "{}";

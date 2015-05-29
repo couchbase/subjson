@@ -559,11 +559,11 @@ Operation::do_arith_op()
              * and not force 64 bit C arithmetic to confuse users, so use proper
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
             if (delta >= 0 && m_result->m_numres >= 0) {
-                if (std::numeric_limits<int64_t>::max() - delta <= m_result->m_numres) {
+                if (std::numeric_limits<int64_t>::max() - delta < m_result->m_numres) {
                     return Error::DELTA_E2BIG;
                 }
             } else if (delta < 0 && m_result->m_numres < 0) {
-                if (delta <= std::numeric_limits<int64_t>::min() - m_result->m_numres) {
+                if (delta < std::numeric_limits<int64_t>::min() - m_result->m_numres) {
                     return Error::DELTA_E2BIG;
                 }
             }
