@@ -523,19 +523,54 @@ Operation::do_insert()
     }
 }
 
+static Error
+parse_int64(const Loc& orig, int64_t& outval)
+{
+    const char *cur = orig.at;
+    size_t n = orig.length;
+
+    if (!n) {
+        return Error::GLOBAL_EINVAL; // Empty
+    }
+    if (*cur == '-') {
+        cur++;
+        n--;
+    }
+
+    outval = 0;
+    for (size_t ii = 0; ii < n; ii++) {
+        if (!isdigit(cur[ii])) {
+            return Error::GLOBAL_EINVAL; // Not a number!
+        }
+        // Get the numeric value of the digit, with '0' being the lowest
+        // value digit character in the ascii table, and with digits appearing
+        // in order, such that '9' (0x39) - '0' (0x30) == 0
+
+        uint64_t newval = (outval * 10) + (cur[ii] - '0');
+        if (newval < static_cast<uint64_t>(outval) ||
+                newval > std::numeric_limits<int64_t>::max()) {
+            // mismatch
+            return Error::DELTA_E2BIG;
+        }
+        outval = static_cast<int64_t>(newval);
+    }
+    if (*orig.at == '-') {
+        outval *= -1;
+    }
+    return Error::SUCCESS;
+}
+
 Error
 Operation::do_arith_op()
 {
     Error status;
     int64_t delta;
+    int64_t numres = 0;
+    // Verify the digit first
 
-    if (m_userdelta > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        return Error::DELTA_E2BIG;
-    }
-
-    delta = static_cast<int64_t>(m_userdelta);
-    if (m_optype.base() == Command::DECREMENT) {
-        delta *= -1;
+    status = parse_int64(m_userval, delta);
+    if (!status.success()) {
+        return status;
     }
 
     /* Find the number first */
@@ -550,27 +585,26 @@ Operation::do_arith_op()
         } else if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
             return Error::PATH_MISMATCH;
         } else  {
-            m_result->m_numres = strtoll(m_match.loc_match.at, NULL, 10);
-            if (m_result->m_numres == std::numeric_limits<int64_t>::max() &&
-                    errno == ERANGE) {
+            numres = strtoll(m_match.loc_match.at, NULL, 10);
+            if (numres == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
                 return Error::NUM_E2BIG;
             }
 
             /* Calculate what to place inside the buffer. We want to be gentle here
              * and not force 64 bit C arithmetic to confuse users, so use proper
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
-            if (delta >= 0 && m_result->m_numres >= 0) {
-                if (std::numeric_limits<int64_t>::max() - delta < m_result->m_numres) {
+            if (delta >= 0 && numres >= 0) {
+                if (std::numeric_limits<int64_t>::max() - delta < numres) {
                     return Error::DELTA_E2BIG;
                 }
-            } else if (delta < 0 && m_result->m_numres < 0) {
-                if (delta < std::numeric_limits<int64_t>::min() - m_result->m_numres) {
+            } else if (delta < 0 && numres < 0) {
+                if (delta < std::numeric_limits<int64_t>::min() - numres) {
                     return Error::DELTA_E2BIG;
                 }
             }
 
-            m_result->m_numres += delta;
-            m_result->m_numbuf = std::to_string(m_result->m_numres);
+            numres += delta;
+            m_result->m_numbuf = std::to_string(numres);
         }
     } else {
         if (!m_optype.is_mkdir_p() && !m_match.immediate_parent_found) {
@@ -606,6 +640,7 @@ Operation::do_arith_op()
 
     m_match.loc_match.at = m_result->m_numbuf.data();
     m_match.loc_match.length = m_result->m_numbuf.size();
+    m_result->m_match = m_match.loc_match;
     return Error::SUCCESS;
 }
 
@@ -702,10 +737,8 @@ Operation::op_exec(const char *pth, size_t npth)
         }
         return do_insert();
 
-    case Command::INCREMENT:
-    case Command::INCREMENT_P:
-    case Command::DECREMENT:
-    case Command::DECREMENT_P:
+    case Command::COUNTER:
+    case Command::COUNTER_P:
         // no need to check for depth here, since if the path itself is too
         // big, it will fail during path parse-time
         return do_arith_op();

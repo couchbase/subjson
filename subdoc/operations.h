@@ -35,7 +35,7 @@ namespace Subdoc {
  */
 class Result {
 public:
-    Result() : m_newlen(0), m_numres(0) {}
+    Result() : m_newlen(0) {}
     Result(const Result&) = delete;
     Result& operator=(const Result&) = delete;
 
@@ -50,7 +50,6 @@ public:
         return Buffer<Loc>(m_newdoc, m_newlen);
     }
     const Loc& matchloc() const { return m_match; }
-    int64_t numres() const { return m_numres; }
     void clear() {
         m_bkbuf.clear();
         m_numbuf.clear();
@@ -62,7 +61,6 @@ private:
     Loc m_newdoc[8];
     size_t m_newlen = 0;
     Loc m_match;
-    int64_t m_numres = 0;
 };
 
 class Operation {
@@ -75,7 +73,6 @@ public:
 
     void set_value(const char *s, size_t n) { m_userval.assign(s, n); }
     void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
-    void set_delta(uint64_t delta) { m_userdelta = delta; }
     void set_result_buf(Result *res) { m_result = res; }
     void set_doc(const char *s, size_t n) { m_doc.assign(s, n); }
     void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
@@ -100,10 +97,7 @@ private:
     Loc m_doc;
 
     /* Location of the user's "Value" (if applicable) */
-    union {
-        Loc m_userval;
-        uint64_t m_userdelta;
-    };
+    Loc m_userval;
 
     //! Pointer to result given by user
     Result *m_result;

@@ -192,11 +192,8 @@ public:
          * then a SUBDOC_PATH_MISMATCH error is returned. This is the case for
          * 'floats' and 'exponents' as well. Only whole integers are supported.
          */
-        INCREMENT = 0x0A,
-        INCREMENT_P = 0x8A,
-        DECREMENT = 0x0B,
-        DECREMENT_P = 0x8B,
-
+        COUNTER = 0x0A,
+        COUNTER_P = 0x8A,
 
         INVALID = 0xff,
         FLAG_MKDIR_P = 0x80
@@ -229,10 +226,8 @@ public:
     X(ARRAY_APPEND_P) \
     X(ARRAY_ADD_UNIQUE) \
     X(ARRAY_ADD_UNIQUE_P) \
-    X(INCREMENT) \
-    X(INCREMENT_P) \
-    X(DECREMENT) \
-    X(DECREMENT_P)
+    X(COUNTER) \
+    X(COUNTER_P)
 /**@}*/
 }
 

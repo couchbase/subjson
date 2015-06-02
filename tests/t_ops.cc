@@ -41,7 +41,6 @@ protected:
   string getNewDoc();
   void getAssignNewDoc(string& newdoc);
   Error runOp(Command, const char *path, const char *value = NULL, size_t nvalue = 0);
-  Error runOp(Command, const char *path, uint64_t delta);
 };
 
 string
@@ -78,16 +77,6 @@ OpTests::runOp(Command opcode, const char *path, const char *value, size_t nvalu
     }
     op.set_code(opcode);
     op.set_result_buf(&res);
-    return op.op_exec(path, strlen(path));
-}
-
-Error
-OpTests::runOp(Command opcode, const char *path, uint64_t delta)
-{
-    op.clear();
-    op.set_result_buf(&res);
-    op.set_delta(delta);
-    op.set_code(opcode);
     return op.op_exec(path, strlen(path));
 }
 
@@ -358,14 +347,14 @@ TEST_F(OpTests, testNumeric)
     op.set_doc(doc);
 
     // Can we make a simple counter?
-    rv = runOp( Command::INCREMENT_P, "counter", 1);
+    rv = runOp(Command::COUNTER_P, "counter", "1");
     ASSERT_TRUE(rv.success());
+    ASSERT_EQ("1", Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
-    rv = runOp( Command::DECREMENT, "counter", 101);
+    rv = runOp(Command::COUNTER, "counter", "-101");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", Util::match_match(op.match()));
-    ASSERT_EQ(-100, res.numres());
     getAssignNewDoc(doc);
 
     // Get it raw
@@ -373,57 +362,55 @@ TEST_F(OpTests, testNumeric)
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-100", Util::match_match(op.match()));
 
-    rv = runOp( Command::INCREMENT, "counter", 1);
+    rv = runOp(Command::COUNTER, "counter", "1");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-99", Util::match_match(op.match()));
-    ASSERT_EQ(-99, res.numres());
     getAssignNewDoc(doc);
 
+    printf("...\n");
     // Try with other things
-    rv = runOp( Command::DECREMENT, "counter", INT64_MIN);
-    ASSERT_EQ(Error::DELTA_E2BIG, rv);
-
-    rv = runOp( Command::DECREMENT, "counter", INT64_MAX-99);
+    string dummy = std::to_string(INT64_MAX);
+    rv = runOp(Command::COUNTER, "counter", dummy.c_str());
     ASSERT_TRUE(rv.success());
+    ASSERT_EQ(std::to_string(INT64_MAX-99), Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
-    rv = runOp( Command::INCREMENT, "counter", INT64_MAX);
+    dummy = "-" + std::to_string(INT64_MAX-99);
+    rv = runOp(Command::COUNTER, "counter", dummy.c_str());
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", Util::match_match(op.match()));
-    ASSERT_EQ(0, res.numres());
     getAssignNewDoc(doc);
 
     rv = runOp(Command::DICT_ADD_P, "counter2", "9999999999999999999999999999999");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runOp( Command::INCREMENT, "counter2", 1);
+    rv = runOp(Command::COUNTER, "counter2", "1");
     ASSERT_EQ(Error::NUM_E2BIG, rv);
 
     rv = runOp(Command::DICT_ADD_P, "counter3", "3.14");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runOp( Command::INCREMENT, "counter3", 1);
+    rv = runOp(Command::COUNTER, "counter3", "1");
     ASSERT_EQ(Error::PATH_MISMATCH, rv);
 
     doc = "[]";
     op.set_doc(doc);
-    rv = runOp( Command::INCREMENT, "[0]", 42);
+    rv = runOp(Command::COUNTER, "[0]", "42");
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 
     // Try with a _P variant. Should still be the same
-    rv = runOp( Command::INCREMENT_P, "[0]", 42);
+    rv = runOp(Command::COUNTER_P, "[0]", "42");
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 
     rv = runOp(Command::ARRAY_APPEND, "", "-20");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runOp( Command::INCREMENT, "[0]", 1);
+    rv = runOp(Command::COUNTER, "[0]", "1");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-19", Util::match_match(op.match()));
-    ASSERT_EQ(-19, res.numres());
 }
 
 TEST_F(OpTests, testNumericLimits)
@@ -433,15 +420,14 @@ TEST_F(OpTests, testNumericLimits)
     const string one_minus_max("{\"counter\":" + std::to_string(max - 1) + "}");
     op.set_doc(one_minus_max);
 
-    Error rv = runOp(Command::INCREMENT, "counter", 1);
+    Error rv = runOp(Command::COUNTER, "counter", "1");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ(std::to_string(max), Util::match_match(op.match()));
-    ASSERT_EQ(max, res.numres());
 
     // Incrementing across the limit (max()-1 incremented by 2) should fail.
     op.set_doc(one_minus_max);
 
-    rv = runOp(Command::INCREMENT, "counter", 2);
+    rv = runOp(Command::COUNTER, "counter", "2");
     ASSERT_EQ(Error::DELTA_E2BIG, rv);
 
     // Same for int64_t::min() - 1 and decrement.
@@ -449,15 +435,14 @@ TEST_F(OpTests, testNumericLimits)
     const string one_plus_min("{\"counter\":" + std::to_string(min + 1) + "}");
     op.set_doc(one_plus_min);
 
-    rv = runOp(Command::DECREMENT, "counter", 1);
+    rv = runOp(Command::COUNTER, "counter", "-1");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ(std::to_string(min), Util::match_match(op.match()));
-    ASSERT_EQ(min, res.numres());
 
     // Decrementing across the limit (min()-1 decremented by 2) should fail.
     op.set_doc(one_plus_min);
 
-    rv = runOp(Command::DECREMENT, "counter", 2);
+    rv = runOp(Command::COUNTER, "counter", "-2");
     ASSERT_EQ(Error::DELTA_E2BIG, rv);
 }
 

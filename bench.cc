@@ -110,8 +110,9 @@ public:
         opmap["insert"] = OpEntry(Command::ARRAY_INSERT, "Insert value at given array index");
 
         // arithmetic ops
-        opmap["incr"] = OpEntry(Command::INCREMENT, "Increment a value");
-        opmap["decr"] = OpEntry(Command::DECREMENT, "Decrement a value");
+        opmap["counter"] = OpEntry(Command::COUNTER);
+
+        // Generic ops
         opmap["path"] = OpEntry(0xff, "Check the validity of a path");
     }
 
@@ -176,43 +177,20 @@ execOperation(Options& o)
 
     string value = o.o_value.const_result();
     string path = o.o_path.const_result();
-    const char *vbuf = value.c_str();
-    size_t nvbuf = value.length();
-    uint64_t delta = 0;
-    bool has_delta = false;
-
-    switch (opcode) {
-    case Command::INCREMENT:
-    case Command::INCREMENT_P:
-    case Command::DECREMENT:
-    case Command::DECREMENT_P: {
-        // Exceptions are caught and printed by main()
-        size_t tmppos = 0;
-        delta = std::stoul(value, &tmppos);
-        if (tmppos != value.size()) {
-            throw string("Invalid numeric value: " + value);
-        }
-        has_delta = true;
-        break;
-    }
-    }
-
     Operation op;
     Result res;
+
 
     size_t itermax = o.o_iter.result();
     for (size_t ii = 0; ii < itermax; ii++) {
         op.clear();
         res.clear();
         const string& curInput = inputStrs[ii % inputStrs.size()];
+
+        op.set_value(value);
         op.set_code(opcode);
         op.set_doc(curInput);
         op.set_result_buf(&res);
-        if (has_delta) {
-            op.set_delta(delta);
-        } else {
-            op.set_value(vbuf, nvbuf);
-        }
 
         Error rv = op.op_exec(path);
         if (!rv.success()) {
