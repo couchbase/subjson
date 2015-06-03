@@ -57,6 +57,12 @@ public:
         /** Inserting the value would cause the document to be too deep */
         VALUE_ETOODEEP = 0x50C,
 
+        /** Value passed is not a number */
+        VALUE_EBADNUMBER = 0x50D,
+
+        /** Was passed a delta of 0 */
+        VALUE_EZERODELTA = 0x50E,
+
         /* MEMCACHED ERROR CODES */
         GLOBAL_UNKNOWN_COMMAND = 0x81,
         GLOBAL_ENOMEM = 0x82,

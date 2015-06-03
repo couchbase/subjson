@@ -530,17 +530,24 @@ parse_int64(const Loc& orig, int64_t& outval)
     size_t n = orig.length;
 
     if (!n) {
-        return Error::GLOBAL_EINVAL; // Empty
+        return Error::VALUE_EMPTY; // Empty
     }
     if (*cur == '-') {
         cur++;
-        n--;
+        if (!--n) {
+            return Error::VALUE_EBADNUMBER;
+        }
+    }
+    if (*cur == '0') {
+        // Can't start with a zero. It's either a leading zero or an empty
+        // delta
+        return Error::VALUE_EZERODELTA;
     }
 
     outval = 0;
     for (size_t ii = 0; ii < n; ii++) {
         if (!isdigit(cur[ii])) {
-            return Error::GLOBAL_EINVAL; // Not a number!
+            return Error::VALUE_EBADNUMBER; // Not a number!
         }
         // Get the numeric value of the digit, with '0' being the lowest
         // value digit character in the ascii table, and with digits appearing
@@ -822,6 +829,10 @@ Error::description() const
         return "Operation not implemented";
     case Error::GLOBAL_UNKNOWN_COMMAND:
         return "Unrecognized command code";
+    case Error::VALUE_EBADNUMBER:
+        return "String is not a JSON number";
+    case Error::VALUE_EZERODELTA:
+        return "Delta value is zero";
     default:
         return "Unknown error code";
     }

@@ -413,6 +413,18 @@ TEST_F(OpTests, testNumeric)
     ASSERT_EQ("-19", Util::match_match(op.match()));
 }
 
+TEST_F(OpTests, testBadNumFormat)
+{
+    string doc = "{}";
+    op.set_doc(doc);
+
+    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "bad"));
+    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "3.14"));
+    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "-"));
+    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "43f"));
+    ASSERT_EQ(Error::VALUE_EZERODELTA, runOp(Command::COUNTER_P, "pth", "0"));
+}
+
 TEST_F(OpTests, testNumericLimits)
 {
     // Check we can increment from int64_t::max()-1 to max() successfully.
