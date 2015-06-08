@@ -592,8 +592,10 @@ Operation::do_arith_op()
         } else if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
             return Error::PATH_MISMATCH;
         } else  {
+            errno = 0;
             numres = strtoll(m_match.loc_match.at, NULL, 10);
-            if (numres == std::numeric_limits<int64_t>::max() && errno == ERANGE) {
+
+            if (errno == ERANGE) {
                 return Error::NUM_E2BIG;
             }
 
