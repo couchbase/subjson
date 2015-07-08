@@ -29,21 +29,21 @@ class MatchTests : public ::testing::Test {
 protected:
     static const std::string json;
     static jsonsl_t jsn;
-    static Path pth;
-    static Match m;
+    Path pth;
+    Match m;
 
     static void SetUpTestCase() { jsn = Match::jsn_alloc(); }
     static void TearDownTestCase() { Match::jsn_free(jsn); }
     virtual void SetUp() { m.clear(); }
 };
 
-Path MatchTests::pth;
-Match MatchTests::m;
 jsonsl_t MatchTests::jsn = NULL;
 const std::string MatchTests::json = "{"
         JQ("key1") ":" JQ("val1") ","
         JQ("subdict") ":{" JQ("subkey1") ":" JQ("subval1") "},"
         JQ("sublist") ":[" JQ("elem1") "," JQ("elem2") "," JQ("elem3") "],"
+        JQ("nested_list") ":[  [" JQ("nested1") ",2,3,4,5,6,7,8,9,0]  ],"
+        JQ("empty_list") ":[],"
         JQ("numbers") ":[1,2,3,4,5,6,7,8,9,0]" ","
         JQ("empty") ":{}" ","
         JQ("U\\u002DEscape") ":null"
@@ -145,4 +145,118 @@ TEST_F(MatchTests, testUescape)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ("\"U\\u002DEscape\"", m.loc_key.to_string());
+}
+
+TEST_F(MatchTests, testGetLastElement)
+{
+    pth.parse("sublist");
+    m.get_last = 1;
+    m.exec_match(json, pth, jsn);
+
+    // Ensure the last element actually matches..
+    ASSERT_EQ(3, m.match_level);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_EQ(JSONSL_T_STRING, m.type);
+    ASSERT_EQ("\"elem3\"", Util::match_match(m));
+    ASSERT_EQ(2, m.position);
+    ASSERT_EQ(2, m.num_siblings);
+
+    m.clear();
+    pth.parse("nested_list");
+    m.get_last = 1;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(3, m.match_level);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_EQ(JSONSL_T_LIST, m.type);
+
+    ASSERT_EQ("[" JQ("nested1") ",2,3,4,5,6,7,8,9,0]", Util::match_match(m));
+    ASSERT_EQ(10, m.num_children);
+    ASSERT_EQ(0, m.num_siblings);
+}
+
+TEST_F(MatchTests, testGetNumSiblings)
+{
+    pth.parse("nested_list[0][0]");
+    // By default, siblings are not extracted
+    ASSERT_EQ(Match::GET_MATCH_ONLY, m.extra_options);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_EQ(JSONSL_T_STRING, m.type); // String
+    ASSERT_EQ(0, m.num_siblings);
+
+    m.clear();
+    ASSERT_EQ(Match::GET_MATCH_ONLY, m.extra_options);
+    m.extra_options = Match::GET_FOLLOWING_SIBLINGS;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.num_siblings > 0);
+    ASSERT_FALSE(m.is_only());
+    ASSERT_TRUE(m.is_first());
+}
+
+// It's important that we test this at the Match level as well, even though
+// tests are already present at the 'Operation' and 'Path' level.
+TEST_F(MatchTests, testNegativeIndex)
+{
+    pth.parse("sublist[-1]");
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_EQ(JSONSL_T_STRING, m.type);
+    ASSERT_EQ(2, m.num_siblings);
+    ASSERT_EQ(3, m.match_level);
+    ASSERT_EQ("\"elem3\"", Util::match_match(m));
+
+    // Multiple nested elements..
+    pth.parse("nested_list[-1][-1]");
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_EQ(JSONSL_T_SPECIAL, m.type);
+    ASSERT_EQ("0", Util::match_match(m));
+    ASSERT_EQ(4, m.match_level);
+}
+
+TEST_F(MatchTests, testMatchUnique)
+{
+    pth.parse("empty_list");
+    m.ensure_unique.assign("key", 3);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_EQ(JSONSL_T_LIST, m.type);
+    ASSERT_EQ(2, m.match_level);
+    ASSERT_FALSE(m.unique_item_found);
+    ASSERT_EQ("[]", Util::match_match(m));
+
+    // Test with non-empty path, item found
+    m.clear();
+    pth.parse("numbers");
+    m.ensure_unique.assign("1", 1);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.unique_item_found);
+
+    // test with non-empty path, item not found
+    m.clear();
+    pth.parse("numbers");
+    m.ensure_unique.assign("42", 2);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_FALSE(m.unique_item_found);
+    ASSERT_NE(0, m.num_children);
+    ASSERT_EQ("[1,2,3,4,5,6,7,8,9,0]", Util::match_match(m));
+
+    // Test with path mismatch:
+    m.clear();
+    pth.parse("empty");
+    m.ensure_unique.assign("foo", 3);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_TYPE_MISMATCH, m.matchres);
+
+    // Test with negative index, not found
+    m.clear();
+    pth.parse("nested_list[-1]");
+    m.ensure_unique.assign("foo", 3);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_FALSE(m.unique_item_found);
+    ASSERT_NE(0, m.num_children);
 }

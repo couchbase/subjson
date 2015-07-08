@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include <string>
 #include <limits>
+#include <cassert>
 
 using Subdoc::Loc;
 using Subdoc::Error;
@@ -47,10 +48,10 @@ static Loc loc_QUOTE_COLON = { "\":", 2 };
  * @return success if no parse error or mismatch happened, failure otherwise.
  */
 Error
-Operation::do_match_common()
+Operation::do_match_common(Match::SearchOptions options)
 {
+    m_match.extra_options = options;
     m_match.exec_match(m_doc, m_path, m_jsn);
-    m_result->m_match = m_match.loc_match;
 
     if (m_match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
         return Error::PATH_MISMATCH;
@@ -71,6 +72,8 @@ Operation::do_get()
     if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
         return Error::PATH_ENOENT;
     }
+
+    m_result->m_match = m_match.loc_deepest;
     return Error::SUCCESS;
 }
 
@@ -103,100 +106,109 @@ strip_comma(Loc *loc, int mode)
 }
 
 Error
+Operation::do_remove()
+{
+    Error rv = do_match_common(Match::GET_FOLLOWING_SIBLINGS);
+
+    if (!rv.success()) {
+        return rv;
+    } else if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+        return Error::PATH_ENOENT;
+    }
+
+    // Deepest is the actual match
+    const Loc& match_loc = m_match.loc_deepest;
+    /*
+     * If match is the _last_ item, we need to strip the _last_ comma from
+     * doc[0] (since doc[1] will never have a trailing comma); e.g.
+     *  NEWDOC[0] = { ..., ..., ... (---> , <---)
+     *  [deleted]
+     *  NEWDOC[1] = } // Never any commas here!
+     *
+     * If match is the _first_ item, we need to strip the _first_ comma
+     * from newdoc[1]:
+     *
+     *  NEWDOC[0] = { // never any commas here!
+     *  [deleted]
+     *  NEWDOC[1] = (---> , <---) ... , ... }
+     *
+     *
+     *
+     * If match is any other item, we need to strip the _last_ comma from
+     * doc[0], which is the comma that preceded this item.
+     */
+
+    /* Remove the matches, starting from the beginning of the key */
+    if (m_match.has_key) {
+        newdoc_at(0).end_at_begin(m_doc, m_match.loc_key, Loc::NO_OVERLAP);
+    } else {
+        newdoc_at(0).end_at_begin(m_doc, match_loc, Loc::NO_OVERLAP);
+    }
+
+    newdoc_at(1).begin_at_end(m_doc, match_loc, Loc::NO_OVERLAP);
+
+    if (m_match.num_siblings) {
+        if (m_match.is_last()) {
+            /*
+             * NEWDOC[0] = [a,b,c, <-- Strip here
+             * MATCH     = d
+             * NEWDOC[1] = ]
+             */
+            strip_comma(&newdoc_at(0), STRIP_LAST_COMMA);
+        } else {
+            /*
+             * NEWDOC[0] = [a,b,
+             * MATCH     = c
+             * NEWDOC[1] = Strip here -->, d]
+             */
+            strip_comma(&newdoc_at(1), STRIP_FIRST_COMMA);
+        }
+    }
+
+    m_result->m_newlen = 2;
+    return Error::SUCCESS;
+}
+
+Error
 Operation::do_store_dict()
 {
-    /* we can't do a simple get here, since it's a bit more complex than that */
-    /* TODO: Validate new value! */
-
-    /* Now it's time to get creative */
     if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
-        switch (m_optype) {
-        case Command::DICT_ADD_P:
-        case Command::DICT_UPSERT_P:
-            break;
-
-        case Command::DICT_ADD:
-        case Command::DICT_UPSERT:
-            if (!m_match.immediate_parent_found) {
-                return Error::PATH_ENOENT;
-            }
-            break;
-
-        case Command::REMOVE:
-        case Command::REPLACE:
-            /* etc. */
-        default:
+        if (m_optype == Command::REPLACE) {
+            // Nothing to replace
             return Error::PATH_ENOENT;
         }
+        if (!m_match.immediate_parent_found) {
+            if (m_optype.is_mkdir_p()) {
+                return do_mkdir_p(MKDIR_P_DICT);
+            } else {
+                return Error::PATH_ENOENT;
+            }
+        }
+        // Otherwise, the immediate parent is found, and we can
+        // continue to add/upsert
     } else if (m_match.matchres == JSONSL_MATCH_COMPLETE) {
         if (m_optype.base() == Command::DICT_ADD) {
             return Error::DOC_EEXISTS;
         }
     }
 
-    if (m_optype == Command::REMOVE) {
-        /*
-         * If match is the _last_ item, we need to strip the _last_ comma from
-         * doc[0] (since doc[1] will never have a trailing comma); e.g.
-         *  NEWDOC[0] = { ..., ..., ... (---> , <---)
-         *  [deleted]
-         *  NEWDOC[1] = } // Never any commas here!
-         *
-         * If match is the _first_ item, we need to strip the _first_ comma
-         * from newdoc[1]:
-         *
-         *  NEWDOC[0] = { // never any commas here!
-         *  [deleted]
-         *  NEWDOC[1] = (---> , <---) ... , ... }
-         *
-         *
-         *
-         * If match is any other item, we need to strip the _last_ comma from
-         * doc[0], which is the comma that preceded this item.
-         */
-
-        /* Remove the matches, starting from the beginning of the key */
-        if (m_match.has_key) {
-            newdoc_at(0).end_at_begin(m_doc, m_match.loc_key, Loc::NO_OVERLAP);
-        } else {
-            newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
-        }
-
-        newdoc_at(1).begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
-
-        if (m_match.num_siblings) {
-            if (m_match.is_last()) {
-                /*
-                 * NEWDOC[0] = [a,b,c, <-- Strip here
-                 * MATCH     = d
-                 * NEWDOC[1] = ]
-                 */
-                strip_comma(&newdoc_at(0), STRIP_LAST_COMMA);
-            } else {
-                /*
-                 * NEWDOC[0] = [a,b,
-                 * MATCH     = c
-                 * NEWDOC[1] = Strip here -->, d]
-                 */
-                strip_comma(&newdoc_at(1), STRIP_FIRST_COMMA);
-            }
-        }
-
-        m_result->m_newlen = 2;
-
-    } else if (m_match.matchres == JSONSL_MATCH_COMPLETE) {
+    if (m_match.matchres == JSONSL_MATCH_COMPLETE) {
+        const Loc& match_loc = m_match.loc_deepest;
         /* 1. Remove the old value from the first segment */
-        newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(0).end_at_begin(m_doc, match_loc, Loc::NO_OVERLAP);
 
         /* 2. Insert the new value */
         newdoc_at(1) = m_userval;
 
         /* 3. Insert the rest of the document */
-        newdoc_at(2).begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(2).begin_at_end(m_doc, match_loc, Loc::NO_OVERLAP);
         m_result->m_newlen = 3;
 
     } else if (m_match.immediate_parent_found) {
-        newdoc_at(0).end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
+        // Deepest is parent
+        const Loc& parent_loc = m_match.loc_deepest;
+
+        newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
         /*TODO: The key might have a literal '"' in it, which has been escaped? */
         if (m_match.num_siblings) {
             newdoc_at(1) = loc_COMMA_QUOTE; /* ," */
@@ -214,11 +226,8 @@ Operation::do_store_dict()
         /* new value */
         newdoc_at(4) = m_userval;
         /* Closing tokens */
-        newdoc_at(5).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+        newdoc_at(5).begin_at_end(m_doc, parent_loc, Loc::OVERLAP);
         m_result->m_newlen = 6;
-
-    } else {
-        return do_mkdir_p(MKDIR_P_DICT);
     }
     return Error::SUCCESS;
 }
@@ -242,7 +251,8 @@ Error
 Operation::do_mkdir_p(MkdirPMode mode)
 {
     unsigned ii;
-    newdoc_at(0).end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
+    const Loc& parent_loc = m_match.loc_deepest;
+    newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
 
     /* doc_new LAYOUT:
      *
@@ -297,59 +307,8 @@ Operation::do_mkdir_p(MkdirPMode mode)
     newdoc_at(3).at = m_result->m_bkbuf.data() + newdoc_at(1).length;
     newdoc_at(2) = m_userval;
 
-    newdoc_at(4).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+    newdoc_at(4).begin_at_end(m_doc, parent_loc, Loc::OVERLAP);
     m_result->m_newlen = 5;
-
-    return Error::SUCCESS;
-}
-
-Error
-Operation::find_first_element()
-{
-    jsonsl_error_t rv = m_path->add_array_index(0);
-    if (rv != JSONSL_ERROR_SUCCESS) {
-        return Error::PATH_E2BIG;
-    }
-
-    Error status = do_match_common();
-    m_path->pop();
-
-    if (status != Error::SUCCESS) {
-        return status;
-    }
-    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
-        return Error::PATH_ENOENT;
-    }
-    return Error::SUCCESS;
-}
-
-/* Finds the last element. This normalizes the match structure so that
- * the last element appears in the 'loc_match' field */
-Error
-Operation::find_last_element()
-{
-    Loc *mloc = &m_match.loc_match;
-    Loc *ploc = &m_match.loc_parent;
-
-    m_match.get_last_child_pos = 1;
-    Error rv = find_first_element();
-    if (rv != Error::SUCCESS) {
-        return rv;
-    }
-    if (m_match.num_siblings == 0) {
-        /* first is last */
-        return Error::SUCCESS;
-    }
-
-    mloc->at = m_doc.at + m_match.loc_key.length;
-    /* Length of the last child is the difference between the child's
-     * start position, and the parent's end position */
-    mloc->length = (ploc->at + ploc->length) - mloc->at;
-    /* Exclude the parent's token */
-    mloc->length--;
-
-    /* Finally, set the position */
-    m_match.position = m_match.num_siblings;
 
     return Error::SUCCESS;
 }
@@ -358,99 +317,117 @@ Operation::find_last_element()
 Error
 Operation::insert_singleton_element()
 {
+    const Loc& array_loc = m_match.loc_deepest;
     /* First segment is ... [ */
-    newdoc_at(0).end_at_begin(m_doc, m_match.loc_parent, Loc::OVERLAP);
+    newdoc_at(0).end_at_begin(m_doc, array_loc, Loc::OVERLAP);
     /* User: */
     newdoc_at(1) = m_userval;
     /* Last segment is ... ] */
-    newdoc_at(2).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+    newdoc_at(2).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
 
     m_result->m_newlen = 3;
     return Error::SUCCESS;
 }
 
 Error
-Operation::do_list_enoent()
-{
-    if (m_match.immediate_parent_found) {
-        return insert_singleton_element();
-    } else if (m_optype.is_mkdir_p()) {
-        return do_mkdir_p(MKDIR_P_ARRAY);
-    } else {
-        return Error::PATH_ENOENT;
-    }
-}
-
-Error
-Operation::do_list_op()
+Operation::do_list_prepend()
 {
     Error rv;
 
-    if (m_optype.base() == Command::ARRAY_PREPEND) {
-        /* Find the array itself. */
-        rv = find_first_element();
-        if (rv == Error::PATH_ENOENT) {
-            return do_list_enoent();
-        } else if (!rv.success()) {
-            return rv;
-        }
-
-        /* LAYOUT:
-         * NEWDOC[0] = .... [
-         * NEWDOC[1] = USER
-         * NEWDOC[2] = ,
-         * NEWDOC[3] = REST
-         */
-
-        GT_PREPEND_FOUND:
-        /* Right before the first element */
-        newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
-        /* User data */
-        newdoc_at(1) = m_userval;
-        /* Comma */
-        newdoc_at(2) = loc_COMMA;
-        /* Next element */
-        newdoc_at(3).begin_at_begin(m_doc, m_match.loc_match);
-
-        m_result->m_newlen = 4;
-        return Error::SUCCESS;
-
-    } else if (m_optype.base() == Command::ARRAY_APPEND) {
-        rv = find_last_element();
-        if (rv == Error::PATH_ENOENT) {
-            return do_list_enoent();
-        } else if (!rv.success()) {
-            return rv;
-        }
-
-        /* Last element */
-        newdoc_at(0).end_at_end(m_doc, m_match.loc_match, Loc::OVERLAP);
-        /* Insert comma */
-        newdoc_at(1) = loc_COMMA;
-        /* User */
-        newdoc_at(2) = m_userval;
-        /* Parent end */
-        newdoc_at(3).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
-
-        m_result->m_newlen = 4;
-        return Error::SUCCESS;
-
-    } else if (m_optype.base() == Command::ARRAY_ADD_UNIQUE) {
-        m_match.ensure_unique = m_userval;
-
-        rv = find_first_element();
-        if (rv == Error::PATH_ENOENT) {
-            return do_list_enoent();
-        } else if (!rv.success()) {
-            return rv;
-        }
-
-        if (m_match.unique_item_found) {
-            return Error::DOC_EEXISTS;
-        }
-        goto GT_PREPEND_FOUND;
+    // Search for first element, perform the search, then pop it
+    if (m_path->add_array_index(0) != JSONSL_ERROR_SUCCESS) {
+        return Error::PATH_E2BIG;
     }
 
+    rv = do_match_common(Match::GET_MATCH_ONLY);
+    m_path->pop();
+
+    if (!rv.success()) {
+        return rv;
+    }
+
+    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+        if (m_match.immediate_parent_found) {
+            return insert_singleton_element();
+        } else if (m_optype.is_mkdir_p()) {
+            return do_mkdir_p(MKDIR_P_ARRAY);
+        } else {
+            return Error::PATH_ENOENT;
+        }
+    }
+
+    /* LAYOUT:
+     * NEWDOC[0] [....
+     * NEWDOC[1] = USER
+     * NEWDOC[2] = ,
+     * NEWDOC[3] = REST
+     */
+
+    const Loc& orig_firstloc = m_match.loc_deepest;
+    newdoc_at(0).end_at_begin(m_doc, orig_firstloc, Loc::NO_OVERLAP);
+    newdoc_at(1) = m_userval;
+    newdoc_at(2) = loc_COMMA;
+    newdoc_at(3).begin_at_begin(m_doc, orig_firstloc);
+
+    m_result->m_newlen = 4;
+    return Error::SUCCESS;
+}
+
+Error
+Operation::do_list_append()
+{
+    Error rv;
+
+    // Find the match itself, no magic needed!
+    bool is_unique = m_optype.base() == Command::ARRAY_ADD_UNIQUE;
+    if (is_unique) {
+        m_match.ensure_unique = m_userval;
+    }
+
+    rv = do_match_common(Match::GET_MATCH_ONLY);
+    if (!rv.success()) {
+        // Parse error (ENOENT excluded)
+        return rv;
+    }
+
+    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+        // Not complete. Determine if mkdir_p should be used
+        if (m_optype.is_mkdir_p()) {
+            return do_mkdir_p(MKDIR_P_ARRAY);
+        } else {
+            return Error::PATH_ENOENT;
+        }
+    }
+
+    // All other errors should be handled above
+    assert(m_match.matchres == JSONSL_MATCH_COMPLETE);
+
+    // Incorrect terminal type!
+    if (m_match.type != JSONSL_T_LIST) {
+        return Error::PATH_MISMATCH;
+    }
+
+    if (is_unique && m_match.unique_item_found) {
+        // Unique item already exists
+        return Error::DOC_EEXISTS;
+    }
+    const Loc& array_loc = m_match.loc_deepest;
+
+    if (m_match.num_children == 0) {
+        // Special case, no children; append and prepend are the same here!
+        return insert_singleton_element();
+    }
+
+    /* Last element */
+    newdoc_at(0).end_at_end(m_doc, array_loc, Loc::NO_OVERLAP);
+    /* Insert comma */
+    newdoc_at(1) = loc_COMMA;
+    /* User */
+    newdoc_at(2) = m_userval;
+    /* Parent end */
+    newdoc_at(3).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
+
+    m_result->m_newlen = 4;
     return Error::SUCCESS;
 }
 
@@ -466,12 +443,14 @@ Operation::do_insert()
         return Error::PATH_EINVAL;
     }
 
-    Error status = do_match_common();
+    Error status = do_match_common(Match::GET_MATCH_ONLY);
     if (!status.success()) {
         return status;
     }
 
     if (m_match.matchres == JSONSL_MATCH_COMPLETE) {
+        const Loc& match_loc = m_match.loc_deepest;
+
         /*
          * DOCNEW[0] = ... [
          * DOCNEW[1] = USER
@@ -479,13 +458,14 @@ Operation::do_insert()
          * DOCNEW[3] = MATCH
          */
         m_result->m_newlen = 4;
-        newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+        newdoc_at(0).end_at_begin(m_doc, match_loc, Loc::NO_OVERLAP);
         newdoc_at(1) = m_userval;
         newdoc_at(2) = loc_COMMA;
-        newdoc_at(3).begin_at_begin(m_doc, m_match.loc_match);
+        newdoc_at(3).begin_at_begin(m_doc, match_loc);
         return Error::SUCCESS;
 
     } else if (m_match.immediate_parent_found) {
+        const Loc& array_loc = m_match.loc_deepest;
         if (m_match.num_siblings == 0 && lastcomp.idx == 0) {
             // Equivalent to prepend/push_first
             /*
@@ -494,9 +474,9 @@ Operation::do_insert()
              * DOCNEW[2] = ] ...
              */
             m_result->m_newlen = 3;
-            newdoc_at(0).end_at_begin(m_doc, m_match.loc_parent, Loc::OVERLAP);
+            newdoc_at(0).end_at_begin(m_doc, array_loc, Loc::OVERLAP);
             newdoc_at(1) = m_userval;
-            newdoc_at(2).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+            newdoc_at(2).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
             return Error::SUCCESS;
 
         } else if (lastcomp.idx == m_match.num_siblings) {
@@ -509,10 +489,10 @@ Operation::do_insert()
              * DOCNEW[3] = ]
              */
             m_result->m_newlen = 4;
-            newdoc_at(0).end_at_end(m_doc, m_match.loc_parent, Loc::NO_OVERLAP);
+            newdoc_at(0).end_at_end(m_doc, array_loc, Loc::NO_OVERLAP);
             newdoc_at(1) = loc_COMMA;
             newdoc_at(2) = m_userval;
-            newdoc_at(3).begin_at_end(m_doc, m_match.loc_parent, Loc::OVERLAP);
+            newdoc_at(3).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
             return Error::SUCCESS;
 
         } else {
@@ -581,19 +561,22 @@ Operation::do_arith_op()
     }
 
     /* Find the number first */
-    status = do_match_common();
+    status = do_match_common(m_optype.is_mkdir_p() ?
+            Match::GET_FOLLOWING_SIBLINGS : Match::GET_MATCH_ONLY);
+
     if (status != Error::SUCCESS) {
         return status;
     }
 
     if (m_match.matchres == JSONSL_MATCH_COMPLETE) {
+        const Loc& num_loc = m_match.loc_deepest;
         if (m_match.type != JSONSL_T_SPECIAL) {
             return Error::PATH_MISMATCH;
         } else if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
             return Error::PATH_MISMATCH;
         } else  {
             errno = 0;
-            numres = strtoll(m_match.loc_match.at, NULL, 10);
+            numres = strtoll(num_loc.at, NULL, 10);
 
             if (errno == ERANGE) {
                 return Error::NUM_E2BIG;
@@ -631,25 +614,27 @@ Operation::do_arith_op()
         if ((status = do_store_dict()) != Error::SUCCESS) {
             return status;
         }
-        m_result->m_match = m_match.loc_match = m_userval;
+        m_result->m_match = m_match.loc_deepest = m_userval;
         return Error::SUCCESS;
     }
 
+    // Unlike other ops, we modify the match value itself, as this is an
+    // in/out parameter
 
     /* Preamble */
-    newdoc_at(0).end_at_begin(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+    newdoc_at(0).end_at_begin(m_doc, m_match.loc_deepest, Loc::NO_OVERLAP);
 
     /* New number */
     newdoc_at(1).at = m_result->m_numbuf.data();
     newdoc_at(1).length = m_result->m_numbuf.size();
 
     /* Postamble */
-    newdoc_at(2).begin_at_end(m_doc, m_match.loc_match, Loc::NO_OVERLAP);
+    newdoc_at(2).begin_at_end(m_doc, m_match.loc_deepest, Loc::NO_OVERLAP);
     m_result->m_newlen = 3;
 
-    m_match.loc_match.at = m_result->m_numbuf.data();
-    m_match.loc_match.length = m_result->m_numbuf.size();
-    m_result->m_match = m_match.loc_match;
+    m_match.loc_deepest.at = m_result->m_numbuf.data();
+    m_match.loc_deepest.length = m_result->m_numbuf.size();
+    m_result->m_match = m_match.loc_deepest;
     return Error::SUCCESS;
 }
 
@@ -698,7 +683,7 @@ Operation::op_exec(const char *pth, size_t npth)
     switch (m_optype) {
     case Command::GET:
     case Command::EXISTS:
-        status = do_match_common();
+        status = do_match_common(Match::GET_MATCH_ONLY);
         if (status != Error::SUCCESS) {
             return status;
         }
@@ -709,35 +694,46 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::DICT_UPSERT:
     case Command::DICT_UPSERT_P:
     case Command::REPLACE:
-    case Command::REMOVE:
         if (m_path->size() == 1) {
             /* Can't perform these operations on the root element since they
              * will invalidate the JSON or are otherwise meaningless. */
             return Error::VALUE_CANTINSERT;
         }
 
-        if (m_optype != Command::REMOVE) {
-            status = validate(Validator::PARENT_DICT, get_maxdepth(PATH_HAS_NEWKEY));
-            if (!status.success()) {
-                return status;
-            }
+        status = validate(Validator::PARENT_DICT, get_maxdepth(PATH_HAS_NEWKEY));
+        if (!status.success()) {
+            return status;
         }
-        status = do_match_common();
-        if (status != Error::SUCCESS) {
+        status = do_match_common(Match::GET_MATCH_ONLY);
+        if (!status.success()) {
             return status;
         }
         return do_store_dict();
-    case Command::ARRAY_APPEND:
+
+    case Command::REMOVE:
+        if (m_path->size() == 1) {
+            // Can't remove root element!
+            return Error::VALUE_CANTINSERT;
+        }
+        return do_remove();
+
     case Command::ARRAY_PREPEND:
-    case Command::ARRAY_APPEND_P:
     case Command::ARRAY_PREPEND_P:
+        status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_IS_PARENT));
+        if (!status.success()) {
+            return status;
+        }
+        return do_list_prepend();
+
+    case Command::ARRAY_APPEND:
+    case Command::ARRAY_APPEND_P:
     case Command::ARRAY_ADD_UNIQUE:
     case Command::ARRAY_ADD_UNIQUE_P:
         status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_IS_PARENT));
         if (!status.success()) {
             return status;
         }
-        return do_list_op();
+        return do_list_append();
 
     case Command::ARRAY_INSERT:
         status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_HAS_NEWKEY));

@@ -148,6 +148,19 @@ public:
             return std::string();
         }
     }
+
+    // Move buffer start ahead n bytes
+    void ltrim(size_t n)
+    {
+        at += n;
+        length -= n;
+    }
+
+    // Move buffer end back n bytes
+    void rtrim(size_t n)
+    {
+        length -= n;
+    }
 };
 
 // similar to boost::buffer

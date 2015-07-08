@@ -22,7 +22,7 @@ using std::string;
 string
 Util::match_match(const Match& m)
 {
-    return m.loc_match.to_string();
+    return m.loc_deepest.to_string();
 }
 
 string
@@ -38,7 +38,7 @@ Util::match_key(const Match& m)
 string
 Util::match_parent(const Match& m)
 {
-    return m.loc_parent.to_string();
+    return m.loc_deepest.to_string();
 }
 
 void

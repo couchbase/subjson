@@ -253,6 +253,37 @@ TEST_F(OpTests, testListOps)
     rv = runOp(Command::REMOVE, "array[-1]");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("2", Util::match_match(op.match()));
+
+    // Special prepend operations
+    doc = "{}";
+    op.set_doc(doc);
+
+    // test prepend without _p
+    rv = runOp(Command::ARRAY_PREPEND, "array", "123");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    rv = runOp(Command::ARRAY_PREPEND_P, "array", "123");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    // Now ensure the contents are the same
+    rv = runOp(Command::GET, "array[0]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("123", Util::match_match(op.match()));
+
+    // Remove the first element, making it empty
+    rv = runOp(Command::REMOVE, "array[0]");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    // Prepend the first element (singleton)
+    rv = runOp(Command::ARRAY_PREPEND, "array", "123");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "array[0]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("123", Util::match_match(op.match()));
 }
 
 TEST_F(OpTests, testArrayOpsNested)
@@ -304,6 +335,23 @@ TEST_F(OpTests, testArrayDelete)
     EXPECT_EQ("[]", getNewDoc());
 }
 
+TEST_F(OpTests, testDictDelete)
+{
+    const string dict("{\"0\": 1,\"1\": 2.0}");
+    op.set_doc(dict);
+    Error rv;
+
+    // Delete element
+    rv = runOp(Command::REMOVE, "0");
+    EXPECT_TRUE(rv.success());
+
+    // Check it's gone.
+    string doc;
+    getAssignNewDoc(doc);
+    rv = runOp(Command::EXISTS, "0");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+}
+
 TEST_F(OpTests, testUnique)
 {
     string json = "{}";
@@ -333,6 +381,22 @@ TEST_F(OpTests, testUnique)
 
     rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "2");
     ASSERT_EQ(Error::PATH_MISMATCH, rv);
+}
+
+TEST_F(OpTests, testUniqueToplevel)
+{
+    string json("[]");
+    string doc;
+    Error rv;
+
+    op.set_doc(json);
+
+    rv = runOp(Command::ARRAY_ADD_UNIQUE_P, "", "0");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::ARRAY_ADD_UNIQUE_P, "", "0");
+    ASSERT_EQ(Error::DOC_EEXISTS, rv);
 }
 
 #ifndef INT64_MIN
@@ -367,7 +431,6 @@ TEST_F(OpTests, testNumeric)
     ASSERT_EQ("-99", Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
-    printf("...\n");
     // Try with other things
     string dummy = std::to_string(INT64_MAX);
     rv = runOp(Command::COUNTER, "counter", dummy.c_str());
@@ -760,4 +823,40 @@ TEST_F(OpTests, ensureRepeatable) {
     rv = runOp(Command::DICT_UPSERT_P, "bar.baz", "false");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
+}
+
+TEST_F(OpTests, testDeleteNestedArray)
+{
+    string doc = "[0,[10,20,[100]],{\"key\":\"value\"}]";
+    Error rv;
+    op.set_doc(doc);
+
+    rv = runOp(Command::GET, "[1]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    ASSERT_EQ("[10,20,[100]]", Util::match_match(op.match()));
+
+    rv = runOp(Command::REMOVE, "[1][2][0]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "[1]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    ASSERT_EQ("[10,20,[]]", Util::match_match(op.match()));
+
+    rv = runOp(Command::REMOVE, "[1][2]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "[1]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    ASSERT_EQ("[10,20]", Util::match_match(op.match()));
+
+    rv = runOp(Command::REMOVE, "[1]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "[1]");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    ASSERT_EQ("{\"key\":\"value\"}", Util::match_match(op.match()));
+
 }

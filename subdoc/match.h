@@ -65,6 +65,9 @@ public:
      */
     unsigned num_siblings;
 
+    /** For array matches, contains the number of children in the array */
+    unsigned num_children;
+
     /**
      * Check if match is the first of many
      * @return true iff match is the first of multiple siblings
@@ -112,21 +115,27 @@ public:
      * information will be adapted to suit the last child; this includes
      * things like the value type and such.
      */
-    unsigned char get_last_child_pos;
+    unsigned char get_last;
+
+    enum SearchOptions {
+        GET_MATCH_ONLY = 0,
+        GET_FOLLOWING_SIBLINGS
+    };
+
+    SearchOptions extra_options = GET_MATCH_ONLY;
 
     /**If 'ensure_unique' is true, set to true if the value of #ensure_unique
      * already exists */
     unsigned char unique_item_found;
 
-    /** Location describing the matched item, if the match is found */
-    Loc loc_match;
+    /**
+     * Deepest match found. If the match was completely found, then this
+     * points to the actual match. Otherwise, this is one of the parents.
+     */
+    Loc loc_deepest;
 
     /**Location desribing the key for the item. Valid only if #has_key is true*/
     Loc loc_key;
-
-    /**Location describing the deepest parent match. If #immediate_parent_found
-     * is true then this is the direct parent of the match.*/
-    Loc loc_parent;
 
     /**If set to true, will also descend each child element to ensure that
      * the contents here are unique. Will set an error code accordingly, if

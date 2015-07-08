@@ -53,6 +53,8 @@ public:
     void clear() {
         m_bkbuf.clear();
         m_numbuf.clear();
+        m_match.length = 0;
+        m_newlen = 0;
     }
 private:
     friend class Operation;
@@ -102,20 +104,19 @@ private:
     //! Pointer to result given by user
     Result *m_result;
 
-    Error do_match_common();
+    Error do_match_common(Match::SearchOptions options);
     Error do_get();
     Error do_store_dict();
+    Error do_remove();
 
     enum MkdirPMode {
         MKDIR_P_ARRAY, //!< Insert ... "key": [ value ]
         MKDIR_P_DICT //!< Insert ... "key":value
     };
     Error do_mkdir_p(MkdirPMode mode);
-    Error find_first_element();
-    Error find_last_element();
     Error insert_singleton_element();
-    Error do_list_enoent();
-    Error do_list_op();
+    Error do_list_append();
+    Error do_list_prepend();
     Error do_arith_op();
     Error do_insert();
 
