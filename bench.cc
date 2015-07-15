@@ -71,6 +71,7 @@ public:
         o_jsfile('f', "json"),
         o_cmd('c', "command"),
         o_mkdirp('M', "create-intermediate"),
+        o_txtscan('T', "text-scan"),
         parser("subdoc-bench")
     {
         o_iter.description("Number of iterations to run");
@@ -79,6 +80,7 @@ public:
         o_jsfile.description("JSON files to operate on. If passing multiple files, each file should be delimited by a comma");
         o_cmd.description("Command to use. Use -c help to show all the commands").mandatory();
         o_mkdirp.description("Create intermediate paths for mutation operations");
+        o_txtscan.description("Simply scan the text using a naive approach. Used to see how much actual overhead jsonsl induces");
 
         parser.addOption(o_iter);
         parser.addOption(o_path);
@@ -86,6 +88,7 @@ public:
         parser.addOption(o_jsfile);
         parser.addOption(o_cmd);
         parser.addOption(o_mkdirp);
+        parser.addOption(o_txtscan);
 
         totalBytes = 0;
         // Set the opmap
@@ -122,6 +125,7 @@ public:
     StringOption o_jsfile;
     StringOption o_cmd;
     BoolOption o_mkdirp;
+    BoolOption o_txtscan;
     map<string,OpEntry> opmap;
     Parser parser;
     size_t totalBytes;
@@ -181,12 +185,31 @@ execOperation(Options& o)
     Result res;
 
 
+    size_t nquotes = 0;
+    bool is_txtscan = o.o_txtscan.result();
     size_t itermax = o.o_iter.result();
+
+    int char_table[256] = { 0 };
+    char_table['"'] = 1;
+    char_table['\\'] = 1;
+    char_table['!'] = 1;
+
     for (size_t ii = 0; ii < itermax; ii++) {
-        op.clear();
-        res.clear();
         const string& curInput = inputStrs[ii % inputStrs.size()];
 
+        if (is_txtscan) {
+            const char *buf = curInput.c_str();
+            size_t nbytes = curInput.size();
+            for (; nbytes; buf++, nbytes--) {
+                if (char_table[static_cast<unsigned char>(*buf)]) {
+                    nquotes++;
+                }
+            }
+            continue;
+        }
+
+        op.clear();
+        res.clear();
         op.set_value(value);
         op.set_code(opcode);
         op.set_doc(curInput);
@@ -196,6 +219,10 @@ execOperation(Options& o)
         if (!rv.success()) {
             throw rv;
         }
+    }
+
+    if (nquotes) {
+        printf("Found %lu quotes!\n", nquotes);
     }
 
     // Print the result.
