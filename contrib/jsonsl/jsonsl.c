@@ -21,6 +21,7 @@
     X(STRUCTURAL_TOKEN) \
     X(SPECIAL_SWITCHFIRST) \
     X(STRINGY_CATCH) \
+    X(NUMBER_FASTPATH) \
     X(ESCAPES) \
     X(TOTAL) \
 
@@ -137,6 +138,86 @@ void jsonsl_destroy(jsonsl_t jsn)
     }
 }
 
+
+#define FASTPARSE_EXHAUSTED 1
+#define FASTPARSE_BREAK 0
+static const int chrt_string_nopass[0x100] = { JSONSL_CHARTABLE_string_nopass };
+
+/*
+ * This function is meant to accelerate string parsing, reducing the main loop's
+ * check if we are indeed a string.
+ *
+ * @param jsn the parser
+ * @param[in,out] bytes_p A pointer to the current buffer (i.e. current position)
+ * @param[in,out] nbytes_p A pointer to the current size of the buffer
+ * @return true if all bytes have been exhausted (and thus the main loop can
+ * return), false if a special character was examined which requires greater
+ * examination.
+ */
+static int
+jsonsl__str_fastparse(jsonsl_t jsn,
+                      const jsonsl_uchar_t **bytes_p, size_t *nbytes_p)
+{
+    int exhausted = 1;
+    size_t nbytes = *nbytes_p;
+    const jsonsl_uchar_t *bytes = *bytes_p;
+
+    for (; nbytes; nbytes--, bytes++) {
+        if (
+#ifdef JSONSL_USE_WCHAR
+                *bytes >= 0x100 ||
+#endif /* JSONSL_USE_WCHAR */
+                (!chrt_string_nopass[*bytes])) {
+            INCR_METRIC(TOTAL);
+            INCR_METRIC(STRINGY_INSIGNIFICANT);
+        } else {
+            exhausted = 0;
+            break;
+        }
+    }
+
+    /* Once we're done here, re-calculate the position variables */
+    jsn->pos += (*nbytes_p - nbytes);
+    if (exhausted) {
+        return FASTPARSE_EXHAUSTED;
+    }
+
+    *nbytes_p = nbytes;
+    *bytes_p = bytes;
+    return FASTPARSE_BREAK;
+}
+
+/* Functions exactly like str_fastparse, except it also accepts a 'state'
+ * argument, since the number's value is updated in the state. */
+static int
+jsonsl__num_fastparse(jsonsl_t jsn,
+                      const jsonsl_uchar_t **bytes_p, size_t *nbytes_p,
+                      struct jsonsl_state_st *state)
+{
+    int exhausted = 1;
+    size_t nbytes = *nbytes_p;
+    const jsonsl_uchar_t *bytes = *bytes_p;
+
+    for (; nbytes; nbytes--, bytes++) {
+        jsonsl_uchar_t c = *bytes;
+        if (isdigit(c)) {
+            INCR_METRIC(TOTAL);
+            INCR_METRIC(NUMBER_FASTPATH);
+            state->nelem = (state->nelem * 10) + (c - 0x30);
+        } else {
+            exhausted = 0;
+            break;
+        }
+    }
+    jsn->pos += (*nbytes_p - nbytes);
+    if (exhausted) {
+        return FASTPARSE_EXHAUSTED;
+    }
+    *nbytes_p = nbytes;
+    *bytes_p = bytes;
+    return FASTPARSE_BREAK;
+}
+
 JSONSL_API
 void
 jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
@@ -218,63 +299,59 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
 
 #define STATE_NUM_LAST jsn->tok_last
 
+#define CONTINUE_NEXT_CHAR() continue
+
     const jsonsl_uchar_t *c = (jsonsl_uchar_t*)bytes;
     size_t levels_max = jsn->levels_max;
     struct jsonsl_state_st *state = jsn->stack + jsn->level;
-    static int chrt_string_nopass[0x100] = { JSONSL_CHARTABLE_string_nopass };
     jsn->base = bytes;
 
     for (; nbytes; nbytes--, jsn->pos++, c++) {
         unsigned state_type;
         INCR_METRIC(TOTAL);
-        /* Special escape handling for some stuff */
-        if (jsn->in_escape) {
-            jsn->in_escape = 0;
-            if (!is_allowed_escape(CUR_CHAR)) {
-                INVOKE_ERROR(ESCAPE_INVALID);
-            } else if (CUR_CHAR == 'u') {
-                DO_CALLBACK(UESCAPE, UESCAPE);
-                if (jsn->return_UESCAPE) {
-                    return;
-                }
-            }
-            goto GT_NEXT;
-        }
+
         GT_AGAIN:
-        /**
-         * Several fast-tracks for common cases:
-         */
         state_type = state->type;
+        /* Most common type is typically a string: */
         if (state_type & JSONSL_Tf_STRINGY) {
-            /* check if our character cannot ever change our current string state
-             * or throw an error
-             */
-            if (
-#ifdef JSONSL_USE_WCHAR
-                    CUR_CHAR >= 0x100 ||
-#endif /* JSONSL_USE_WCHAR */
-                    (!chrt_string_nopass[CUR_CHAR & 0xff])) {
-                INCR_METRIC(STRINGY_INSIGNIFICANT);
-                goto GT_NEXT;
-            } else if (CUR_CHAR == '"') {
-                goto GT_QUOTE;
-            } else if (CUR_CHAR == '\\') {
-                goto GT_ESCAPE;
+            /* Special escape handling for some stuff */
+            if (jsn->in_escape) {
+                jsn->in_escape = 0;
+                if (!is_allowed_escape(CUR_CHAR)) {
+                    INVOKE_ERROR(ESCAPE_INVALID);
+                } else if (CUR_CHAR == 'u') {
+                    DO_CALLBACK(UESCAPE, UESCAPE);
+                    if (jsn->return_UESCAPE) {
+                        return;
+                    }
+                }
+                CONTINUE_NEXT_CHAR();
+            }
+
+            if (jsonsl__str_fastparse(jsn, &c, &nbytes) ==
+                    FASTPARSE_EXHAUSTED) {
+                /* No need to readjust variables as we've exhausted the iterator */
+                return;
             } else {
-                INVOKE_ERROR(WEIRD_WHITESPACE);
+                if (CUR_CHAR == '"') {
+                    goto GT_QUOTE;
+                } else if (CUR_CHAR == '\\') {
+                    goto GT_ESCAPE;
+                } else {
+                    INVOKE_ERROR(WEIRD_WHITESPACE);
+                }
             }
             INCR_METRIC(STRINGY_SLOWPATH);
 
         } else if (state_type == JSONSL_T_SPECIAL) {
             /* Fast track for signed/unsigned */
             if (IS_NORMAL_NUMBER) {
-                if (isdigit(CUR_CHAR)) {
-                    state->nelem = (state->nelem * 10) + (CUR_CHAR-0x30);
-                    goto GT_NEXT;
+                if (jsonsl__num_fastparse(jsn, &c, &nbytes, state) ==
+                        FASTPARSE_EXHAUSTED) {
+                    return;
                 } else {
                     goto GT_SPECIAL_NUMERIC;
                 }
-
             } else if (state->special_flags == JSONSL_SPECIALf_DASH) {
                 if (!isdigit(CUR_CHAR)) {
                     INVOKE_ERROR(INVALID_NUMBER);
@@ -288,8 +365,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 } else {
                     INVOKE_ERROR(INVALID_NUMBER);
                 }
-
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
 
             } else if (state->special_flags == JSONSL_SPECIALf_ZERO) {
                 if (isdigit(CUR_CHAR)) {
@@ -310,7 +386,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 switch (CUR_CHAR) {
                 CASE_DIGITS
                     STATE_NUM_LAST = '1';
-                    goto GT_NEXT;
+                    CONTINUE_NEXT_CHAR();
 
                 case '.':
                     if (state->special_flags & JSONSL_SPECIALf_FLOAT) {
@@ -318,7 +394,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     }
                     state->special_flags |= JSONSL_SPECIALf_FLOAT;
                     STATE_NUM_LAST = '.';
-                    goto GT_NEXT;
+                    CONTINUE_NEXT_CHAR();
 
                 case 'e':
                 case 'E':
@@ -327,7 +403,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     }
                     state->special_flags |= JSONSL_SPECIALf_EXPONENT;
                     STATE_NUM_LAST = 'e';
-                    goto GT_NEXT;
+                    CONTINUE_NEXT_CHAR();
 
                 case '-':
                 case '+':
@@ -335,7 +411,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                         INVOKE_ERROR(INVALID_NUMBER);
                     }
                     STATE_NUM_LAST = '-';
-                    goto GT_NEXT;
+                    CONTINUE_NEXT_CHAR();
 
                 default:
                     if (is_special_end(CUR_CHAR)) {
@@ -358,7 +434,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     VERIFY_SPECIAL("null");
                 }
                 INCR_METRIC(SPECIAL_FASTPATH);
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
             }
 
             GT_SPECIAL_POP:
@@ -393,7 +469,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             SPECIAL_POP;
             jsn->expecting = ',';
             if (is_allowed_whitespace(CUR_CHAR)) {
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
             }
             /**
              * This works because we have a non-whitespace token
@@ -408,7 +484,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             /* So we're not special. Harmless insignificant whitespace
              * passthrough
              */
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
         } else if (extract_special(CUR_CHAR)) {
             /* not a string, whitespace, or structural token. must be special */
             goto GT_SPECIAL_BEGIN;
@@ -424,10 +500,10 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             /* the end of a string or hash key */
             case JSONSL_T_STRING:
                 CALLBACK_AND_POP(STRING);
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
             case JSONSL_T_HKEY:
                 CALLBACK_AND_POP(HKEY);
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
 
             case JSONSL_T_OBJECT:
                 state->nelem++;
@@ -455,7 +531,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     state->type = JSONSL_T_HKEY;
                     DO_CALLBACK(HKEY, PUSH);
                 }
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
 
             case JSONSL_T_LIST:
                 state->nelem++;
@@ -464,7 +540,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 jsn->expecting = ',';
                 jsn->tok_last = 0;
                 DO_CALLBACK(STRING, PUSH);
-                goto GT_NEXT;
+                CONTINUE_NEXT_CHAR();
 
             case JSONSL_T_SPECIAL:
                 INVOKE_ERROR(STRAY_TOKEN);
@@ -483,7 +559,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             }
             state->nescapes++;
             jsn->in_escape = 1;
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
         } /* " or \ */
 
         GT_STRUCTURAL_TOKEN:
@@ -496,7 +572,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             jsn->tok_last = ':';
             jsn->can_insert = 1;
             jsn->expecting = '"';
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
 
         case ',':
             INCR_METRIC(STRUCTURAL_TOKEN);
@@ -522,7 +598,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
 
             jsn->tok_last = ',';
             jsn->expecting = '"';
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
 
             /* new list or object */
             /* hashes are more common */
@@ -551,7 +627,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 DO_CALLBACK(LIST, PUSH);
             }
             jsn->tok_last = 0;
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
 
             /* closing of list or object */
         case '}':
@@ -580,7 +656,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             }
             state = jsn->stack + jsn->level;
             state->pos_cur = jsn->pos;
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
 
         default:
             GT_SPECIAL_BEGIN:
@@ -624,11 +700,8 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 }
                 DO_CALLBACK(SPECIAL, PUSH);
             }
-            goto GT_NEXT;
+            CONTINUE_NEXT_CHAR();
         }
-
-        GT_NEXT:
-        continue;
     }
 }
 
@@ -1355,3 +1428,25 @@ static int is_allowed_whitespace(unsigned c) {
 static int is_allowed_escape(unsigned c) {
     return Allowed_Escapes[c & 0xff];
 }
+
+/* Clean up all our macros! */
+#undef INCR_METRIC
+#undef INCR_GENERIC
+#undef INCR_STRINGY_CATCH
+#undef CASE_DIGITS
+#undef INVOKE_ERROR
+#undef STACK_PUSH
+#undef STACK_POP_NOPOS
+#undef STACK_POP
+#undef CALLBACK_AND_POP_NOPOS
+#undef CALLBACK_AND_POP
+#undef SPECIAL_POP
+#undef CUR_CHAR
+#undef DO_CALLBACK
+#undef ENSURE_HVAL
+#undef VERIFY_SPECIAL
+#undef STATE_SPECIAL_LENGTH
+#undef IS_NORMAL_NUMBER
+#undef STATE_NUM_LAST
+#undef FASTPARSE_EXHAUSTED
+#undef FASTPARSE_BREAK
