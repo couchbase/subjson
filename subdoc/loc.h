@@ -28,6 +28,13 @@ public:
     const char *at;
     size_t length;
 
+    Loc() : at(NULL), length(0) {
+    }
+
+    Loc(const char *s, size_t n) {
+        assign(s, n);
+    }
+
     enum OverlapMode {
         NO_OVERLAP = 0,
         OVERLAP = 1

@@ -690,11 +690,11 @@ validate_callback(jsonsl_t jsn, jsonsl_action_t action,
     }
 }
 
-static const Loc validate_ARRAY_PRE = { "[", 1 };
-static const Loc validate_ARRAY_POST = { "]", 1 };
-static const Loc validate_DICT_PRE = { "{\"k\":", 5 };
-static const Loc validate_DICT_POST = { "}", 1 };
-static const Loc validate_NOOP = { NULL, 0 };
+static const Loc validate_ARRAY_PRE("[", 1);
+static const Loc validate_ARRAY_POST("]", 1);
+static const Loc validate_DICT_PRE("{\"k\":", 5);
+static const Loc validate_DICT_POST("}", 1);
+static const Loc validate_NOOP(NULL, 0);
 
 int
 Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mode)

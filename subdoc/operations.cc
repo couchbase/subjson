@@ -34,10 +34,10 @@ using Subdoc::Path;
 using Subdoc::Match;
 using Subdoc::Command;
 
-static Loc loc_COMMA = { ",", 1 };
-static Loc loc_QUOTE = { "\"", 1 };
-static Loc loc_COMMA_QUOTE = { ",\"", 2 };
-static Loc loc_QUOTE_COLON = { "\":", 2 };
+static Loc loc_COMMA(",", 1);
+static Loc loc_QUOTE("\"", 1);
+static Loc loc_COMMA_QUOTE(",\"", 2);
+static Loc loc_QUOTE_COLON("\":", 2);
 
 /**
  * Performs common matching using the currently designated path. Note that
