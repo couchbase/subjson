@@ -190,9 +190,9 @@ execOperation(Options& o)
     size_t itermax = o.o_iter.result();
 
     int char_table[256] = { 0 };
-    char_table['"'] = 1;
-    char_table['\\'] = 1;
-    char_table['!'] = 1;
+    char_table[static_cast<uint8_t >('"')] = 1;
+    char_table[static_cast<uint8_t >('\\')] = 1;
+    char_table[static_cast<uint8_t >('!')] = 1;
 
     for (size_t ii = 0; ii < itermax; ii++) {
         const string& curInput = inputStrs[ii % inputStrs.size()];
