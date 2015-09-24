@@ -23,7 +23,6 @@
 #include "loc.h"
 #include "path.h"
 #include "match.h"
-#include "subdoc-util.h"
 
 namespace Subdoc {
 
