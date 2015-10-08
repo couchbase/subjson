@@ -286,6 +286,37 @@ TEST_F(OpTests, testListOps)
     ASSERT_EQ("123", Util::match_match(op.match()));
 }
 
+TEST_F(OpTests, testArrayMultivalue)
+{
+    string doc = "{\"array\":[4,5,6]}";
+    Error rv;
+    op.set_doc(doc);
+
+    rv = runOp(Command::ARRAY_PREPEND, "array", "1,2,3");
+    ASSERT_TRUE(rv.success()) << rv;
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "array");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("[1,2,3,4,5,6]", Util::match_match(op.match()));
+
+    rv = runOp(Command::ARRAY_APPEND, "array", "7,8,9");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "array");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("[1,2,3,4,5,6,7,8,9]", Util::match_match(op.match()));
+
+    rv = runOp(Command::ARRAY_INSERT, "array[3]", "-3,-2,-1");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "array[4]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("-2", Util::match_match(op.match()));
+}
+
 TEST_F(OpTests, testArrayOpsNested)
 {
     const string array("[0,[1,[2]],{\"key\":\"val\"}]");
