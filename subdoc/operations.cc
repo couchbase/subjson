@@ -728,12 +728,19 @@ Operation::op_exec(const char *pth, size_t npth)
     case Command::ARRAY_APPEND:
     case Command::ARRAY_APPEND_P:
     case Command::ARRAY_ADD_UNIQUE:
-    case Command::ARRAY_ADD_UNIQUE_P:
-        status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_IS_PARENT));
+    case Command::ARRAY_ADD_UNIQUE_P: {
+        int validmode = Validator::PARENT_ARRAY;
+        if (m_optype.base() == Command::ARRAY_ADD_UNIQUE) {
+            // Uniqueness must contain a single, primitive value.
+            validmode |= Validator::VALUE_PRIMITIVE | Validator::VALUE_SINGLE;
+        }
+
+        status = validate(validmode, get_maxdepth(PATH_IS_PARENT));
         if (!status.success()) {
             return status;
         }
         return do_list_append();
+    }
 
     case Command::ARRAY_INSERT:
         status = validate(Validator::PARENT_ARRAY, get_maxdepth(PATH_HAS_NEWKEY));

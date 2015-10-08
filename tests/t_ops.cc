@@ -376,11 +376,18 @@ TEST_F(OpTests, testUnique)
     getAssignNewDoc(doc);
 
     rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "[]");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv) << "Cannot unique-add non-primitive";
+
+    rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "1,2,3");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv) << "Cannot unique-add multivalue";
+
+    rv = runOp(Command::ARRAY_APPEND, "unique", "[]");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
     rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "2");
-    ASSERT_EQ(Error::PATH_MISMATCH, rv);
+    ASSERT_EQ(Error::PATH_MISMATCH, rv) <<
+            "Mismatch with array containing non-primitive elements";
 }
 
 TEST_F(OpTests, testUniqueToplevel)
