@@ -144,6 +144,14 @@ TEST_F(OpTests, testGenericOps)
     rv = runOp(Command::GET, "address[2]");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("\"USA\"", Util::match_match(op.match()));
+
+    rv = runOp(Command::REPLACE, "address[1]", "\"Sacramento\"");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(newdoc);
+
+    rv = runOp(Command::GET, "address[1]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("\"Sacramento\"", Util::match_match(op.match()));
 }
 
 TEST_F(OpTests, testReplaceArrayDeep)
