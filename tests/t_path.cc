@@ -151,3 +151,16 @@ TEST_F(PathTests, testInvalidSequence) {
     pth = "[not][a][number]";
     ASSERT_NE(0, ss.parse(pth));
 }
+
+TEST_F(PathTests, testJsonEscapes) {
+    Path ss;
+    string pth;
+
+    // Reject any path not considered valid as a JSON string. N1QL escapes
+    // are *only* for n1ql syntax tokens (like ., ], [, `)
+    pth = "\"invalid.path";
+    ASSERT_NE(0, ss.parse(pth));
+
+    pth = "\\" "\"quoted.path";
+    ASSERT_EQ(0, ss.parse(pth));
+}

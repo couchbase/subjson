@@ -906,3 +906,21 @@ TEST_F(OpTests, testDeleteNestedArray)
     ASSERT_EQ("{\"key\":\"value\"}", Util::match_match(op.match()));
 
 }
+
+TEST_F(OpTests, testEscapedJson)
+{
+    string doc = "{\"" "\\" "\"quoted\":true}";
+    Error rv;
+    op.set_doc(doc);
+    rv = runOp(Command::GET, "\\\"quoted");
+    ASSERT_EQ(Error::SUCCESS, rv);
+    ASSERT_EQ("true", Util::match_match(op.match()));
+
+    // Try with insertion
+    rv = runOp(Command::DICT_UPSERT_P, "another.\\\"nested.field", "null");
+    ASSERT_EQ(Error::SUCCESS, rv);
+
+    getAssignNewDoc(doc);
+
+    ASSERT_EQ(Error::PATH_EINVAL, runOp(Command::GET, "\"missing.quote"));
+}

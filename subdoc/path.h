@@ -118,6 +118,8 @@ private:
     inline const char * convert_escaped(const char *src, size_t &len);
     inline int add_num_component(const char *component, size_t len);
     inline int add_str_component(const char *component, size_t len, int n_backtick);
+    inline int parse_bracket(const char *path, size_t len, size_t *n_comsumed);
+    inline int parse_string(const char *path, size_t len, size_t *n_consumed);
 
     std::list<std::string*> m_cached;
     std::list<std::string*> m_used;

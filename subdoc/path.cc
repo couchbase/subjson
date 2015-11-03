@@ -129,101 +129,159 @@ Path::add_array_index(long ixnum)
     return JSONSL_ERROR_SUCCESS;
 }
 
+/* Copied over from jsonsl */
+static const int allowed_json_escapes[0x100] = {
+        /* 0x00 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x1f */
+        /* 0x20 */ 0,0, /* 0x21 */
+        /* 0x22 */ 1 /* <"> */, /* 0x22 */
+        /* 0x23 */ 0,0,0,0,0,0,0,0,0,0,0,0, /* 0x2e */
+        /* 0x2f */ 1 /* </> */, /* 0x2f */
+        /* 0x30 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x4f */
+        /* 0x50 */ 0,0,0,0,0,0,0,0,0,0,0,0, /* 0x5b */
+        /* 0x5c */ 1 /* <\> */, /* 0x5c */
+        /* 0x5d */ 0,0,0,0,0, /* 0x61 */
+        /* 0x62 */ 1 /* <b> */, /* 0x62 */
+        /* 0x63 */ 0,0,0, /* 0x65 */
+        /* 0x66 */ 1 /* <f> */, /* 0x66 */
+        /* 0x67 */ 0,0,0,0,0,0,0, /* 0x6d */
+        /* 0x6e */ 1 /* <n> */, /* 0x6e */
+        /* 0x6f */ 0,0,0, /* 0x71 */
+        /* 0x72 */ 1 /* <r> */, /* 0x72 */
+        /* 0x73 */ 0, /* 0x73 */
+        /* 0x74 */ 1 /* <t> */, /* 0x74 */
+        /* 0x75 */ 1 /* <u> */, /* 0x75 */
+        /* 0x76 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x95 */
+        /* 0x96 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xb5 */
+        /* 0xb6 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xd5 */
+        /* 0xd6 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xf5 */
+        /* 0xf6 */ 0,0,0,0,0,0,0,0,0, /* 0xfe */
+};
+
+int
+Path::parse_bracket(const char *path, size_t len, size_t *n_consumed)
+{
+    // Check if 0 before decreasing! */
+    if (len == 0) {
+        return JSONSL_ERROR_JPR_BADPATH;
+    }
+
+    // Adjust positions so we don't parse the first '[':
+    len--, path++, *n_consumed = 1;
+
+    for (size_t ii = 0; ii < len; ii++) {
+        if (path[ii] == ']') {
+            *n_consumed += (ii + 1);
+            return add_num_component(path, ii);
+        }
+    }
+
+    // Didn't find the closing ']'
+    return JSONSL_ERROR_JPR_BADPATH;
+}
+
+int
+Path::parse_string(const char *path, size_t len, size_t *n_consumed)
+{
+    bool in_n1ql_escape = false;
+    bool in_json_escape = false;
+    int n_backticks = 0;
+
+    if (len == 0) {
+        return JSONSL_ERROR_JPR_BADPATH;
+    }
+
+    for (size_t ii = 0; ii < len; ii++) {
+        // Escape handling
+        int can_jescape = allowed_json_escapes[static_cast<int>(path[ii])];
+        if (in_json_escape) {
+            if (!can_jescape) {
+                return JSONSL_ERROR_JPR_BADPATH;
+            } else if (path[ii] == 'u') {
+                /* We can't handle \u-escapes in paths now! */
+                return JSONSL_ERROR_JPR_BADPATH;
+            }
+            in_json_escape = false;
+        } else if (path[ii] == '\\') {
+            in_json_escape = true;
+        } else if (path[ii] == '"' || path[ii] < 0x1F) {
+            // Needs escape!
+            return JSONSL_ERROR_JPR_BADPATH;
+        }
+
+        if (path[ii] == '`') {
+            n_backticks++;
+            in_n1ql_escape = !in_n1ql_escape;
+        }
+        if (in_n1ql_escape) {
+            continue;
+        }
+
+        // Token handling
+        if (path[ii] == ']') {
+            return JSONSL_ERROR_JPR_BADPATH;
+        } else if (path[ii] == '[' || path[ii] == '.') {
+            *n_consumed = ii;
+            if (path[ii] == '.') {
+                *n_consumed += 1;
+            }
+
+            if (in_n1ql_escape || in_json_escape) {
+                return JSONSL_ERROR_JPR_BADPATH;
+            }
+            return add_str_component(path, ii, n_backticks);
+        }
+    }
+
+    if (in_n1ql_escape || in_json_escape) {
+        return JSONSL_ERROR_JPR_BADPATH;
+    }
+
+    *n_consumed = len;
+    return add_str_component(path, len, n_backticks);
+}
+
 /* So this should somehow give us a 'JPR' object.. */
 int
 Path::parse(const char *path, size_t len)
 {
     /* Path's buffers cannot change */
-    const char *c, *last, *path_end = path + len;
-    int in_escape = 0;
-    int in_bracket = 0;
-    int n_backtick = 0;
-    int rv;
-
     ncomponents = 0;
     has_negix = false;
     add(JSONSL_PATH_ROOT);
 
-    if (!len) {
-        return 0;
-    }
+    size_t ii = 0;
 
-    for (last = c = path; c < path_end; c++) {
-        if (*c == '`') {
-            if (in_bracket) {
-                return JSONSL_ERROR_JPR_BADPATH; /* no ` allowed in [] */
-            }
+    while (ii < len) {
+        size_t to_adv = 0;
+        int rv;
 
-            n_backtick++;
-            if (c < path_end-1 && c[1] == '`') {
-                n_backtick++, c++;
-                continue;
-            } else if (in_escape) {
-                in_escape = 0;
-            } else {
-                in_escape = 1;
-            }
-            continue;
-        }
+        if (path[ii] == '[') {
+            rv = parse_bracket(path + ii, len-ii, &to_adv);
+            if (rv == 0) {
+                ii += to_adv;
+                if (ii == len) {
+                    // Last character. Will implicitly break
 
-        if (in_escape) {
-            continue;
-        }
+                } else if (path[ii] == '[') {
+                    // Parse it on the next iteration
 
-        int comp_added = 0;
-
-        if (*c == '[') {
-            if (in_bracket) {
-                return JSONSL_ERROR_JPR_BADPATH;
-            }
-            in_bracket = 1;
-
-            /* There's a leading string portion, e.g. "foo[0]". Parse foo first */
-            if (c-last) {
-                rv = add_str_component(last, c-last, n_backtick);
-                comp_added = 1;
-            } else {
-                last = c + 1; /* Shift ahead to avoid the '[' */
-            }
-
-        } else if (*c == ']') {
-            if (!in_bracket) {
-                return JSONSL_ERROR_JPR_BADPATH;
-            } else {
-                /* Add numeric component here */
-                in_bracket = 0;
-                rv = add_num_component(last, c-last);
-                comp_added = 1;
-                in_bracket = 0;
-                /* Check next character is valid */
-                const char *tmpnext = c + 1;
-                if (tmpnext != path_end && *tmpnext != '[' && *tmpnext != '.') {
+                } else if (path[ii] == '.') {
+                    // Skip another character. Ignore the '.'
+                    ii++;
+                } else {
                     return JSONSL_ERROR_JPR_BADPATH;
                 }
             }
-        } else if (*c == '.') {
-            rv = add_str_component(last, c-last, n_backtick);
-            comp_added = 1;
+        } else {
+            rv = parse_string(path + ii, len - ii, &to_adv);
+            ii += to_adv;
         }
 
-        if (comp_added) {
-            if (rv != 0) {
-                return rv;
-            } else {
-                if (*c == ']' && c + 1 < path_end && c[1] == '.') {
-                    c++; /* Skip over the following '.' */
-                }
-                last = c + 1;
-                n_backtick = 0;
-            }
+        if (rv != 0) {
+            return rv;
         }
     }
-
-    if (c-last) {
-        return add_str_component(last, c-last, n_backtick);
-    } else {
-        return 0;
-    }
+    return JSONSL_ERROR_SUCCESS;
 }
 
 Path::Path() : PathComponentInfo(components_s, 0) {
