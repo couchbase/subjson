@@ -825,7 +825,7 @@ TEST_F(OpTests, testArrayInsert) {
 
     // Insert not using array syntax
     rv = runOp(Command::ARRAY_INSERT, "[0].anything", "null");
-    ASSERT_EQ(Error::PATH_MISMATCH, rv) << "Using non-array parent in path fails";
+    ASSERT_EQ(Error::PATH_EINVAL, rv) << "Using non-array parent in path fails";
 
     doc = "{}";
     op.set_doc(doc);

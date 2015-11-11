@@ -436,7 +436,7 @@ Operation::do_insert()
 {
     auto& lastcomp = m_path->get_component(m_path->size()-1);
     if (!lastcomp.is_arridx) {
-        return Error::PATH_MISMATCH;
+        return Error::PATH_EINVAL;
     }
     if (lastcomp.is_neg) {
         // Negative paths are invalid for insert operations
