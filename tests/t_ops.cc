@@ -924,3 +924,36 @@ TEST_F(OpTests, testEscapedJson)
 
     ASSERT_EQ(Error::PATH_EINVAL, runOp(Command::GET, "\"missing.quote"));
 }
+
+TEST_F(OpTests, testUpsertArrayIndex)
+{
+    // This test verifies some corner cases where there is a missing
+    // array index which would normally be treated like a dictionary.
+    // Ensure that we never automatically add an array index without
+    // explicit array operations.
+
+    string doc = "{\"array\":[null]}";
+    Error rv;
+    op.set_doc(doc);
+
+    rv = runOp(Command::DICT_UPSERT, "array[0]", "true");
+    ASSERT_EQ(Error::PATH_EINVAL, rv);
+
+    rv = runOp(Command::DICT_UPSERT, "array[1]", "true");
+    ASSERT_EQ(Error::PATH_EINVAL, rv);
+
+    rv = runOp(Command::DICT_UPSERT, "array[-1]", "true");
+    ASSERT_EQ(Error::PATH_EINVAL, rv);
+
+    rv = runOp(Command::ARRAY_APPEND_P, "array[1]", "true");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    rv = runOp(Command::ARRAY_APPEND_P, "array[2]", "true");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    rv = runOp(Command::ARRAY_ADD_UNIQUE_P, "array[2]", "true");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    rv = runOp(Command::COUNTER_P, "array[1]", "100");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+}

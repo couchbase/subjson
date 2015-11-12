@@ -172,6 +172,10 @@ Operation::do_remove()
 Error
 Operation::do_store_dict()
 {
+    // Check that the last element is not an array first.
+    if (m_optype != Command::REPLACE && path()[path().size()-1].is_arridx) {
+        return Error::PATH_EINVAL;
+    }
     if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
         if (m_optype == Command::REPLACE) {
             // Nothing to replace
@@ -272,6 +276,10 @@ Operation::do_mkdir_p(MkdirPMode mode)
     /* Insert the first item. This is a dictionary key without any object
      * wrapper: */
     const Path::Component* comp = &m_path->get_component(m_match.match_level);
+    if (comp->is_arridx) {
+        // If it's *not* a dictionary key, don't insert it!
+        return Error::PATH_ENOENT;
+    }
     m_result->m_bkbuf += '"';
     m_result->m_bkbuf.append(comp->pstr, comp->len);
     m_result->m_bkbuf += "\":";
