@@ -846,6 +846,8 @@ Error::description() const
         return "String is not a JSON number";
     case Error::VALUE_EZERODELTA:
         return "Delta value is zero";
+    case Error::DOC_ETOODEEP:
+        return "Document is too deep to parse";
     default:
         return "Unknown error code";
     }
