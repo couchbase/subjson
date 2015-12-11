@@ -663,9 +663,6 @@ validate_callback(jsonsl_t jsn, jsonsl_action_t action,
         ctx->rootcount++;
 
     } else if (state->level == 2 && action == JSONSL_ACTION_PUSH) {
-        if (action != JSONSL_ACTION_PUSH) {
-            return;
-        }
         if (ctx->flags & Validator::VALUE_PRIMITIVE) {
             if (JSONSL_STATE_IS_CONTAINER(state)) {
                 ctx->err = Validator::ENOTPRIMITIVE;
