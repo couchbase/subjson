@@ -241,7 +241,9 @@ typedef enum {
 /* No leading root */ \
     X(JPR_NOROOT) \
 /* Allocation failure */ \
-    X(ENOMEM)
+    X(ENOMEM) \
+/* Invalid unicode codepoint detected (in case of escapes) */ \
+    X(INVALID_CODEPOINT)
 
 typedef enum {
     JSONSL_ERROR_SUCCESS = 0,
@@ -763,6 +765,10 @@ struct jsonsl_jpr_st {
     struct jsonsl_jpr_component_st *components;
     size_t ncomponents;
 
+    /**Type of the match to be expected. If nonzero, will be compared against
+     * the actual type */
+    unsigned match_type;
+
     /** Base of allocated string for components */
     char *basestr;
 
@@ -770,8 +776,6 @@ struct jsonsl_jpr_st {
     char *orig;
     size_t norig;
 };
-
-
 
 /**
  * Create a new JPR object.
@@ -814,6 +818,38 @@ jsonsl_jpr_match_t jsonsl_jpr_match(jsonsl_jpr_t jpr,
                                     unsigned int parent_type,
                                     unsigned int parent_level,
                                     const char *key, size_t nkey);
+
+/**
+ * Alternate matching algorithm. This matching algorithm does not use
+ * JSONPointer but relies on a more structured searching mechanism. It
+ * assumes that there is a clear distinction between array indices and
+ * object keys. In this case, the jsonsl_path_component_st::ptype should
+ * be set to @ref JSONSL_PATH_NUMERIC for an array index (the
+ * jsonsl_path_comonent_st::is_arridx field will be removed in a future
+ * version).
+ *
+ * @param jpr The path
+ * @param parent The parent structure. Can be NULL if this is the root object
+ * @param child The child structure. Should not be NULL
+ * @param key Object key, if an object
+ * @param nkey Length of object key
+ * @return Status constant if successful
+ *
+ * @note
+ * For successful matching, both the key and the path itself should be normalized
+ * to contain 'proper' utf8 sequences rather than utf16 '\uXXXX' escapes. This
+ * should currently be done in the application. Another version of this function
+ * may use a temporary buffer in such circumstances (allocated by the application).
+ *
+ * Since this function also checks the state of the child, it should only
+ * be called on PUSH callbacks, and not POP callbacks
+ */
+JSONSL_API
+jsonsl_jpr_match_t
+jsonsl_path_match(jsonsl_jpr_t jpr,
+                  const struct jsonsl_state_st *parent,
+                  const struct jsonsl_state_st *child,
+                  const char *key, size_t nkey);
 
 
 /**
@@ -892,6 +928,13 @@ const char *jsonsl_strmatchtype(jsonsl_jpr_match_t match);
  * to escape a '/' - however this may also be desired behavior. the JSON
  * spec is not clear on this, and therefore jsonsl leaves it up to you.
  *
+ * Additionally, sometimes you may wish to _normalize_ JSON. This is specifically
+ * true when dealing with 'u-escapes' which can be expressed perfectly fine
+ * as utf8. One use case for normalization is JPR string comparison, in which
+ * case two effectively equivalent strings may not match because one is using
+ * u-escapes and the other proper utf8. To normalize u-escapes only, pass in
+ * an empty `toEscape` table, enabling only the `u` index.
+ *
  * @param in The input string.
  * @param out An allocated output (should be the same size as in)
  * @param len the size of the buffer
@@ -908,6 +951,19 @@ const char *jsonsl_strmatchtype(jsonsl_jpr_match_t match);
  * encountered.
  *
  * @return The effective size of the output buffer.
+ *
+ * @note
+ * This function now encodes the UTF8 equivalents of utf16 escapes (i.e.
+ * 'u-escapes'). Previously this would encode the escapes as utf16 literals,
+ * which while still correct in some sense was confusing for many (especially
+ * considering that the inputs were variations of char).
+ *
+ * @note
+ * The output buffer will never be larger than the input buffer, since
+ * standard escape sequences (i.e. '\t') occupy two bytes in the source
+ * but only one byte (when unescaped) in the output. Likewise u-escapes
+ * (i.e. \uXXXX) will occupy six bytes in the source, but at the most
+ * two bytes when escaped.
  */
 JSONSL_API
 size_t jsonsl_util_unescape_ex(const char *in,
@@ -925,44 +981,6 @@ size_t jsonsl_util_unescape_ex(const char *in,
     jsonsl_util_unescape_ex(in, out, len, toEscape, NULL, err, NULL)
 
 #endif /* JSONSL_NO_JPR */
-
-/**
- * HERE BE CHARACTER TABLES!
- */
-#define JSONSL_CHARTABLE_string_nopass \
-/* 0x00 */ 1 /* <NUL> */, /* 0x00 */  \
-/* 0x01 */ 1 /* <SOH> */, /* 0x01 */  \
-/* 0x02 */ 1 /* <STX> */, /* 0x02 */  \
-/* 0x03 */ 1 /* <ETX> */, /* 0x03 */  \
-/* 0x04 */ 1 /* <EOT> */, /* 0x04 */  \
-/* 0x05 */ 1 /* <ENQ> */, /* 0x05 */  \
-/* 0x06 */ 1 /* <ACK> */, /* 0x06 */  \
-/* 0x07 */ 1 /* <BEL> */, /* 0x07 */  \
-/* 0x08 */ 1 /* <BS> */, /* 0x08 */  \
-/* 0x09 */ 1 /* <HT> */, /* 0x09 */  \
-/* 0x0a */ 1 /* <LF> */, /* 0x0a */  \
-/* 0x0b */ 1 /* <VT> */, /* 0x0b */  \
-/* 0x0c */ 1 /* <FF> */, /* 0x0c */  \
-/* 0x0d */ 1 /* <CR> */, /* 0x0d */  \
-/* 0x0e */ 1 /* <SO> */, /* 0x0e */  \
-/* 0x0f */ 1 /* <SI> */, /* 0x0f */  \
-/* 0x10 */ 1 /* <DLE> */, /* 0x10 */  \
-/* 0x11 */ 1 /* <DC1> */, /* 0x11 */  \
-/* 0x12 */ 1 /* <DC2> */, /* 0x12 */  \
-/* 0x13 */ 1 /* <DC3> */, /* 0x13 */  \
-/* 0x14 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x21 */  \
-/* 0x22 */ 1 /* <"> */, /* 0x22 */  \
-/* 0x23 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x42 */  \
-/* 0x43 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x5b */  \
-/* 0x5c */ 1 /* <\> */, /* 0x5c */  \
-/* 0x5d */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x7c */  \
-/* 0x7d */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x9c */  \
-/* 0x9d */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xbc */  \
-/* 0xbd */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xdc */  \
-/* 0xdd */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xfc */  \
-/* 0xfd */ 0,0 /* 0xfe */  \
-
-
 
 #ifdef __cplusplus
 }

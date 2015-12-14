@@ -95,6 +95,7 @@ static unsigned extract_special(unsigned);
 static int is_special_end(unsigned);
 static int is_allowed_whitespace(unsigned);
 static int is_allowed_escape(unsigned);
+static int is_simple_char(unsigned);
 static char get_escape_equiv(unsigned);
 
 JSONSL_API
@@ -141,7 +142,6 @@ void jsonsl_destroy(jsonsl_t jsn)
 
 #define FASTPARSE_EXHAUSTED 1
 #define FASTPARSE_BREAK 0
-static const int chrt_string_nopass[0x100] = { JSONSL_CHARTABLE_string_nopass };
 
 /*
  * This function is meant to accelerate string parsing, reducing the main loop's
@@ -158,33 +158,28 @@ static int
 jsonsl__str_fastparse(jsonsl_t jsn,
                       const jsonsl_uchar_t **bytes_p, size_t *nbytes_p)
 {
-    int exhausted = 1;
-    size_t nbytes = *nbytes_p;
     const jsonsl_uchar_t *bytes = *bytes_p;
-
-    for (; nbytes; nbytes--, bytes++) {
+    const jsonsl_uchar_t *end;
+    for (end = bytes + *nbytes_p; bytes != end; bytes++) {
         if (
 #ifdef JSONSL_USE_WCHAR
                 *bytes >= 0x100 ||
 #endif /* JSONSL_USE_WCHAR */
-                (!chrt_string_nopass[*bytes])) {
+                (is_simple_char(*bytes))) {
             INCR_METRIC(TOTAL);
             INCR_METRIC(STRINGY_INSIGNIFICANT);
         } else {
-            exhausted = 0;
-            break;
+            /* Once we're done here, re-calculate the position variables */
+            jsn->pos += (bytes - *bytes_p);
+            *nbytes_p -= (bytes - *bytes_p);
+            *bytes_p = bytes;
+            return FASTPARSE_BREAK;
         }
     }
 
     /* Once we're done here, re-calculate the position variables */
-    jsn->pos += (*nbytes_p - nbytes);
-    if (exhausted) {
-        return FASTPARSE_EXHAUSTED;
-    }
-
-    *nbytes_p = nbytes;
-    *bytes_p = bytes;
-    return FASTPARSE_BREAK;
+    jsn->pos += (bytes - *bytes_p);
+    return FASTPARSE_EXHAUSTED;
 }
 
 /* Functions exactly like str_fastparse, except it also accepts a 'state'
@@ -941,6 +936,78 @@ void jsonsl_jpr_destroy(jsonsl_jpr_t jpr)
     free(jpr);
 }
 
+/**
+ * Call when there is a possibility of a match, either as a final match or
+ * as a path within a match
+ * @param jpr The JPR path
+ * @param component Component corresponding to the current element
+ * @param prlevel The level of the *parent*
+ * @param chtype The type of the child
+ * @return Match status
+ */
+static jsonsl_jpr_match_t
+jsonsl__match_continue(jsonsl_jpr_t jpr,
+                       const struct jsonsl_jpr_component_st *component,
+                       unsigned prlevel, unsigned chtype)
+{
+    const struct jsonsl_jpr_component_st *next_comp = component + 1;
+    if (prlevel == jpr->ncomponents - 1) {
+        /* This is the match. Check the expected type of the match against
+         * the child */
+        if (jpr->match_type == 0 || jpr->match_type == chtype) {
+            return JSONSL_MATCH_COMPLETE;
+        } else {
+            return JSONSL_MATCH_TYPE_MISMATCH;
+        }
+    }
+    if (chtype == JSONSL_T_LIST) {
+        if (next_comp->ptype == JSONSL_PATH_NUMERIC) {
+            return JSONSL_MATCH_POSSIBLE;
+        } else {
+            return JSONSL_MATCH_TYPE_MISMATCH;
+        }
+    } else if (chtype == JSONSL_T_OBJECT) {
+        if (next_comp->ptype == JSONSL_PATH_NUMERIC) {
+            return JSONSL_MATCH_TYPE_MISMATCH;
+        } else {
+            return JSONSL_MATCH_POSSIBLE;
+        }
+    } else {
+        return JSONSL_MATCH_TYPE_MISMATCH;
+    }
+}
+
+JSONSL_API
+jsonsl_jpr_match_t
+jsonsl_path_match(jsonsl_jpr_t jpr,
+                  const struct jsonsl_state_st *parent,
+                  const struct jsonsl_state_st *child,
+                  const char *key, size_t nkey)
+{
+    const struct jsonsl_jpr_component_st *comp;
+    if (!parent) {
+        /* No parent. Return immediately since it's always a match */
+        return jsonsl__match_continue(jpr, jpr->components, 0, child->type);
+    }
+
+    comp = jpr->components + parent->level;
+
+    /* note that we don't need to verify the type of the match, this is
+     * always done through the previous call to jsonsl__match_continue.
+     * If we are in a POSSIBLE tree then we can be certain the types (at
+     * least at this level) are correct */
+    if (parent->type == JSONSL_T_OBJECT) {
+        if (comp->len != nkey || strncmp(key, comp->pstr, nkey) != 0) {
+            return JSONSL_MATCH_NOMATCH;
+        }
+    } else {
+        if (comp->idx != parent->nelem - 1) {
+            return JSONSL_MATCH_NOMATCH;
+        }
+    }
+    return jsonsl__match_continue(jpr, comp, parent->level, child->type);
+}
+
 JSONSL_API
 jsonsl_jpr_match_t
 jsonsl_jpr_match(jsonsl_jpr_t jpr,
@@ -1145,6 +1212,68 @@ const char *jsonsl_strmatchtype(jsonsl_jpr_match_t match)
 
 #endif /* JSONSL_WITH_JPR */
 
+static char *
+jsonsl__writeutf8(uint32_t pt, char *out)
+{
+    #define ADD_OUTPUT(c) *out = (char)(c); out++;
+
+    if (pt < 0x80) {
+        ADD_OUTPUT(pt);
+    } else if (pt < 0x800) {
+        ADD_OUTPUT((pt >> 6) | 0xC0);
+        ADD_OUTPUT((pt & 0x3F) | 0x80);
+    } else if (pt < 0x10000) {
+        ADD_OUTPUT((pt >> 12) | 0xE0);
+        ADD_OUTPUT(((pt >> 6) & 0x3F) | 0x80);
+        ADD_OUTPUT((pt & 0x3F) | 0x80);
+    } else {
+        ADD_OUTPUT((pt >> 18) | 0xF0);
+        ADD_OUTPUT(((pt >> 12) & 0x3F) | 0x80);
+        ADD_OUTPUT(((pt >> 6) & 0x3F) | 0x80);
+        ADD_OUTPUT((pt & 0x3F) | 0x80);
+    }
+    return out;
+    #undef ADD_OUTPUT
+}
+
+/* Thanks snej (https://github.com/mnunberg/jsonsl/issues/9) */
+static int
+jsonsl__digit2int(char ch) {
+    int d = ch - '0';
+    if ((unsigned) d < 10) {
+        return d;
+    }
+    d = ch - 'a';
+    if ((unsigned) d < 6) {
+        return d + 10;
+    }
+    d = ch - 'A';
+    if ((unsigned) d < 6) {
+        return d + 10;
+    }
+    return -1;
+}
+
+/* Assume 's' is at least 4 bytes long */
+static int
+jsonsl__get_uescape_16(const char *s)
+{
+    int ret = 0;
+    int cur;
+
+    #define GET_DIGIT(off) \
+        cur = jsonsl__digit2int(s[off]); \
+        if (cur == -1) { return -1; } \
+        ret |= (cur << (12 - (off * 4)));
+
+    GET_DIGIT(0);
+    GET_DIGIT(1);
+    GET_DIGIT(2);
+    GET_DIGIT(3);
+    #undef GET_DIGIT
+    return ret;
+}
+
 /**
  * Utility function to convert escape sequences
  */
@@ -1158,28 +1287,24 @@ size_t jsonsl_util_unescape_ex(const char *in,
                                const char **errat)
 {
     const unsigned char *c = (const unsigned char*)in;
-    int in_escape = 0;
-    size_t origlen = len;
-    /* difference between the length of the input buffer and the output buffer */
-    size_t ndiff = 0;
-    if (oflags) {
-        *oflags = 0;
+    char *begin_p = out;
+    unsigned oflags_s;
+    uint16_t last_codepoint = 0;
+
+    if (!oflags) {
+        oflags = &oflags_s;
     }
-#define UNESCAPE_BAIL(e,offset) \
-    *err = JSONSL_ERROR_##e; \
-    if (errat) { \
-        *errat = (const char*)(c+ (ptrdiff_t)(offset)); \
-    } \
-    return 0;
+    *oflags = 0;
+
+    #define UNESCAPE_BAIL(e,offset) \
+        *err = JSONSL_ERROR_##e; \
+        if (errat) { \
+            *errat = (const char*)(c+ (ptrdiff_t)(offset)); \
+        } \
+        return 0;
 
     for (; len; len--, c++, out++) {
-        unsigned int uesc_val[2];
-        if (in_escape) {
-            /* inside a previously ignored escape. Ignore */
-            in_escape = 0;
-            goto GT_ASSIGN;
-        }
-
+        int uescval;
         if (*c != '\\') {
             /* Not an escape, so we don't care about this */
             goto GT_ASSIGN;
@@ -1191,12 +1316,12 @@ size_t jsonsl_util_unescape_ex(const char *in,
         if (!is_allowed_escape(c[1])) {
             UNESCAPE_BAIL(ESCAPE_INVALID, 1)
         }
-        if ((toEscape[(unsigned char)c[1] & 0x7f] == 0 &&
+        if ((toEscape && toEscape[(unsigned char)c[1] & 0x7f] == 0 &&
                 c[1] != '\\' && c[1] != '"')) {
-            /* if we don't want to unescape this string, just continue with
-             * the escape flag set
-             */
-            in_escape = 1;
+            /* if we don't want to unescape this string, write the escape sequence to the output */
+            *out++ = *c++;
+            if (--len == 0)
+                break;
             goto GT_ASSIGN;
         }
 
@@ -1214,7 +1339,6 @@ size_t jsonsl_util_unescape_ex(const char *in,
                 *out = c[1];
             }
             len--;
-            ndiff++;
             c++;
             /* do not assign, just continue */
             continue;
@@ -1222,49 +1346,61 @@ size_t jsonsl_util_unescape_ex(const char *in,
 
         /* next == 'u' */
         if (len < 6) {
-            /* Need at least six characters:
-             * { [0] = '\\', [1] = 'u', [2] = 'f', [3] = 'f', [4] = 'f', [5] = 'f' }
-             */
-            UNESCAPE_BAIL(UESCAPE_TOOSHORT, -1);
+            /* Need at least six characters.. */
+            UNESCAPE_BAIL(UESCAPE_TOOSHORT, 2);
         }
 
-        if (sscanf((const char*)(c+2), "%02x%02x", uesc_val, uesc_val+1) != 2) {
-            /* We treat the sequence as two octets */
-            UNESCAPE_BAIL(UESCAPE_TOOSHORT, -1);
+        uescval = jsonsl__get_uescape_16((const char *)c + 2);
+        if (uescval == -1) {
+            UNESCAPE_BAIL(PERCENT_BADHEX, -1);
+        } else if (uescval == 0) {
+            UNESCAPE_BAIL(INVALID_CODEPOINT, 2);
         }
 
-        /* By now, we gobble up all the six bytes (current implied + 5 next
-         * characters), and have at least four missing bytes from the output
-         * buffer.
-         */
-        len -= 5;
-        c += 5;
+        if (last_codepoint) {
+            uint16_t w1 = last_codepoint, w2 = (uint16_t)uescval;
+            uint32_t cp;
 
-        ndiff += 4;
-        if (uesc_val[0] == 0) {
-            /* only one byte is extracted from the two
-             * possible octets. Increment the diff counter by one.
-             */
-            *out = uesc_val[1];
-            if (oflags && *(unsigned char*)out > 0x7f) {
-                *oflags |= JSONSL_SPECIALf_NONASCII;
+            if (uescval < 0xDC00 || uescval > 0xDFFF) {
+                UNESCAPE_BAIL(INVALID_CODEPOINT, -1);
             }
-            ndiff++;
+
+            cp = (w1 & 0x3FF) << 10;
+            cp |= (w2 & 0x3FF);
+            cp += 0x10000;
+
+            out = jsonsl__writeutf8(cp, out) - 1;
+            last_codepoint = 0;
+
+        } else if (uescval < 0xD800 || uescval > 0xDFFF) {
+            *oflags |= JSONSL_SPECIALf_NONASCII;
+            out = jsonsl__writeutf8(uescval, out) - 1;
+
+        } else if (uescval > 0xD7FF && uescval < 0xDC00) {
+            *oflags |= JSONSL_SPECIALf_NONASCII;
+            last_codepoint = (uint16_t)uescval;
+            out--;
         } else {
-            *(out++) = uesc_val[0];
-            *out = uesc_val[1];
-            if (oflags && (uesc_val[0] > 0x7f || uesc_val[1] > 0x7f)) {
-                *oflags |= JSONSL_SPECIALf_NONASCII;
-            }
+            UNESCAPE_BAIL(INVALID_CODEPOINT, 2);
         }
+
+        /* Post uescape cleanup */
+        len -= 5; /* Gobble up 5 chars after 'u' */
+        c += 5;
         continue;
 
         /* Only reached by previous branches */
         GT_ASSIGN:
         *out = *c;
     }
+
+    if (last_codepoint) {
+        *err = JSONSL_ERROR_INVALID_CODEPOINT;
+        return 0;
+    }
+
     *err = JSONSL_ERROR_SUCCESS;
-    return origlen - ndiff;
+    return out - begin_p;
 }
 
 /**
@@ -1358,6 +1494,40 @@ static int Allowed_Whitespace[0x100] = {
         /* 0xe1 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 /* 0xfe */
 };
 
+static const int String_No_Passthrough[0x100] = {
+        /* 0x00 */ 1 /* <NUL> */, /* 0x00 */
+        /* 0x01 */ 1 /* <SOH> */, /* 0x01 */
+        /* 0x02 */ 1 /* <STX> */, /* 0x02 */
+        /* 0x03 */ 1 /* <ETX> */, /* 0x03 */
+        /* 0x04 */ 1 /* <EOT> */, /* 0x04 */
+        /* 0x05 */ 1 /* <ENQ> */, /* 0x05 */
+        /* 0x06 */ 1 /* <ACK> */, /* 0x06 */
+        /* 0x07 */ 1 /* <BEL> */, /* 0x07 */
+        /* 0x08 */ 1 /* <BS> */, /* 0x08 */
+        /* 0x09 */ 1 /* <HT> */, /* 0x09 */
+        /* 0x0a */ 1 /* <LF> */, /* 0x0a */
+        /* 0x0b */ 1 /* <VT> */, /* 0x0b */
+        /* 0x0c */ 1 /* <FF> */, /* 0x0c */
+        /* 0x0d */ 1 /* <CR> */, /* 0x0d */
+        /* 0x0e */ 1 /* <SO> */, /* 0x0e */
+        /* 0x0f */ 1 /* <SI> */, /* 0x0f */
+        /* 0x10 */ 1 /* <DLE> */, /* 0x10 */
+        /* 0x11 */ 1 /* <DC1> */, /* 0x11 */
+        /* 0x12 */ 1 /* <DC2> */, /* 0x12 */
+        /* 0x13 */ 1 /* <DC3> */, /* 0x13 */
+        /* 0x14 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x21 */
+        /* 0x22 */ 1 /* <"> */, /* 0x22 */
+        /* 0x23 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x42 */
+        /* 0x43 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x5b */
+        /* 0x5c */ 1 /* <\> */, /* 0x5c */
+        /* 0x5d */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x7c */
+        /* 0x7d */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x9c */
+        /* 0x9d */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xbc */
+        /* 0xbd */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xdc */
+        /* 0xdd */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xfc */
+        /* 0xfd */ 0,0, /* 0xfe */
+};
+
 /**
  * Allowable two-character 'common' escapes:
  */
@@ -1427,6 +1597,9 @@ static int is_allowed_whitespace(unsigned c) {
 }
 static int is_allowed_escape(unsigned c) {
     return Allowed_Escapes[c & 0xff];
+}
+static int is_simple_char(unsigned c) {
+    return !String_No_Passthrough[c & 0xff];
 }
 
 /* Clean up all our macros! */
