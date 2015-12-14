@@ -73,14 +73,12 @@ TEST_F(PathTests, testNumericIndices) {
     ASSERT_EQ("array", getComponentString(ss, 1));
 
     ASSERT_EQ(JSONSL_PATH_NUMERIC, ss[2].ptype);
-    ASSERT_EQ(1, ss[2].is_arridx);
     ASSERT_EQ(1, getComponentNumber(ss, 2));
 
     ASSERT_EQ(JSONSL_PATH_STRING, ss[3].ptype);
     ASSERT_EQ("item", getComponentString(ss, 3));
 
     ASSERT_EQ(JSONSL_PATH_NUMERIC, ss[4].ptype);
-    ASSERT_EQ(1, ss[4].is_arridx);
     ASSERT_EQ(9, getComponentNumber(ss, 4));
 
     // Try again, using [] syntax

@@ -173,7 +173,8 @@ Error
 Operation::do_store_dict()
 {
     // Check that the last element is not an array first.
-    if (m_optype != Command::REPLACE && path()[path().size()-1].is_arridx) {
+    if (m_optype != Command::REPLACE &&
+            path()[path().size()-1].ptype == JSONSL_PATH_NUMERIC) {
         return Error::PATH_EINVAL;
     }
     if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
@@ -276,7 +277,7 @@ Operation::do_mkdir_p(MkdirPMode mode)
     /* Insert the first item. This is a dictionary key without any object
      * wrapper: */
     const Path::Component* comp = &m_path->get_component(m_match.match_level);
-    if (comp->is_arridx) {
+    if (comp->ptype == JSONSL_PATH_NUMERIC) {
         // If it's *not* a dictionary key, don't insert it!
         return Error::PATH_ENOENT;
     }
@@ -443,7 +444,7 @@ Error
 Operation::do_insert()
 {
     auto& lastcomp = m_path->get_component(m_path->size()-1);
-    if (!lastcomp.is_arridx) {
+    if (lastcomp.ptype != JSONSL_PATH_NUMERIC) {
         return Error::PATH_EINVAL;
     }
     if (lastcomp.is_neg) {

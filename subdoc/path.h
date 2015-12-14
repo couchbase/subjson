@@ -34,6 +34,7 @@ public:
         basestr = NULL;
         orig = NULL;
         norig = 0;
+        match_type = 0;
     }
 
     size_t size() const { return ncomponents; }

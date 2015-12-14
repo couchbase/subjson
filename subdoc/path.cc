@@ -103,7 +103,6 @@ Path::add_str_component(const char *component, size_t len, int n_backtick)
     Component& jpr_comp = add(JSONSL_PATH_STRING);
     jpr_comp.pstr = const_cast<char*>(component);
     jpr_comp.len = len;
-    jpr_comp.is_arridx = 0;
     jpr_comp.is_neg = 0;
     return 0;
 }
@@ -117,7 +116,6 @@ Path::add_array_index(long ixnum)
 
     Component& comp = add(JSONSL_PATH_NUMERIC);
     comp.len = 0;
-    comp.is_arridx = 1;
     comp.idx = ixnum;
     comp.pstr = NULL;
     if (ixnum == -1) {
@@ -302,7 +300,8 @@ Path::clear() {
     for (ii = 1; ii < size(); ii++) {
         Component& comp = get_component(ii);
         comp.pstr = NULL;
-        comp.is_arridx = 0;
+        comp.ptype = JSONSL_PATH_NONE;
+        comp.is_neg = 0;
     }
 
     m_cached.insert(m_cached.end(), m_used.begin(), m_used.end());

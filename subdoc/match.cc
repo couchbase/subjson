@@ -106,15 +106,6 @@ err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
     return 0;
 }
 
-// Updates the state to reflect information on the parent. This is used by
-// the subdoc code for insertion/deletion operations.
-static void
-update_possible(ParseContext *ctx, const struct jsonsl_state_st *state, const char *at)
-{
-    ctx->match->loc_deepest.at = at;
-    ctx->match->match_level = state->level;
-}
-
 static void
 unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     const jsonsl_char_t *at)
@@ -179,11 +170,6 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
 
 /* Make code a bit more readable */
 #define M_POSSIBLE JSONSL_MATCH_POSSIBLE
-#define M_NOMATCH JSONSL_MATCH_NOMATCH
-#define M_COMPLETE JSONSL_MATCH_COMPLETE
-#define IS_CONTAINER JSONSL_STATE_IS_CONTAINER
-
-
 
 static void
 push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
@@ -192,7 +178,6 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
     struct jsonsl_state_st *parent = jsonsl_last_state(jsn, st);
-    unsigned prtype = parent ? parent->type : JSONSL_T_UNKNOWN;
 
     if (st->type == JSONSL_T_HKEY) {
         ctx->set_hk_begin(st, at);
@@ -201,34 +186,19 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
 
     // If the parent is a match candidate
     if (parent == NULL || parent->mres == M_POSSIBLE) {
-        // Key is either the array offset or the dictionary key.
+        unsigned prtype = parent ? parent->type : JSONSL_T_UNKNOWN;
         size_t nkey;
         const char *key;
-        unsigned prlevel = parent ? parent->level : 0 ;
-        if (prtype == JSONSL_T_OBJECT) {
-            key = ctx->get_hk(nkey);
-        } else if (prtype == JSONSL_T_LIST) {
-            nkey = static_cast<size_t>(parent->nelem - 1);
-            key = NULL;
-        } else {
-            nkey = 0;
-            key = NULL;
-        }
+        key = ctx->get_hk(nkey);
 
         /* Run the match */
-        st->mres = jsonsl_jpr_match(ctx->jpr, prtype, prlevel, key, nkey);
-
-        // jsonsl's jpr is a bit laxer here. but in our case
-        // it's impossible for a primitive to result in a "possible" result,
-        // since a partial result should always mean a container
-        if (st->mres == M_POSSIBLE && IS_CONTAINER(st) == 0) {
-            st->mres = JSONSL_MATCH_TYPE_MISMATCH;
-        }
+        st->mres = jsonsl_path_match(ctx->jpr, parent, st, key, nkey);
 
         if (st->mres == JSONSL_MATCH_COMPLETE) {
             m->matchres = JSONSL_MATCH_COMPLETE;
             m->type = st->type;
-            update_possible(ctx, st, at);
+            m->loc_deepest.at = at;
+            m->match_level = st->level;
 
             if (prtype == JSONSL_T_OBJECT) {
                 m->has_key = true;
@@ -268,7 +238,8 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
 
         } else if (st->mres == JSONSL_MATCH_POSSIBLE) {
             // Update our depth thus far
-            update_possible(ctx, st, at);
+            m->match_level = st->level;
+            m->loc_deepest.at = at;
         } else if (st->mres == JSONSL_MATCH_TYPE_MISMATCH) {
             st->ignore_callback = 1;
             m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
@@ -440,21 +411,6 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
 
     m->type = state->type;
 
-    // Do some verification to ensure that the parent type matches its level.
-    // JPR won't do this for us, as it only analyzes one element at a time.
-    // TODO: Impelement this directly in jsonsl, to allow JPR to accept the
-    // child type!
-    auto *next_comp = &ctx->jpr->components[state->level];
-    if (next_comp->is_arridx) {
-        if (state->type != JSONSL_T_LIST) {
-            m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-        }
-    } else {
-        if (state->type != JSONSL_T_OBJECT) {
-            m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-        }
-    }
-
     // Is this the actual parent of the match?
     if (state->level == ctx->jpr->ncomponents-1) {
         m->immediate_parent_found = 1;
@@ -505,13 +461,6 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     while (cur_start < orig.size()) {
         size_t ii;
         int rv, is_last_neg = 0;
-
-        /* If the last match was not a list or an object,
-         * but we still need to descend, then throw an error now. */
-        if (last_start != value && type != JSONSL_T_LIST && type != JSONSL_T_OBJECT) {
-            matchres = JSONSL_MATCH_TYPE_MISMATCH;
-            return 0;
-        }
 
         for (ii = cur_start; ii < orig.size(); ii++) {
             /* Seek to the next negative index */
