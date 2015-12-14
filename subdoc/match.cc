@@ -22,69 +22,30 @@
 #include "jsonsl_header.h"
 #include "subdoc-api.h"
 #include "match.h"
-#include "uescape.h"
+#include "hkesc.h"
 #include "validate.h"
 #include "util.h"
 
 using namespace Subdoc;
 
 namespace {
-struct ParseContext {
+struct ParseContext : public HashKey {
     ParseContext(Match *match, Path::CompInfo *jpr) : jpr(jpr), match(match){
     }
 
     Path::CompInfo* jpr;
 
-    // Internal pointer/length pair used to hold the pointer of either the
-    // current key, or the unique array value (if in "unique" mode).
-    // These are actually accessed by get_hk()
-    const char *hkbuf_ = NULL;
-    unsigned hklen_ = 0;
-
-    // Internal flag set to true if the current key is actually found in
-    // 'hkstr' (in which case `hkstr` contains the properly unescaped version
-    // of the key).
-    bool hkesc = false;
-
     Match *match;
 
-    // Contains the unescaped key (if the original contained u-escapes)
-    std::string hkstr;
+    // Internal pointer/length pair used to hold the pointer of the
+    // unique array value (if in "unique" mode).
+    const char *uniquebuf = NULL;
 
     void set_unique_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
-        hkbuf_ = at;
+        uniquebuf = at;
     }
 
-    const char *get_unique() const { return hkbuf_; }
-
-    void set_hk_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
-        hkbuf_ = at + 1;
-    }
-
-    void set_hk_end(const jsonsl_state_st *state) {
-        hklen_ = state->pos_cur - (state->pos_begin + 1);
-
-        if (!state->nescapes) {
-            hkesc = false;
-        } else {
-            hkstr.clear();
-            hkesc = true;
-            UescapeConverter::convert(hkbuf_, hklen_, hkstr);
-        }
-    }
-    const char *get_hk(size_t& nkey) const {
-        if (!hkesc) {
-            nkey = hklen_;
-            return hkbuf_;
-        } else {
-            nkey = hkstr.size();
-            return hkstr.c_str();
-        }
-    }
-    void set_hk_loc(Loc& loc) {
-        loc.at = hkbuf_ - 1;
-        loc.length = hklen_ + 2;
-    }
+    const char *get_unique() const { return uniquebuf; }
 };
 }
 
@@ -205,7 +166,7 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
 
                 // The beginning of the key (for "subdoc" purposes) actually
                 // _includes_ the opening and closing quotes
-                ctx->set_hk_loc(m->loc_key);
+                ctx->hk_rawloc(m->loc_key);
 
                 // I'm not sure if it's used.
                 m->position = static_cast<unsigned>((parent->nelem - 1) / 2);
