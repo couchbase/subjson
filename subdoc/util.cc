@@ -16,6 +16,8 @@
 */
 
 #include "util.h"
+#include <stdexcept>
+
 using namespace Subdoc;
 using std::string;
 
@@ -70,4 +72,15 @@ operator<<(ostream& os, const Subdoc::Error::Code& err) {
        << " (" << Subdoc::Error(err).description() << ")";
     return os;
 }
+}
+
+void
+Util::do_assert(const char *e, const char *func, const char *file,
+        int line)
+{
+    std::string ss;
+    ss.append("Assertion failed (").append(e).append(") ");
+    ss.append("function ").append(func).append(", ");
+    ss.append("file ").append(file).append(", line").append(std::to_string(line));
+    throw std::runtime_error(ss);
 }

@@ -21,11 +21,11 @@
 
 #include "operations.h"
 #include "validate.h"
+#include "util.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <string>
 #include <limits>
-#include <cassert>
 
 using Subdoc::Loc;
 using Subdoc::Error;
@@ -409,7 +409,7 @@ Operation::do_list_append()
     }
 
     // All other errors should be handled above
-    assert(m_match.matchres == JSONSL_MATCH_COMPLETE);
+    SUBDOC_ASSERT(m_match.matchres == JSONSL_MATCH_COMPLETE);
 
     // Incorrect terminal type!
     if (m_match.type != JSONSL_T_LIST) {

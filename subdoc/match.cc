@@ -24,7 +24,7 @@
 #include "match.h"
 #include "uescape.h"
 #include "validate.h"
-#include <assert.h>
+#include "util.h"
 
 using namespace Subdoc;
 
@@ -134,7 +134,7 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
 
     slen = st->pos_cur - st->pos_begin;
 
-    assert(st->level == m->match_level + 1);
+    SUBDOC_ASSERT(st->level == m->match_level + 1U);
 
     if (st->type == JSONSL_T_STRING) {
         slen++;
@@ -264,22 +264,22 @@ next_sibling_push_callback(jsonsl_t jsn, jsonsl_action_t action,
         // We can get a POP callback before a PUSH callback if the match
         // was the last child in the parent. In this case, we are being
         // invoked on a child, not a sibling.
-        assert(state->level == m->match_level - 1);
+        SUBDOC_ASSERT(state->level == m->match_level - 1U);
         parent = state;
 
     } else {
         parent = jsonsl_last_state(jsn, state);
     }
 
-    assert(ctx->match->matchres == JSONSL_MATCH_COMPLETE);
-    assert(ctx->match->extra_options == Match::GET_FOLLOWING_SIBLINGS);
+    SUBDOC_ASSERT(ctx->match->matchres == JSONSL_MATCH_COMPLETE);
+    SUBDOC_ASSERT(ctx->match->extra_options == Match::GET_FOLLOWING_SIBLINGS);
 
     if (parent != NULL && parent->mres == JSONSL_MATCH_POSSIBLE) {
         /* Is the immediate parent! */
         if (parent->type == JSONSL_T_OBJECT) {
             unsigned nobj_elem = static_cast<unsigned>(parent->nelem);
             if (action == JSONSL_ACTION_PUSH) {
-                assert(state->type == JSONSL_T_HKEY);
+                SUBDOC_ASSERT(state->type == JSONSL_T_HKEY);
                 nobj_elem++;
             }
             m->num_siblings = static_cast<unsigned>(nobj_elem / 2);
