@@ -194,6 +194,23 @@ TEST_F(MatchTests, testGetNumSiblings)
     ASSERT_TRUE(m.is_first());
 }
 
+TEST_F(MatchTests, testGetPosition)
+{
+    const char *klist[] = {
+            "key1", "subdict", "sublist", "nested_list",
+            "empty_list", "numbers", "empty"
+    };
+    size_t nkeys = sizeof klist / sizeof (const char *);
+
+    for (size_t ii = 0; ii < nkeys; ++ii) {
+        m.clear();
+        pth.parse(klist[ii]);
+        m.exec_match(json, pth, jsn);
+        ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+        ASSERT_EQ(ii, m.position);
+    }
+}
+
 // It's important that we test this at the Match level as well, even though
 // tests are already present at the 'Operation' and 'Path' level.
 TEST_F(MatchTests, testNegativeIndex)

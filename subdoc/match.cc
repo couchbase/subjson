@@ -165,9 +165,8 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
                 // The beginning of the key (for "subdoc" purposes) actually
                 // _includes_ the opening and closing quotes
                 ctx->hk_rawloc(m->loc_key);
+                m->position = static_cast<unsigned>(parent->nelem / 2) - 1;
 
-                // I'm not sure if it's used.
-                m->position = static_cast<unsigned>((parent->nelem - 1) / 2);
             } else if (prtype == JSONSL_T_LIST) {
                 // array[n]
                 m->position = static_cast<unsigned>(parent->nelem - 1);
