@@ -147,6 +147,7 @@ public:
     }
 
     bool empty() const { return length == 0; }
+    void clear() { at = NULL; length = 0; }
 
     std::string to_string() const {
         if (!empty()) {
