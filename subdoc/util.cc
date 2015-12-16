@@ -30,7 +30,7 @@ Util::match_match(const Match& m)
 string
 Util::match_key(const Match& m)
 {
-    if (m.has_key) {
+    if (m.has_key()) {
         return m.loc_key.to_string();
     } else {
         return string();

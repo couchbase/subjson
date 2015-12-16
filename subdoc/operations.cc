@@ -139,7 +139,7 @@ Operation::do_remove()
      */
 
     /* Remove the matches, starting from the beginning of the key */
-    if (m_match.has_key) {
+    if (!m_match.loc_key.empty()) {
         newdoc_at(0).end_at_begin(m_doc, m_match.loc_key, Loc::NO_OVERLAP);
     } else {
         newdoc_at(0).end_at_begin(m_doc, match_loc, Loc::NO_OVERLAP);

@@ -76,7 +76,7 @@ TEST_F(MatchTests, testArrayIndex)
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
     ASSERT_EQ("\"elem2\"", Util::match_match(m));
-    ASSERT_EQ(0, m.has_key);
+    ASSERT_FALSE(m.has_key());
 }
 
 TEST_F(MatchTests, testMismatchArrayAsDict)

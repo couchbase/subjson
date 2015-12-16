@@ -92,8 +92,9 @@ public:
         return num_siblings == 0;
     }
 
-    /** Match is a dictionary value. #loc_key contains the key */
-    unsigned char has_key;
+    bool has_key() const {
+        return !loc_key.empty();
+    }
 
     /**
      * Response flag indicating that the match's immediate parent was found,
