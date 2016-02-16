@@ -382,9 +382,83 @@ Operation::do_list_prepend()
     return Error::SUCCESS;
 }
 
+static bool
+is_json_ws(char c) {
+    // (i.e. non-whitespace) character. RFC 7159 says:
+    // Insignificant whitespace is allowed before or after any of the six
+    // structural characters.
+    //
+    //   ws = *(
+    //           %x20 /              ; Space
+    //           %x09 /              ; Horizontal tab
+    //           %x0A /              ; Line feed or New line
+    //           %x0D )              ; Carriage return
+
+    switch (c) {
+    case 0x20:
+    case 0x09:
+    case 0x0A:
+    case 0x0D:
+        return true;
+    default:
+        return false;
+    }
+}
+
+Error
+Operation::do_empty_append()
+{
+    // Empty path. Do a custom parse/insertion
+    const char *a_end = (m_doc.at + m_doc.length) - 1;
+
+    // Find terminating bracket
+    for (; a_end != m_doc.at && isspace(*a_end); --a_end) {
+    }
+
+    if (a_end == m_doc.at || *a_end != ']') {
+        switch (*a_end) {
+        case ']':
+        case '}':
+            return Error::PATH_MISMATCH;
+        default:
+            return Error::DOC_NOTJSON;
+        }
+    }
+
+    // Find last comma, element, or beginning of the array.
+    // Rather than fully parse json, simply seek to the last significant
+    // JSON character
+    const char *e_comma = a_end - 1;
+    for (; e_comma != m_doc.at && is_json_ws(*e_comma); --e_comma) {
+    }
+
+    newdoc_at(0).assign(m_doc.at, (e_comma - m_doc.at) + 1);
+
+    if (*e_comma == '[' || *e_comma == ',') {
+        newdoc_at(1) = m_userval;
+        newdoc_at(2).assign(a_end, 1);
+        m_result->m_newlen = 3;
+    } else if (!isspace(*e_comma)) {
+        newdoc_at(1) = loc_COMMA;
+        newdoc_at(2) = m_userval;
+        newdoc_at(3).assign(a_end, 1);
+        m_result->m_newlen = 4;
+    } else {
+        // Couldn't find a non-space, ',' or '[' character
+        return Error::DOC_NOTJSON;
+    }
+    return Error::SUCCESS;
+}
+
 Error
 Operation::do_list_append()
 {
+
+    if (m_path->size() == 1 && m_optype.base() == Command::ARRAY_APPEND) {
+        // i.e. only the root element
+        return do_empty_append();
+    }
+
     Error rv;
 
     // Find the match itself, no magic needed!

@@ -53,6 +53,10 @@ OpTests::getNewDoc()
 
     // validate
     int rv = Validator::validate(ret, op.parser());
+    std::stringstream ss;
+    if (rv != JSONSL_ERROR_SUCCESS) {
+        Util::dump_newdoc(res);
+    }
     EXPECT_EQ(JSONSL_ERROR_SUCCESS, rv)
         << Util::jsonerr(static_cast<jsonsl_error_t>(rv));
     return ret;
@@ -956,4 +960,91 @@ TEST_F(OpTests, testUpsertArrayIndex)
 
     rv = runOp(Command::COUNTER_P, "array[1]", "100");
     ASSERT_EQ(Error::PATH_ENOENT, rv);
+}
+
+TEST_F(OpTests, testRootAppend)
+{
+    // Tests append on an empty path, which should use an optimized codebase
+    string doc("[]");
+    Error rv;
+    op.set_doc(doc);
+
+    rv = runOp(Command::ARRAY_APPEND, "", "1");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+
+    rv = runOp(Command::GET, "[0]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("1", Util::match_match(op.match()));
+
+    // Perform add_unique again
+    rv = runOp(Command::ARRAY_ADD_UNIQUE, "", "1");
+    ASSERT_EQ(Error::DOC_EEXISTS, rv);
+
+    rv = runOp(Command::ARRAY_APPEND, "", "2");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+    rv = runOp(Command::GET, "[1]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("2", Util::match_match(op.match()));
+
+    // Try one more
+    rv = runOp(Command::ARRAY_APPEND, "", "3");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+    rv = runOp(Command::GET, "[2]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("3", Util::match_match(op.match()));
+
+    // See how well we handle errors
+    doc = "nonjson";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "", "123");
+    ASSERT_EQ(Error::DOC_NOTJSON, rv);
+
+    doc = "{}";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "", "123");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
+
+    doc = "[[]]";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "[0]", "123");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+    rv = runOp(Command::GET, "[0][0]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("123", Util::match_match(op.match()));
+
+    doc = "[0, {\"1\": 1}]";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "", "123");
+    ASSERT_TRUE(rv.success());
+    getAssignNewDoc(doc);
+    rv = runOp(Command::GET, "[-1]");
+    ASSERT_TRUE(rv.success());
+    ASSERT_EQ("123", Util::match_match(op.match()));
+
+    // Because we don't parse the array, ]] is valid.
+    /*
+    doc = "]]";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "", "123");
+    ASSERT_EQ(Error::DOC_NOTJSON, rv);
+    */
+
+    // This won't work either because we don't validate against terminating
+    // JSON tokens.
+    /*
+    doc = "{]";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "", "123");
+    ASSERT_EQ(Error::DOC_NOTJSON, rv);
+    */
+
+    // This follows the same codepath as "normal", but good to verify just
+    // in case
+    op.set_doc("[]");
+    rv = runOp(Command::ARRAY_APPEND, "", "notjson");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 }

@@ -115,6 +115,7 @@ private:
     Error do_mkdir_p(MkdirPMode mode);
     Error insert_singleton_element();
     Error do_list_append();
+    Error do_empty_append();
     Error do_list_prepend();
     Error do_arith_op();
     Error do_insert();
