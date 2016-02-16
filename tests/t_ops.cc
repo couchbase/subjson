@@ -191,7 +191,7 @@ TEST_F(OpTests, testReplaceArrayDeep)
     rv = runOp(Command::REPLACE, one_minus_max_path.c_str(), "[3,4]");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(newdoc);
-    rv = runOp(SUBDOC_CMD_GET, one_minus_max_path.c_str());
+    rv = runOp(Command::GET, one_minus_max_path.c_str());
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("[3,4]", Util::match_match(op.match()));
 

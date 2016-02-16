@@ -78,22 +78,6 @@ public:
     const char *description() const;
 };
 
-// Provide definitions for older code (temporary)
-#define SUBDOC_XERR(X) \
-    X(SUCCESS) \
-    X(PATH_ENOENT) \
-    X(PATH_MISMATCH) \
-    X(PATH_EINVAL) \
-    X(DOC_NOTJSON) \
-    X(DOC_EEXISTS) \
-    X(PATH_E2BIG) \
-    X(NUM_E2BIG) \
-    X(DELTA_E2BIG) \
-    X(VALUE_CANTINSERT) \
-    X(DOC_ETOODEEP) \
-    X(GLOBAL_UNKNOWN_COMMAND) \
-    X(GLOBAL_EINVAL)
-
 /**@name Paths
  * A Sub-Document _PATH_ is a path to the container of the item you want to
  * access. Every JSON primitive is stored either as an array element or a
@@ -216,35 +200,7 @@ public:
     Code base() const { return static_cast<Code>(code & ~FLAG_MKDIR_P); }
 
 };
-
-#define SUBDOC_XOPCODES(X) \
-    X(GET) \
-    X(EXISTS) \
-    X(REPLACE) \
-    X(REMOVE) \
-    X(DICT_UPSERT) \
-    X(DICT_UPSERT_P) \
-    X(DICT_ADD) \
-    X(DICT_ADD_P) \
-    X(ARRAY_PREPEND) \
-    X(ARRAY_PREPEND_P) \
-    X(ARRAY_APPEND) \
-    X(ARRAY_APPEND_P) \
-    X(ARRAY_ADD_UNIQUE) \
-    X(ARRAY_ADD_UNIQUE_P) \
-    X(COUNTER) \
-    X(COUNTER_P)
 /**@}*/
 }
-
-#define X(b) static const Subdoc::Error::Code SUBDOC_STATUS_##b = Subdoc::Error::b;
-SUBDOC_XERR(X)
-#undef X
-
-static const int SUBDOC_CMD_FLAG_MKDIR_P = 0x80;
-#define X(b) static const Subdoc::Command::Code SUBDOC_CMD_##b = Subdoc::Command::b;
-SUBDOC_XOPCODES(X)
-#undef X
-static const Subdoc::Command::Code SUBDOC_CMD_DELETE = SUBDOC_CMD_REMOVE;
 
 #endif
