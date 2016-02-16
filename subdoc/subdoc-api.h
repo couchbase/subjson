@@ -43,8 +43,10 @@ public:
         PATH_E2BIG,
         /**The number to increment was too big (could not fit in an int64_t) */
         NUM_E2BIG,
-        /**Delta is too big (bigger than INT64_MAX) */
-        DELTA_E2BIG,
+        /**Combining the delta with the number would cause an over/underflow*/
+        DELTA_OVERFLOW,
+        /**Delta is either not a number, 0, or not within range of int64 */
+        DELTA_EINVAL,
         /**Invalid value for insertion. Inserting this value would invalidate
          * the JSON document */
         VALUE_CANTINSERT,
@@ -56,12 +58,6 @@ public:
 
         /** Inserting the value would cause the document to be too deep */
         VALUE_ETOODEEP,
-
-        /** Value passed is not a number */
-        VALUE_EBADNUMBER,
-
-        /** Was passed a delta of 0 */
-        VALUE_EZERODELTA,
 
         /* MEMCACHED ERROR CODES */
         GLOBAL_UNKNOWN_COMMAND,

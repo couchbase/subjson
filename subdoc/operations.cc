@@ -524,19 +524,19 @@ parse_int64(const Loc& orig, int64_t& outval)
     if (*cur == '-') {
         cur++;
         if (!--n) {
-            return Error::VALUE_EBADNUMBER;
+            return Error::DELTA_EINVAL;
         }
     }
     if (*cur == '0') {
         // Can't start with a zero. It's either a leading zero or an empty
         // delta
-        return Error::VALUE_EZERODELTA;
+        return Error::DELTA_EINVAL;
     }
 
     outval = 0;
     for (size_t ii = 0; ii < n; ii++) {
         if (!isdigit(cur[ii])) {
-            return Error::VALUE_EBADNUMBER; // Not a number!
+            return Error::DELTA_EINVAL; // Not a number!
         }
         // Get the numeric value of the digit, with '0' being the lowest
         // value digit character in the ascii table, and with digits appearing
@@ -546,7 +546,7 @@ parse_int64(const Loc& orig, int64_t& outval)
         if (newval < static_cast<uint64_t>(outval) ||
                 newval > std::numeric_limits<int64_t>::max()) {
             // mismatch
-            return Error::DELTA_E2BIG;
+            return Error::DELTA_EINVAL;
         }
         outval = static_cast<int64_t>(newval);
     }
@@ -596,11 +596,11 @@ Operation::do_arith_op()
              * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
             if (delta >= 0 && numres >= 0) {
                 if (std::numeric_limits<int64_t>::max() - delta < numres) {
-                    return Error::DELTA_E2BIG;
+                    return Error::DELTA_OVERFLOW;
                 }
             } else if (delta < 0 && numres < 0) {
                 if (delta < std::numeric_limits<int64_t>::min() - numres) {
-                    return Error::DELTA_E2BIG;
+                    return Error::DELTA_OVERFLOW;
                 }
             }
 
@@ -829,8 +829,10 @@ Error::description() const
         return "The path is too big";
     case Error::NUM_E2BIG:
         return "The number specified by the path is too big";
-    case Error::DELTA_E2BIG:
-        return "The combination of the existing number and the delta will result in an underflow or overflow";
+    case Error::DELTA_EINVAL:
+        return "Invalid delta: Either not a number, 0, or not within int64 range";
+    case Error::DELTA_OVERFLOW:
+        return "Performing the counter operation would result in an underflow or overflow";
     case Error::VALUE_CANTINSERT:
         return "The new value cannot be inserted in the context of the path, as it would invalidate the JSON";
     case Error::VALUE_EMPTY:
@@ -843,10 +845,6 @@ Error::description() const
         return "Operation not implemented";
     case Error::GLOBAL_UNKNOWN_COMMAND:
         return "Unrecognized command code";
-    case Error::VALUE_EBADNUMBER:
-        return "String is not a JSON number";
-    case Error::VALUE_EZERODELTA:
-        return "Delta value is zero";
     case Error::DOC_ETOODEEP:
         return "Document is too deep to parse";
     default:

@@ -527,11 +527,11 @@ TEST_F(OpTests, testBadNumFormat)
     string doc = "{}";
     op.set_doc(doc);
 
-    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "bad"));
-    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "3.14"));
-    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "-"));
-    ASSERT_EQ(Error::VALUE_EBADNUMBER, runOp(Command::COUNTER_P, "pth", "43f"));
-    ASSERT_EQ(Error::VALUE_EZERODELTA, runOp(Command::COUNTER_P, "pth", "0"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "bad"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "3.14"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "-"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "43f"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "0"));
 }
 
 TEST_F(OpTests, testNumericLimits)
@@ -549,7 +549,7 @@ TEST_F(OpTests, testNumericLimits)
     op.set_doc(one_minus_max);
 
     rv = runOp(Command::COUNTER, "counter", "2");
-    ASSERT_EQ(Error::DELTA_E2BIG, rv);
+    ASSERT_EQ(Error::DELTA_OVERFLOW, rv);
 
     // Same for int64_t::min() - 1 and decrement.
     const int64_t min = std::numeric_limits<int64_t>::min();
@@ -564,7 +564,7 @@ TEST_F(OpTests, testNumericLimits)
     op.set_doc(one_plus_min);
 
     rv = runOp(Command::COUNTER, "counter", "-2");
-    ASSERT_EQ(Error::DELTA_E2BIG, rv);
+    ASSERT_EQ(Error::DELTA_OVERFLOW, rv);
 }
 
 TEST_F(OpTests, testValueValidation)
