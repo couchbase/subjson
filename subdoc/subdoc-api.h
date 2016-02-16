@@ -28,46 +28,46 @@ namespace Subdoc {
 class Error {
 public:
     enum Code {
-        SUCCESS = 0x00, /* PROTOCOL_BINARY_RESPONSE_SUCCESS*/
+        SUCCESS = 0, /* PROTOCOL_BINARY_RESPONSE_SUCCESS*/
         /** Document exists, but the given path was not found in the document */
-        PATH_ENOENT = 0x501,
+        PATH_ENOENT,
         /** There was a conflict between the data and the path */
-        PATH_MISMATCH = 0x502,
+        PATH_MISMATCH,
         /** The path is not a valid path (i.e. does not parse correctly) */
-        PATH_EINVAL = 0x503,
+        PATH_EINVAL,
         /** The document reference exists, but is not JSON */
-        DOC_NOTJSON = 0x504,
+        DOC_NOTJSON,
         /**The requested operation required the value did not already exist, but it exists */
-        DOC_EEXISTS = 0x505,
+        DOC_EEXISTS,
         /**The path requested is too long/deep to traverse */
-        PATH_E2BIG = 0x506,
+        PATH_E2BIG,
         /**The number to increment was too big (could not fit in an int64_t) */
-        NUM_E2BIG = 0x507,
+        NUM_E2BIG,
         /**Delta is too big (bigger than INT64_MAX) */
-        DELTA_E2BIG = 0x508,
+        DELTA_E2BIG,
         /**Invalid value for insertion. Inserting this value would invalidate
          * the JSON document */
-        VALUE_CANTINSERT = 0x509,
+        VALUE_CANTINSERT,
         /** Document too deep to parse */
-        DOC_ETOODEEP = 0x50A,
+        DOC_ETOODEEP,
 
         /** Missing a value */
-        VALUE_EMPTY = 0x50B,
+        VALUE_EMPTY,
 
         /** Inserting the value would cause the document to be too deep */
-        VALUE_ETOODEEP = 0x50C,
+        VALUE_ETOODEEP,
 
         /** Value passed is not a number */
-        VALUE_EBADNUMBER = 0x50D,
+        VALUE_EBADNUMBER,
 
         /** Was passed a delta of 0 */
-        VALUE_EZERODELTA = 0x50E,
+        VALUE_EZERODELTA,
 
         /* MEMCACHED ERROR CODES */
-        GLOBAL_UNKNOWN_COMMAND = 0x81,
-        GLOBAL_ENOMEM = 0x82,
-        GLOBAL_ENOSUPPORT = 0x83,
-        GLOBAL_EINVAL = 0x04,
+        GLOBAL_UNKNOWN_COMMAND,
+        GLOBAL_ENOMEM,
+        GLOBAL_ENOSUPPORT,
+        GLOBAL_EINVAL,
     };
 
     Code m_code;
