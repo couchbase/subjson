@@ -60,10 +60,7 @@ public:
         VALUE_ETOODEEP,
 
         /* MEMCACHED ERROR CODES */
-        GLOBAL_UNKNOWN_COMMAND,
-        GLOBAL_ENOMEM,
         GLOBAL_ENOSUPPORT,
-        GLOBAL_EINVAL,
     };
 
     Code m_code;

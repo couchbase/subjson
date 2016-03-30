@@ -913,15 +913,11 @@ Error::description() const
         return "Expected non-empty value for command";
     case Error::VALUE_ETOODEEP:
         return "Adding this value would make the document too deep";
-    case Error::GLOBAL_ENOMEM:
-        return "Couldn't allocate memory";
     case Error::GLOBAL_ENOSUPPORT:
         return "Operation not implemented";
-    case Error::GLOBAL_UNKNOWN_COMMAND:
-        return "Unrecognized command code";
     case Error::DOC_ETOODEEP:
         return "Document is too deep to parse";
-    default:
-        return "Unknown error code";
     }
+
+    return "Unknown error code";
 }
