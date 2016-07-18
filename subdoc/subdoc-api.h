@@ -178,6 +178,12 @@ public:
         COUNTER = 0x0A,
         COUNTER_P = 0x8A,
 
+        /**
+         * Returns the number of elements in a list or key-value pairs in a
+         * dictionary.
+         */
+        GET_COUNT = 0x0B,
+
         INVALID = 0xff,
         FLAG_MKDIR_P = 0x80
     };

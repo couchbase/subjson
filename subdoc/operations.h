@@ -48,7 +48,19 @@ public:
     const Buffer<Loc> newdoc() const {
         return Buffer<Loc>(m_newdoc, m_newlen);
     }
+
+    /**
+     * For operations which result in a match returned to the user (e.g.
+     * Command::GET, Command::COUNTER), the result is returned here.
+     *
+     * The returned @ref Loc may refer to regions within the input document
+     * (Operation::set_doc()), and thus should be considered invalid when the
+     * buffer passed to Operation::set_doc() has been modified.
+     *
+     * @return The location of the match.
+     */
     const Loc& matchloc() const { return m_match; }
+
     void clear() {
         m_bkbuf.clear();
         m_numbuf.clear();
@@ -119,6 +131,7 @@ private:
     Error do_list_prepend();
     Error do_arith_op();
     Error do_insert();
+    Error do_container_size();
 
     // Wrapper around Validator::validate(), this omits the
     // passing of arguments we already have (for example, the new object)

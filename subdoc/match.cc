@@ -470,7 +470,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
         } else if (status != JSONSL_ERROR_SUCCESS) {
             return 0;
         } else if (matchres != JSONSL_MATCH_COMPLETE) {
-            return 0;
+            break;
         }
 
         last_start = loc_deepest.at;
@@ -480,6 +480,9 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
         cur_start = ii + 1;
     }
 
+    // This is currently only used by GET_COUNT, in which an element is
+    // artificially added.
+    immediate_parent_found = match_level >= pth->ncomponents-1;
     return 0;
 }
 

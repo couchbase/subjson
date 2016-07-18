@@ -39,9 +39,35 @@ protected:
   Result res;
 
   string getNewDoc();
+  string returnedMatch() {
+      return res.matchloc().to_string();
+  }
   void getAssignNewDoc(string& newdoc);
   Error runOp(Command, const char *path, const char *value = NULL, size_t nvalue = 0);
 };
+
+static ::testing::AssertionResult
+ensureErrorResult(const char *expr, Error got, Error wanted = Error::SUCCESS)
+{
+    using namespace testing;
+    if (got != wanted) {
+        return AssertionFailure() << expr << ": Expected "
+                << wanted << std::hex << wanted <<
+                " (" << wanted.description() << "), Got "
+                << got << std::hex << got << " (" << got.description() << ")";
+    }
+    return AssertionSuccess();
+}
+static ::testing::AssertionResult
+ensureErrorResult2(const char *a, const char *, Error got, Error wanted) {
+    return ensureErrorResult(a, got, wanted);
+}
+
+#define ASSERT_ERROK(exp) \
+    ASSERT_PRED_FORMAT1(ensureErrorResult, exp)
+
+#define ASSERT_ERREQ(exp, err) \
+    ASSERT_PRED_FORMAT2(ensureErrorResult2, exp, err)
 
 string
 OpTests::getNewDoc()
@@ -1047,4 +1073,49 @@ TEST_F(OpTests, testRootAppend)
     op.set_doc("[]");
     rv = runOp(Command::ARRAY_APPEND, "", "notjson");
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
+}
+
+TEST_F(OpTests, testGetCount)
+{
+    std::string doc = "{\"array\":[1,2,3,4]}";
+    op.set_doc(doc);
+    ASSERT_ERROK(runOp(Command::GET_COUNT, "array"));
+    ASSERT_EQ("4", returnedMatch());
+
+    ASSERT_ERREQ(runOp(Command::GET_COUNT, "array[0]"), Error::PATH_MISMATCH);
+
+    doc = "[]";
+    op.set_doc(doc);
+    ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
+    ASSERT_EQ("0", returnedMatch());
+
+    doc = "{}";
+    op.set_doc(doc);
+    ASSERT_ERREQ(runOp(Command::GET_COUNT, "non.exist.path"), Error::PATH_ENOENT);
+
+    doc = "{\"a\":\"k\"}";
+    op.set_doc(doc);
+    ASSERT_ERREQ(runOp(Command::GET_COUNT, "n"), Error::PATH_ENOENT);
+
+    doc = "{\"array\":[1]}";
+    op.set_doc(doc);
+    ASSERT_ERROK(runOp(Command::GET_COUNT, "array"));
+
+    doc = "{\"array\":[[]]}";
+    op.set_doc(doc);
+    ASSERT_ERROK(runOp(Command::GET_COUNT, "array[-1]"));
+    ASSERT_EQ("0", returnedMatch());
+
+    ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
+    ASSERT_EQ("1", returnedMatch());
+
+    doc = "{}";
+    op.set_doc(doc);
+    ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
+    ASSERT_EQ("0", returnedMatch());
+
+    doc = "{\"a\":1,\"b\":2}";
+    op.set_doc(doc);
+    ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
+    ASSERT_EQ("2", returnedMatch());
 }

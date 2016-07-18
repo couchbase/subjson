@@ -111,6 +111,7 @@ public:
         opmap["prepend"] = OpEntry(Command::ARRAY_PREPEND, "Insert values to the beginning of an array");
         opmap["addunique"] = OpEntry(Command::ARRAY_ADD_UNIQUE, "Add a unique value to an array");
         opmap["insert"] = OpEntry(Command::ARRAY_INSERT, "Insert value at given array index");
+        opmap["size"] = OpEntry(Command::GET_COUNT, "Count the number of items in an array or dict");
 
         // arithmetic ops
         opmap["counter"] = OpEntry(Command::COUNTER);
@@ -226,7 +227,9 @@ execOperation(Options& o)
     }
 
     // Print the result.
-    if (opcode == Command::GET || opcode == Command::EXISTS) {
+    if (opcode == Command::GET ||
+            opcode == Command::EXISTS ||
+            opcode == Command::GET_COUNT) {
         string match = res.matchloc().to_string();
         printf("%s\n", match.c_str());
     } else {

@@ -382,6 +382,32 @@ Operation::do_list_prepend()
     return Error::SUCCESS;
 }
 
+Error
+Operation::do_container_size()
+{
+    Error rv = do_match_common(Match::GET_MATCH_ONLY);
+    if (rv != Error::SUCCESS) {
+        return rv;
+    }
+    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+        return Error::PATH_ENOENT;
+    }
+
+    size_t size = m_match.num_children;
+    if (m_match.type == JSONSL_T_OBJECT) {
+        size /= 2;
+    } else if (m_match.type != JSONSL_T_LIST) {
+        return Error::PATH_MISMATCH;
+    }
+
+    m_result->m_numbuf = std::to_string(size);
+    m_result->m_newlen = 1;
+    m_result->m_match.assign(
+        m_result->m_numbuf.c_str(), m_result->m_numbuf.size());
+
+    return Error::SUCCESS;
+}
+
 static bool
 is_json_ws(char c) {
     // (i.e. non-whitespace) character. RFC 7159 says:
@@ -837,6 +863,9 @@ Operation::op_exec(const char *pth, size_t npth)
         // no need to check for depth here, since if the path itself is too
         // big, it will fail during path parse-time
         return do_arith_op();
+
+    case Command::GET_COUNT:
+        return do_container_size();
 
     default:
         return Error::GLOBAL_ENOSUPPORT;
