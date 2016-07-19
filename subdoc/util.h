@@ -41,6 +41,20 @@ public:
 
     static void do_assert(const char *e,
             const char *func, const char *file, int line);
+
+    /// Determines the type of container the parent object must be. It derives
+    /// this from the path.
+    /// @param command the command associated with this path
+    /// @param path the path
+    /// @param length of the path
+    /// @return JSONL_T_ROOT or JSONSL_T_LIST if the path parent should be
+    ///     a list or or dictionary. JSONSL_T_UNKNOWN if the parent type cannot
+    ///     be determined.
+    static jsonsl_type_t get_root_type(Command command, const char *path, size_t len);
+
+    static jsonsl_type_t get_root_type(Command command, const std::string& s) {
+        return get_root_type(command, s.c_str(), s.size());
+    }
 private:
     Util();
 };

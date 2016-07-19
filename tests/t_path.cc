@@ -20,6 +20,8 @@ using std::string;
 using std::cerr;
 using std::endl;
 using Subdoc::Path;
+using Subdoc::Util;
+using Subdoc::Command;
 
 class PathTests : public ::testing::Test {};
 
@@ -161,4 +163,13 @@ TEST_F(PathTests, testJsonEscapes) {
 
     pth = "\\" "\"quoted.path";
     ASSERT_EQ(0, ss.parse(pth));
+}
+
+TEST_F(PathTests, testGetRootType) {
+    ASSERT_EQ(JSONSL_T_LIST, Util::get_root_type(Command::ARRAY_PREPEND, ""));
+    ASSERT_EQ(JSONSL_T_OBJECT, Util::get_root_type(Command::ARRAY_PREPEND, "a"));
+    ASSERT_EQ(JSONSL_T_UNKNOWN, Util::get_root_type(Command::DICT_UPSERT, ""));
+    ASSERT_EQ(JSONSL_T_LIST, Util::get_root_type(Command::ARRAY_APPEND_P, ""));
+    ASSERT_EQ(JSONSL_T_LIST, Util::get_root_type(Command::ARRAY_APPEND, "[1]"));
+    ASSERT_EQ(JSONSL_T_LIST, Util::get_root_type(Command::ARRAY_PREPEND, "[-1]"));
 }

@@ -84,3 +84,34 @@ Util::do_assert(const char *e, const char *func, const char *file,
     ss.append("file ").append(file).append(", line").append(std::to_string(line));
     throw std::runtime_error(ss);
 }
+
+jsonsl_type_t
+Util::get_root_type(Command command, const char *path, size_t len)
+{
+    char c = 0;
+    // Find first non-whitespace character
+    for (size_t ii = 0; ii < len; ++ii) {
+        if (!isspace(path[ii])) {
+            c = path[ii];
+            break;
+        }
+    }
+
+    if (!c) {
+        switch (command.base()) {
+        case Command::ARRAY_APPEND:
+        case Command::ARRAY_PREPEND:
+        case Command::ARRAY_ADD_UNIQUE:
+            return JSONSL_T_LIST;
+        default:
+            return JSONSL_T_UNKNOWN;
+        }
+    }
+
+    if (c == '[') {
+        return JSONSL_T_LIST;
+    } else {
+        return JSONSL_T_OBJECT;
+    }
+}
+
