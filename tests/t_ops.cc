@@ -1119,3 +1119,101 @@ TEST_F(OpTests, testGetCount)
     ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
     ASSERT_EQ("2", returnedMatch());
 }
+
+// Some commands require paths with specific endings. For example, DICT_UPSERT
+// requires its last element MUST NOT be an array element, while ARRAY_INSERT
+// requires its last element MUST be an array element. Some commands
+// don't care.
+enum LastElementType {
+    LAST_ELEM_KEY, // Last element must be a dict key
+    LAST_ELEM_INDEX, // Last element must be array index
+    LAST_ELEM_ANY // Both dict keys and array indexes are acceptable
+};
+
+// Generate a path of a specific depth
+// @param depth the nominal depth of the path
+// @param final_type the type of last element, either an array index or dict key
+// @return the path
+static std::string
+genDeepPath(size_t depth, LastElementType final_type = LAST_ELEM_KEY)
+{
+    std::stringstream ss;
+    size_t ii = 0;
+    for (; ii < depth-1; ++ii) {
+        ss << "P" << std::to_string(ii) << ".";
+    }
+    if (final_type == LAST_ELEM_KEY) {
+        ss << "P" << std::to_string(ii);
+    } else {
+        ss << "[0]";
+    }
+    return ss.str();
+}
+
+TEST_F(OpTests, TestDeepPath)
+{
+    using Subdoc::Path;
+
+    // "Traits" structure for the path
+    struct CommandInfo {
+        Command code; // Command code
+        LastElementType last_elem_type; // Expected last element type
+        bool implicit_child; // Whether the real size of the path is actually n+1
+    };
+
+    static const std::vector<CommandInfo> cinfo({
+        {Command::GET, LAST_ELEM_ANY, false},
+        {Command::EXISTS, LAST_ELEM_ANY, false},
+        {Command::REPLACE, LAST_ELEM_ANY, false},
+        {Command::REMOVE, LAST_ELEM_ANY, false},
+        {Command::DICT_UPSERT, LAST_ELEM_KEY, false},
+        {Command::DICT_ADD, LAST_ELEM_KEY, false},
+        {Command::ARRAY_PREPEND, LAST_ELEM_ANY, true},
+        {Command::ARRAY_APPEND, LAST_ELEM_ANY, true},
+        {Command::ARRAY_ADD_UNIQUE, LAST_ELEM_ANY, true},
+        {Command::ARRAY_INSERT, LAST_ELEM_INDEX, false},
+        {Command::COUNTER, LAST_ELEM_ANY, false},
+        {Command::GET_COUNT, LAST_ELEM_ANY, false}
+    });
+
+    for (auto opinfo : cinfo) {
+        // List of final-element-types to try:
+        std::vector<LastElementType> elemTypes;
+
+        if (opinfo.last_elem_type == LAST_ELEM_ANY) {
+            // If both element types are supported, simply add them here
+            elemTypes.push_back(LAST_ELEM_INDEX);
+            elemTypes.push_back(LAST_ELEM_KEY);
+        } else {
+            elemTypes.push_back(opinfo.last_elem_type);
+        }
+
+        for (auto etype : elemTypes) {
+            size_t ncomps = Subdoc::Limits::MAX_COMPONENTS-1;
+            if (opinfo.implicit_child) {
+                // If an implicit child is involved, the maximum allowable
+                // path length is actually one less because the child occupies
+                // ncomps+1
+                ncomps--;
+            }
+
+            string path = genDeepPath(ncomps, etype);
+            Error rv = runOp(opinfo.code, path.c_str(), "123");
+            ASSERT_NE(Error::PATH_E2BIG, rv) << "Opcode: " << std::to_string(opinfo.code);
+
+            // Failure case:
+            ncomps++;
+            path = genDeepPath(ncomps, etype);
+            rv = runOp(opinfo.code, path.c_str(), "123");
+
+            if (opinfo.implicit_child) {
+                // If the path is one that contains an implicit child, then
+                // the failure is not on the path itself, but on the fact that
+                // the value is too deep (by virtue of it having a depth of >0)
+                ASSERT_EQ(Error::VALUE_ETOODEEP, rv);
+            } else {
+                ASSERT_EQ(Error::PATH_E2BIG, rv) << "Opcode: " << std::to_string(opinfo.code);
+            }
+        }
+    }
+}
