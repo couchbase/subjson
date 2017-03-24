@@ -1217,3 +1217,19 @@ TEST_F(OpTests, TestDeepPath)
         }
     }
 }
+
+TEST_F(OpTests, testUtf8Path) {
+    // Ensure we can set and retrieve paths with non-ascii utf8
+    // \xc3\xba = ú
+    string path("F\xC3\xBAtbol");
+    string value("\"value\"");
+    string doc("{}");
+    op.set_doc(doc);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT,
+                              path.c_str(), value.c_str()));
+    getAssignNewDoc(doc);
+
+    // Try to retrieve the value
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, path.c_str()));
+    ASSERT_EQ("\"value\"", returnedMatch());
+}

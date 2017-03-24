@@ -165,6 +165,14 @@ TEST_F(PathTests, testJsonEscapes) {
     ASSERT_EQ(0, ss.parse(pth));
 }
 
+TEST_F(PathTests, testUtf8Path) {
+    Path ss;
+    // \xc3\xba = ú
+    string pth("F\xC3\xBAtbol");
+    ASSERT_EQ(0, ss.parse(pth));
+    ASSERT_EQ("F\xC3\xBAtbol", getComponentString(ss, 1));
+}
+
 TEST_F(PathTests, testGetRootType) {
     ASSERT_EQ(JSONSL_T_LIST, Util::get_root_type(Command::ARRAY_PREPEND, ""));
     ASSERT_EQ(JSONSL_T_OBJECT, Util::get_root_type(Command::ARRAY_PREPEND, "a"));

@@ -189,24 +189,25 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
     }
 
     for (size_t ii = 0; ii < len; ii++) {
+        const uint8_t cur_c = static_cast<uint8_t>(path[ii]);
         // Escape handling
-        int can_jescape = allowed_json_escapes[static_cast<int>(path[ii])];
+        int can_jescape = allowed_json_escapes[static_cast<int>(cur_c)];
         if (in_json_escape) {
             if (!can_jescape) {
                 return JSONSL_ERROR_JPR_BADPATH;
-            } else if (path[ii] == 'u') {
+            } else if (cur_c == 'u') {
                 /* We can't handle \u-escapes in paths now! */
                 return JSONSL_ERROR_JPR_BADPATH;
             }
             in_json_escape = false;
-        } else if (path[ii] == '\\') {
+        } else if (cur_c == '\\') {
             in_json_escape = true;
-        } else if (path[ii] == '"' || path[ii] < 0x1F) {
+        } else if (cur_c == '"' || cur_c < 0x1F) {
             // Needs escape!
             return JSONSL_ERROR_JPR_BADPATH;
         }
 
-        if (path[ii] == '`') {
+        if (cur_c == '`') {
             n_backticks++;
             in_n1ql_escape = !in_n1ql_escape;
         }
@@ -215,11 +216,11 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
         }
 
         // Token handling
-        if (path[ii] == ']') {
+        if (cur_c == ']') {
             return JSONSL_ERROR_JPR_BADPATH;
-        } else if (path[ii] == '[' || path[ii] == '.') {
+        } else if (cur_c == '[' || cur_c == '.') {
             *n_consumed = ii;
-            if (path[ii] == '.') {
+            if (cur_c == '.') {
                 *n_consumed += 1;
             }
 
