@@ -322,7 +322,9 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     } catch (Error& rc) {
         fprintf(stderr, "Command failed: %s\n", rc.description());
+        return EXIT_FAILURE;
     } catch (std::exception& ex) {
         fprintf(stderr, "Command failed: %s\n", ex.what());
+        return EXIT_FAILURE;
     }
 }
