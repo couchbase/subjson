@@ -24,6 +24,8 @@
 #include "path.h"
 #include "match.h"
 
+#include <array>
+
 namespace Subdoc {
 
 /**
@@ -46,7 +48,7 @@ public:
      * @return a Buffer object representing the layout of the new document.
      */
     const Buffer<Loc> newdoc() const {
-        return Buffer<Loc>(m_newdoc, m_newlen);
+        return Buffer<Loc>(m_newdoc.data(), m_newlen);
     }
 
     /**
@@ -61,6 +63,26 @@ public:
      */
     const Loc& matchloc() const { return m_match; }
 
+    /**
+     * For operations that are non-subjson, this method provides a way to
+     * pass around results within the existing infrastructure.
+     *
+     * Care should be taken with this method to ensure that match is a valid Loc
+     *
+     * @param match The match location
+     */
+    void set_matchloc(Loc match) {
+        m_match = match;
+    }
+
+    bool push_newdoc(Loc newLoc) {
+        if (m_newlen >= m_newdoc.size()) {
+            return false;
+        }
+        m_newdoc[m_newlen++] = newLoc;
+        return true;
+    }
+
     void clear() {
         m_bkbuf.clear();
         m_numbuf.clear();
@@ -71,8 +93,8 @@ private:
     friend class Operation;
     std::string m_bkbuf;
     std::string m_numbuf;
-    Loc m_newdoc[8];
-    size_t m_newlen = 0;
+    std::array<Loc, 8> m_newdoc;
+    size_t m_newlen = 0; // The number of Locs used in m_newdoc
     Loc m_match;
 };
 
