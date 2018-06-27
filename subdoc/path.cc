@@ -305,6 +305,10 @@ Path::clear() {
         comp.is_neg = 0;
     }
 
-    m_cached.insert(m_cached.end(), m_used.begin(), m_used.end());
-    m_used.clear();
+    // Reset all used components back to default state (ready for re-use); and
+    // transfer to head of cached list.
+    for (auto& component : m_used) {
+        component->clear();
+    }
+    m_cached.splice(m_cached.begin(), m_used);
 }

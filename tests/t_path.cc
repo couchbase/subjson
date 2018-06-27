@@ -117,6 +117,13 @@ TEST_F(PathTests, testEscapes)
     ASSERT_EQ(0, ss.parse(pth));
     ASSERT_EQ("BACKTICK`HAPPY", getComponentString(ss, 1));
     ASSERT_EQ("CAMPER", getComponentString(ss, 2));
+
+    // MB-30278: A subsequent parse of a path containing an escaped symbol
+    // fails due to incorrect caching.
+    ss.clear();
+    pth = "trailing``";
+    ASSERT_EQ(0, ss.parse(pth));
+    ASSERT_EQ("trailing`", getComponentString(ss, 1));
 }
 
 TEST_F(PathTests, testNegativePath) {
