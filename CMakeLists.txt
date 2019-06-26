@@ -4,6 +4,9 @@ SET(SUBJSON_GTEST ${PROJECT_SOURCE_DIR}/contrib/gtest)
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR})
 
 INCLUDE(CTest)
+include(check_unit_test_enabled)
+
+check_unit_test_enabled(subjson COUCHBASE_SUBJSON_BUILD_UNIT_TESTS)
 
 if (COUCHBASE_SERVER_BUILD)
    INCLUDE_DIRECTORIES(AFTER ${Platform_SOURCE_DIR}/include)
@@ -32,10 +35,13 @@ SET(SUBJSON_SRC subdoc/match.cc subdoc/operations.cc subdoc/path.cc
     subdoc/util.cc)
 ADD_LIBRARY(subjson ${SUBJSON_SRC})
 TARGET_LINK_LIBRARIES(subjson ${EXTRA_LIBS})
-ADD_EXECUTABLE(bench bench.cc contrib/cliopts/cliopts.c)
-TARGET_LINK_LIBRARIES(bench subjson)
 
-IF(EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
-  ENABLE_TESTING()
-  ADD_SUBDIRECTORY(tests)
-ENDIF(EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
+if (COUCHBASE_SUBJSON_BUILD_UNIT_TESTS)
+    ADD_EXECUTABLE(bench bench.cc contrib/cliopts/cliopts.c)
+    TARGET_LINK_LIBRARIES(bench subjson)
+
+    IF (EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
+        ENABLE_TESTING()
+        ADD_SUBDIRECTORY(tests)
+    ENDIF (EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
+endif (COUCHBASE_SUBJSON_BUILD_UNIT_TESTS)
