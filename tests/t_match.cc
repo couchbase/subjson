@@ -158,20 +158,20 @@ TEST_F(MatchTests, testGetLastElement)
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_STRING, m.type);
     ASSERT_EQ("\"elem3\"", Util::match_match(m));
-    ASSERT_EQ(2, m.position);
-    ASSERT_EQ(2, m.num_siblings);
+    ASSERT_EQ(2U, m.position);
+    ASSERT_EQ(2U, m.num_siblings);
 
     m.clear();
     pth.parse("nested_list");
     m.get_last = 1;
     m.exec_match(json, pth, jsn);
-    ASSERT_EQ(3, m.match_level);
+    ASSERT_EQ(3U, m.match_level);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_LIST, m.type);
 
     ASSERT_EQ("[" JQ("nested1") ",2,3,4,5,6,7,8,9,0]", Util::match_match(m));
-    ASSERT_EQ(10, m.num_children);
-    ASSERT_EQ(0, m.num_siblings);
+    ASSERT_EQ(10U, m.num_children);
+    ASSERT_EQ(0U, m.num_siblings);
 }
 
 TEST_F(MatchTests, testGetNumSiblings)
@@ -182,7 +182,7 @@ TEST_F(MatchTests, testGetNumSiblings)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_STRING, m.type); // String
-    ASSERT_EQ(0, m.num_siblings);
+    ASSERT_EQ(0U, m.num_siblings);
 
     m.clear();
     ASSERT_EQ(Match::GET_MATCH_ONLY, m.extra_options);
@@ -219,8 +219,8 @@ TEST_F(MatchTests, testNegativeIndex)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_STRING, m.type);
-    ASSERT_EQ(2, m.num_siblings);
-    ASSERT_EQ(3, m.match_level);
+    ASSERT_EQ(2U, m.num_siblings);
+    ASSERT_EQ(3U, m.match_level);
     ASSERT_EQ("\"elem3\"", Util::match_match(m));
 
     // Multiple nested elements..
@@ -229,7 +229,7 @@ TEST_F(MatchTests, testNegativeIndex)
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_SPECIAL, m.type);
     ASSERT_EQ("0", Util::match_match(m));
-    ASSERT_EQ(4, m.match_level);
+    ASSERT_EQ(4U, m.match_level);
 }
 
 TEST_F(MatchTests, testMatchUnique)
@@ -239,7 +239,7 @@ TEST_F(MatchTests, testMatchUnique)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_LIST, m.type);
-    ASSERT_EQ(2, m.match_level);
+    ASSERT_EQ(2U, m.match_level);
     ASSERT_FALSE(m.unique_item_found);
     ASSERT_EQ("[]", Util::match_match(m));
 
@@ -258,7 +258,7 @@ TEST_F(MatchTests, testMatchUnique)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_FALSE(m.unique_item_found);
-    ASSERT_NE(0, m.num_children);
+    ASSERT_NE(0U, m.num_children);
     ASSERT_EQ("[1,2,3,4,5,6,7,8,9,0]", Util::match_match(m));
 
     // Test with path mismatch:
@@ -275,5 +275,5 @@ TEST_F(MatchTests, testMatchUnique)
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_FALSE(m.unique_item_found);
-    ASSERT_NE(0, m.num_children);
+    ASSERT_NE(0U, m.num_children);
 }

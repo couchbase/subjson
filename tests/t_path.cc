@@ -47,7 +47,7 @@ TEST_F(PathTests, testBasic)
 
     string pth1("foo.bar.baz");
     ASSERT_EQ(0, ss.parse(pth1));
-    ASSERT_EQ(4, ss.size());
+    ASSERT_EQ(4UL, ss.size());
 
     ASSERT_EQ(JSONSL_PATH_ROOT, ss[0].ptype);
     ASSERT_EQ(JSONSL_PATH_STRING, ss[1].ptype);
@@ -69,28 +69,28 @@ TEST_F(PathTests, testNumericIndices) {
     string pth = "array[1].item[9]";
 
     ASSERT_EQ(0, ss.parse(pth));
-    ASSERT_EQ(5, ss.size());
+    ASSERT_EQ(5UL, ss.size());
 
     ASSERT_EQ(JSONSL_PATH_STRING, ss[1].ptype);
     ASSERT_EQ("array", getComponentString(ss, 1));
 
     ASSERT_EQ(JSONSL_PATH_NUMERIC, ss[2].ptype);
-    ASSERT_EQ(1, getComponentNumber(ss, 2));
+    ASSERT_EQ(1UL, getComponentNumber(ss, 2));
 
     ASSERT_EQ(JSONSL_PATH_STRING, ss[3].ptype);
     ASSERT_EQ("item", getComponentString(ss, 3));
 
     ASSERT_EQ(JSONSL_PATH_NUMERIC, ss[4].ptype);
-    ASSERT_EQ(9, getComponentNumber(ss, 4));
+    ASSERT_EQ(9UL, getComponentNumber(ss, 4));
 
     // Try again, using [] syntax
     pth = "foo[0][0][0]";
     ASSERT_EQ(0, ss.parse(pth));
-    ASSERT_EQ(5, ss.size());
+    ASSERT_EQ(5UL, ss.size());
 
     pth = "[1][2][3]";
     ASSERT_EQ(0, ss.parse(pth));
-    ASSERT_EQ(4, ss.size());
+    ASSERT_EQ(4UL, ss.size());
 }
 
 TEST_F(PathTests, testEscapes)
@@ -110,7 +110,7 @@ TEST_F(PathTests, testEscapes)
     ASSERT_EQ(0, ss.parse(pth));
     ASSERT_EQ("escaped", getComponentString(ss, 1));
     ASSERT_EQ("arr.idx", getComponentString(ss, 2));
-    ASSERT_EQ(9, getComponentNumber(ss, 3));
+    ASSERT_EQ(9UL, getComponentNumber(ss, 3));
 
     ss.clear();
     pth = "`BACKTICK``HAPPY`.`CAMPER`";
@@ -132,7 +132,7 @@ TEST_F(PathTests, testNegativePath) {
 
     pth = "foo[-1][-1][-1]";
     ASSERT_EQ(0, ss.parse(pth));
-    ASSERT_EQ(5, ss.size());
+    ASSERT_EQ(5UL, ss.size());
     ASSERT_TRUE(!!ss.components_s[2].is_neg);
     ASSERT_TRUE(!!ss.components_s[3].is_neg);
     ASSERT_TRUE(!!ss.components_s[4].is_neg);
