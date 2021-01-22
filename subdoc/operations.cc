@@ -615,6 +615,7 @@ Operation::do_insert()
 static Error
 parse_int64(const Loc& orig, int64_t& outval)
 {
+    static constexpr uint64_t maxval = std::numeric_limits<int64_t>::max();
     const char *cur = orig.at;
     size_t n = orig.length;
 
@@ -643,8 +644,7 @@ parse_int64(const Loc& orig, int64_t& outval)
         // in order, such that '9' (0x39) - '0' (0x30) == 0
 
         uint64_t newval = (outval * 10) + (cur[ii] - '0');
-        if (newval < static_cast<uint64_t>(outval) ||
-                newval > std::numeric_limits<int64_t>::max()) {
+        if (newval < static_cast<uint64_t>(outval) || newval > maxval) {
             // mismatch
             return Error::DELTA_EINVAL;
         }
