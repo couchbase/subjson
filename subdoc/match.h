@@ -28,30 +28,30 @@ class Match {
 public:
     /**The JSON type for the result (i.e. jsonsl_type_t). If the match itself
      * is not found, this will contain the innermost _parent_ type. */
-    uint32_t type;
+    uint32_t type = 0;
 
     /**Error status (jsonsl_error_t) */
-    uint16_t status;
+    uint16_t status = 0;
 
     /** result of the match. jsonsl_jpr_match_t */
-    int16_t matchres;
+    int16_t matchres = 0;
 
     /** Flags, if #type is JSONSL_TYPE_SPECIAL */
-    uint16_t sflags;
+    uint16_t sflags = 0;
 
     /**
      * The deepest level at which a possible match was found.
      * In jsonsl, the imaginary root level is 0, the top level container
      * is 1, etc.
      */
-    uint16_t match_level;
+    uint16_t match_level = 0;
 
     /**
      * The current position of the match. This value is 0-based and works
      * in conjunction with #num_siblings to determine how to handle
      * surrounding items for various modification items.
      */
-    unsigned position;
+    unsigned position = 0;
 
     /**The number of children in the last parent. Note this may not necessarily
      * be the immediate parent; but rather indicates whether any kind of special
@@ -63,10 +63,10 @@ public:
      * this is not the size of the container, but rather how many elements
      * in the container are not the match)
      */
-    unsigned num_siblings;
+    unsigned num_siblings =0;
 
     /** For array matches, contains the number of children in the array */
-    unsigned num_children;
+    unsigned num_children = 0;
 
     /**
      * Check if match is the first of many
@@ -102,7 +102,7 @@ public:
      *
      * This flag is implied to be true if #matchres is JSONSL_MATCH_COMPLETE
      */
-    unsigned char immediate_parent_found;
+    unsigned char immediate_parent_found = 0;
 
     /**Request flag; indicating whether the last child position should be
      * returned inside the `loc_key` member. Note that the position will
@@ -116,7 +116,7 @@ public:
      * information will be adapted to suit the last child; this includes
      * things like the value type and such.
      */
-    unsigned char get_last;
+    unsigned char get_last = 0;
 
     enum SearchOptions {
         GET_MATCH_ONLY = 0,
@@ -127,7 +127,7 @@ public:
 
     /**If 'ensure_unique' is true, set to true if the value of #ensure_unique
      * already exists */
-    unsigned char unique_item_found;
+    unsigned char unique_item_found = 0;
 
     /**
      * Deepest match found. If the match was completely found, then this

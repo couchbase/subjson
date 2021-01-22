@@ -18,18 +18,17 @@
 #if !defined(SUBDOC_LOC_H) && defined(__cplusplus)
 #define SUBDOC_LOC_H
 
-#include <stddef.h>
+#include <cstddef>
 #include <string>
 
 namespace Subdoc {
 /** Structure describing a position and length of a buffer (e.g. IOV) */
 class Loc {
 public:
-    const char *at;
-    size_t length;
+    const char *at = nullptr;
+    size_t length = 0;
 
-    Loc() : at(NULL), length(0) {
-    }
+    Loc() = default;
 
     Loc(const char *s, size_t n) {
         assign(s, n);

@@ -505,20 +505,12 @@ Match::exec_match(const char *value, size_t nvalue, const Path *pth, jsonsl_t js
     }
 }
 
-Match::Match()
-{
-    clear();
-}
+Match::Match() = default;
 
-Match::~Match()
-{
-}
+Match::~Match() = default;
 
-void
-Match::clear()
-{
-    // TODO: Memberwise reset
-    memset(this, 0, sizeof(*this));
+void Match::clear() {
+    *this = {};
 }
 
 jsonsl_t
