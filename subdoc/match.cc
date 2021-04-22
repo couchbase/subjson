@@ -525,12 +525,12 @@ Match::jsn_free(jsonsl_t jsn)
     jsonsl_destroy(jsn);
 }
 
-typedef struct {
-    int err;
-    int rootcount;
-    int flags;
-    int maxdepth;
-} validate_ctx;
+struct validate_ctx {
+    int err = 0;
+    int rootcount = 0;
+    int flags = 0;
+    int maxdepth = 0;
+};
 
 static int
 validate_err_callback(jsonsl_t jsn,
@@ -598,7 +598,7 @@ Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mod
     int flags = mode & VALUE_MASK;
     const Loc *l_pre, *l_post;
 
-    validate_ctx ctx = { 0,0 };
+    validate_ctx ctx;
     if (jsn == NULL) {
         jsn = jsonsl_new(Limits::PARSER_DEPTH);
         need_free_jsn = 1;
