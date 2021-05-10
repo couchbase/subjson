@@ -1,47 +1,28 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
-PROJECT(subjson)
-SET(SUBJSON_GTEST ${PROJECT_SOURCE_DIR}/contrib/gtest)
-INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR})
+cmake_minimum_required(VERSION 3.15)
+project(subjson LANGUAGES C CXX)
 
-INCLUDE(CTest)
+include(CTest)
 include(check_unit_test_enabled)
 
 check_unit_test_enabled(subjson COUCHBASE_SUBJSON_BUILD_UNIT_TESTS)
 
-if (COUCHBASE_SERVER_BUILD)
-   INCLUDE_DIRECTORIES(AFTER ${Platform_SOURCE_DIR}/include)
-   ADD_DEFINITIONS(-DCOUCHBASE_BUILD)
-   ENABLE_CODE_COVERAGE_REPORT()
-   SET(EXTRA_LIBS platform)
-else(COUCHBASE_SERVER_BUILD)
-   SET(EXTRA_LIBS "")
-endif(COUCHBASE_SERVER_BUILD)
+enable_code_coverage_report()
 
-if((CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    AND NOT COUCHBASE_SERVER_BUILD)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wextra -pedantic")
+if(WIN32)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
-SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
-IF(WIN32)
-    SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
-    ADD_DEFINITIONS(-D_CRT_SECURE_NO_WARNINGS)
-ELSE()
-    SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
-ENDIF()
-
-SET(SUBJSON_SRC subdoc/match.cc subdoc/operations.cc subdoc/path.cc
-    subdoc/util.cc)
-ADD_LIBRARY(subjson ${SUBJSON_SRC})
-TARGET_LINK_LIBRARIES(subjson ${EXTRA_LIBS})
+add_library(subjson STATIC
+            subdoc/match.cc
+            subdoc/operations.cc
+            subdoc/path.cc
+            subdoc/util.cc)
+target_include_directories(subjson PUBLIC ${PROJECT_SOURCE_DIR})
+target_link_libraries(subjson PUBLIC platform)
 
 if (COUCHBASE_SUBJSON_BUILD_UNIT_TESTS)
-    ADD_EXECUTABLE(bench bench.cc contrib/cliopts/cliopts.c)
-    TARGET_LINK_LIBRARIES(bench subjson)
-
-    IF (EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
-        ENABLE_TESTING()
-        ADD_SUBDIRECTORY(tests)
-    ENDIF (EXISTS ${SUBJSON_GTEST} OR EXISTS ${gtest_SOURCE_DIR})
+    add_executable(bench bench.cc contrib/cliopts/cliopts.c)
+    target_link_libraries(bench subjson)
+    enable_testing()
+    add_subdirectory(tests)
 endif (COUCHBASE_SUBJSON_BUILD_UNIT_TESTS)
