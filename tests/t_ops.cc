@@ -546,6 +546,21 @@ TEST_F(OpTests, testNumeric)
     ASSERT_EQ("-19", Util::match_match(op.match()));
 }
 
+TEST_F(OpTests, MB57177) {
+    // Verify that the counter may cover the entire range from min to max
+    const auto min = std::to_string(std::numeric_limits<int64_t>::min());
+    const auto max = std::to_string(std::numeric_limits<int64_t>::max());
+    op.set_doc(R"({"min":0})");
+    auto rv = runOp(Command::COUNTER, "min", min.c_str());
+    ASSERT_TRUE(rv.success()) << rv.description();
+    ASSERT_EQ(min, Util::match_match(op.match()));
+
+    op.set_doc(R"({"max":0})");
+    rv = runOp(Command::COUNTER, "max", max.c_str());
+    ASSERT_TRUE(rv.success()) << rv.description();
+    ASSERT_EQ(max, Util::match_match(op.match()));
+}
+
 TEST_F(OpTests, testBadNumFormat)
 {
     string doc = "{}";
@@ -556,6 +571,8 @@ TEST_F(OpTests, testBadNumFormat)
     ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "-"));
     ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "43f"));
     ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "0"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "-0"));
+    ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "01"));
 }
 
 TEST_F(OpTests, testNumericLimits)

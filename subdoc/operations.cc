@@ -14,12 +14,13 @@
 #define NOMINMAX // For Visual Studio
 
 #include "operations.h"
-#include "validate.h"
 #include "util.h"
+#include "validate.h"
 #include <errno.h>
 #include <inttypes.h>
-#include <string>
+#include <charconv>
 #include <limits>
+#include <string>
 
 using Subdoc::Loc;
 using Subdoc::Error;
@@ -609,45 +610,28 @@ Operation::do_insert()
 static Error
 parse_int64(const Loc& orig, int64_t& outval)
 {
-    static constexpr uint64_t maxval = std::numeric_limits<int64_t>::max();
-    const char *cur = orig.at;
-    size_t n = orig.length;
+    if (!orig.length) {
+        // Empty value isn't allowed
+        return Error::VALUE_EMPTY;
+    }
 
-    if (!n) {
-        return Error::VALUE_EMPTY; // Empty
+    auto view = std::string_view{orig.at, orig.length};
+    if (view.front() == '-') {
+        view.remove_prefix(1);
     }
-    if (*cur == '-') {
-        cur++;
-        if (!--n) {
-            return Error::DELTA_EINVAL;
-        }
-    }
-    if (*cur == '0') {
-        // Can't start with a zero. It's either a leading zero or an empty
-        // delta
+    if (!view.empty() && view.front() == '0') {
+        // Leading zero's is not allowed in the number
         return Error::DELTA_EINVAL;
     }
 
-    outval = 0;
-    for (size_t ii = 0; ii < n; ii++) {
-        if (!isdigit(cur[ii])) {
-            return Error::DELTA_EINVAL; // Not a number!
-        }
-        // Get the numeric value of the digit, with '0' being the lowest
-        // value digit character in the ascii table, and with digits appearing
-        // in order, such that '9' (0x39) - '0' (0x30) == 0
+    auto [ptr, ec] = std::from_chars(orig.at, orig.at + orig.length, outval);
+    if (ec == std::errc() && ptr == (orig.at + orig.length) && outval) {
+        return Error::SUCCESS;
+    }
 
-        uint64_t newval = (outval * 10) + (cur[ii] - '0');
-        if (newval < static_cast<uint64_t>(outval) || newval > maxval) {
-            // mismatch
-            return Error::DELTA_EINVAL;
-        }
-        outval = static_cast<int64_t>(newval);
-    }
-    if (*orig.at == '-') {
-        outval *= -1;
-    }
-    return Error::SUCCESS;
+    // The string contained invalid characters
+    // or a value of 0 which isn't allowed for the counter
+    return Error::DELTA_EINVAL;
 }
 
 Error
