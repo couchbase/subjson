@@ -139,14 +139,24 @@ public:
         }
     }
 
-    bool empty() const { return length == 0; }
-    void clear() { at = NULL; length = 0; }
+    bool empty() const {
+        return length == 0;
+    }
 
-    std::string to_string() const {
+    void clear() {
+        at = nullptr;
+        length = 0;
+    }
+
+    [[nodiscard]] std::string_view to_view() const {
+        return {at, length};
+    }
+
+    [[nodiscard]] std::string to_string() const {
         if (!empty()) {
-            return std::string(at, length);
+            return std::string{to_view()};
         } else {
-            return std::string();
+            return {};
         }
     }
 
