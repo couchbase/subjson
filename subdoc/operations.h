@@ -30,7 +30,7 @@ namespace Subdoc {
  */
 class Result {
 public:
-    Result() : m_newlen(0) {}
+    Result() = default;
     Result(const Result&) = delete;
     Result& operator=(const Result&) = delete;
 
