@@ -8,8 +8,6 @@
  *   the file licenses/APL2.txt.
  */
 
-#include "subdoc-c.h"
-
 #pragma once
 
 #include "subdoc-api.h"

@@ -876,18 +876,6 @@ Operation::clear()
     m_optype = Command::GET;
 }
 
-Operation *
-subdoc_op_alloc()
-{
-    return new Operation();
-}
-
-void
-subdoc_op_free(Operation *op)
-{
-    delete op;
-}
-
 /* Misc */
 const char *
 Error::description() const
