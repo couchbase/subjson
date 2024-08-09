@@ -1,16 +1,14 @@
-/* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
-*     Copyright 2015-Present Couchbase, Inc.
-*
-*   Use of this software is governed by the Business Source License included
-*   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-*   in that file, in accordance with the Business Source License, use of this
-*   software will be governed by the Apache License, Version 2.0, included in
-*   the file licenses/APL2.txt.
-*/
+ *     Copyright 2015-Present Couchbase, Inc.
+ *
+ *   Use of this software is governed by the Business Source License included
+ *   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+ *   in that file, in accordance with the Business Source License, use of this
+ *   software will be governed by the Apache License, Version 2.0, included in
+ *   the file licenses/APL2.txt.
+ */
 
-#if !defined(SUBDOC_MATCH_H) && defined(__cplusplus)
-#define SUBDOC_MATCH_H
+#pragma once
 
 #include "loc.h"
 #include "path.h"
@@ -155,6 +153,4 @@ private:
     inline int exec_match_simple(const char *value, size_t nvalue, const Path::CompInfo *jpr, jsonsl_t jsn);
     inline int exec_match_negix(const char *value, size_t nvalue, const Path *pth, jsonsl_t jsn);
 };
-}
-
-#endif /* SUBDOC_MATCH_H */
+} // namespace Subdoc

@@ -1,15 +1,13 @@
-/* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
-*     Copyright 2015-Present Couchbase, Inc.
-*
-*   Use of this software is governed by the Business Source License included
-*   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-*   in that file, in accordance with the Business Source License, use of this
-*   software will be governed by the Apache License, Version 2.0, included in
-*   the file licenses/APL2.txt.
-*/
-#ifndef SUBDOC_UTIL_H
-#define SUBDOC_UTIL_H
+ *     Copyright 2015-Present Couchbase, Inc.
+ *
+ *   Use of this software is governed by the Business Source License included
+ *   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+ *   in that file, in accordance with the Business Source License, use of this
+ *   software will be governed by the Apache License, Version 2.0, included in
+ *   the file licenses/APL2.txt.
+ */
+#pragma once
 
 #include "operations.h"
 #include <iostream>
@@ -69,5 +67,3 @@ inline ostream& operator<<(ostream& os, const Subdoc::Error& err) {
 
 #define SUBDOC_ASSERT(e) \
     if (!(e)) { Util::do_assert(#e, SUBDOC__func__, __FILE__, __LINE__); }
-
-#endif /* SUBDOC_UTIL_H */
