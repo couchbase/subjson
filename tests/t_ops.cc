@@ -550,12 +550,13 @@ TEST_F(OpTests, MB57177) {
     // Verify that the counter may cover the entire range from min to max
     const auto min = std::to_string(std::numeric_limits<int64_t>::min());
     const auto max = std::to_string(std::numeric_limits<int64_t>::max());
-    op.set_doc(R"({"min":0})");
+    std::string doc = R"({"min":0, "max":0})";
+    op.set_doc(doc);
     auto rv = runOp(Command::COUNTER, "min", min.c_str());
     ASSERT_TRUE(rv.success()) << rv.description();
     ASSERT_EQ(min, Util::match_match(op.match()));
 
-    op.set_doc(R"({"max":0})");
+    op.set_doc(doc);
     rv = runOp(Command::COUNTER, "max", max.c_str());
     ASSERT_TRUE(rv.success()) << rv.description();
     ASSERT_EQ(max, Util::match_match(op.match()));
@@ -1081,7 +1082,8 @@ TEST_F(OpTests, testRootAppend)
 
     // This follows the same codepath as "normal", but good to verify just
     // in case
-    op.set_doc("[]");
+    doc = "[]";
+    op.set_doc(doc);
     rv = runOp(Command::ARRAY_APPEND, "", "notjson");
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 }
