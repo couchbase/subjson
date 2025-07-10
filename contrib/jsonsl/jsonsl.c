@@ -107,7 +107,7 @@ jsonsl_t jsonsl_new(int nlevels)
             );
 
     jsn->levels_max = nlevels;
-    jsn->max_callback_level = -1;
+    jsn->max_callback_level = -1ULL;
     jsonsl_reset(jsn);
     return jsn;
 }

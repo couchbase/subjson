@@ -200,7 +200,7 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
  */
 static void
 next_sibling_push_callback(jsonsl_t jsn, jsonsl_action_t action,
-    struct jsonsl_state_st *state, const jsonsl_char_t *at)
+    jsonsl_state_st *state, const jsonsl_char_t *)
 {
     const jsonsl_state_st *parent;
     ParseContext *ctx = get_ctx(jsn);

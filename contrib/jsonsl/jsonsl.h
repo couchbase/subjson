@@ -476,7 +476,7 @@ struct jsonsl_st {
      * and is thus misnamed. `min_ignore_level` would actually make more
      * sense, but we don't want to break API.
      */
-    unsigned int max_callback_level;
+    size_t max_callback_level;
 
     /** The error callback. Invoked when an error happens. Should not be NULL */
     jsonsl_error_callback error_callback;

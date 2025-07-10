@@ -22,28 +22,28 @@ public:
      * is not found, this will contain the innermost _parent_ type. */
     uint32_t type = 0;
 
-    /**Error status (jsonsl_error_t) */
-    uint16_t status = 0;
+    /**Error status (jsonsl_error_t) (defined as enum) */
+    int status = 0;
 
     /** result of the match. jsonsl_jpr_match_t */
     int16_t matchres = 0;
 
-    /** Flags, if #type is JSONSL_TYPE_SPECIAL */
-    uint16_t sflags = 0;
+    /** Flags, if #type is JSONSL_TYPE_SPECIAL (defined as enum) */
+    int sflags = 0;
 
     /**
      * The deepest level at which a possible match was found.
      * In jsonsl, the imaginary root level is 0, the top level container
      * is 1, etc.
      */
-    uint16_t match_level = 0;
+    size_t match_level = 0;
 
     /**
      * The current position of the match. This value is 0-based and works
      * in conjunction with #num_siblings to determine how to handle
      * surrounding items for various modification items.
      */
-    unsigned position = 0;
+    size_t position = 0;
 
     /**The number of children in the last parent. Note this may not necessarily
      * be the immediate parent; but rather indicates whether any kind of special
@@ -55,10 +55,10 @@ public:
      * this is not the size of the container, but rather how many elements
      * in the container are not the match)
      */
-    unsigned num_siblings =0;
+    size_t num_siblings = 0;
 
     /** For array matches, contains the number of children in the array */
-    unsigned num_children = 0;
+    size_t num_children = 0;
 
     /**
      * Check if match is the first of many

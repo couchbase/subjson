@@ -149,7 +149,7 @@ private:
     // Wrapper around Validator::validate(), this omits the
     // passing of arguments we already have (for example, the new object)
     // and also wraps the error code
-    Error validate(int mode, int depth = -1);
+    Error validate(int mode, size_t depth);
 
     enum DepthMode {
         /// Last component of the path is the key for the new item
@@ -157,7 +157,7 @@ private:
         /// Path consists only of parent elements
         PATH_IS_PARENT
     };
-    inline int get_maxdepth(DepthMode mode) const;
+    inline size_t get_maxdepth(DepthMode mode) const;
 
     //! Equivalent to m_newdoc[n]. This is here so our frequent access
     //! can occupy less line space.

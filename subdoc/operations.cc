@@ -10,13 +10,14 @@
 
 #define INCLUDE_SUBDOC_STRING_SRC
 #define INCLUDE_SUBDOC_NTOHLL
-#define NOMINMAX // For Visual Studio
 
 #include "operations.h"
 #include "util.h"
 #include "validate.h"
 #include <errno.h>
+#include <gsl/gsl-lite.hpp>
 #include <inttypes.h>
+
 #include <charconv>
 #include <limits>
 #include <string>
@@ -77,12 +78,9 @@ Operation::do_get()
 /* Start at the end of the buffer, stripping last comma */
 #define STRIP_LAST_COMMA 2
 
-static void
-strip_comma(Loc *loc, int mode)
-{
-    unsigned ii;
+static void strip_comma(Loc* loc, int mode) {
     if (mode == STRIP_FIRST_COMMA) {
-        for (ii = 0; ii < loc->length; ii++) {
+        for (size_t ii = 0; ii < loc->length; ii++) {
             if (loc->at[ii] == ',') {
                 loc->at += (ii + 1);
                 loc->length -= (ii + 1);
@@ -90,7 +88,7 @@ strip_comma(Loc *loc, int mode)
             }
         }
     } else {
-        for (ii = loc->length; ii; ii--) {
+        for (auto ii = loc->length; ii; ii--) {
             if (loc->at[ii-1] == ',') {
                 loc->length = ii-1;
                 return;
@@ -246,10 +244,7 @@ Operation::do_store_dict()
  * @param mode How to insert the value
  * @return status
  */
-Error
-Operation::do_mkdir_p(MkdirPMode mode)
-{
-    unsigned ii;
+Error Operation::do_mkdir_p(MkdirPMode mode) {
     const Loc& parent_loc = m_match.loc_deepest;
     newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
 
@@ -281,7 +276,7 @@ Operation::do_mkdir_p(MkdirPMode mode)
 
     /* The next set of components must be created as entries within the
      * newly created key */
-    for (ii = m_match.match_level + 1; ii < m_path->size(); ii++) {
+    for (auto ii = m_match.match_level + 1; ii < m_path->size(); ii++) {
         comp = &m_path->get_component(ii);
         if (comp->ptype != JSONSL_PATH_STRING) {
             return Error::PATH_ENOENT;
@@ -300,7 +295,7 @@ Operation::do_mkdir_p(MkdirPMode mode)
         m_result->m_bkbuf += ']';
     }
 
-    for (ii = m_match.match_level+1; ii < m_path->size(); ii++) {
+    for (auto ii = m_match.match_level + 1; ii < m_path->size(); ii++) {
         m_result->m_bkbuf += '}';
     }
     newdoc_at(3).length = m_result->m_bkbuf.size() - newdoc_at(1).length;
@@ -724,9 +719,7 @@ Operation::do_arith_op()
     return Error::SUCCESS;
 }
 
-Error
-Operation::validate(int mode, int depth)
-{
+Error Operation::validate(int mode, size_t depth) {
     if (!m_userval.empty()) {
         int rv = Validator::validate(m_userval, m_jsn, depth, mode);
         switch (rv) {
@@ -737,19 +730,17 @@ Operation::validate(int mode, int depth)
         default:
             return Error::VALUE_CANTINSERT;
         }
-    } else {
-        return Error::VALUE_EMPTY;
     }
+    return Error::VALUE_EMPTY;
 }
 
-int
-Operation::get_maxdepth(DepthMode mode) const
-{
+size_t Operation::get_maxdepth(DepthMode mode) const {
     if (mode == DepthMode::PATH_HAS_NEWKEY) {
+        Expects(m_path->size() <= (Limits::MAX_COMPONENTS + 1));
         return (Limits::MAX_COMPONENTS + 1) - m_path->size();
-    } else {
-        return Limits::MAX_COMPONENTS - m_path->size();
     }
+    Expects(m_path->size() <= (Limits::MAX_COMPONENTS));
+    return Limits::MAX_COMPONENTS - m_path->size();
 }
 
 Error

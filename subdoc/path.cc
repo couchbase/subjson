@@ -96,7 +96,7 @@ Path::add_str_component(const char *component, size_t len, int n_backtick)
     Component& jpr_comp = add(JSONSL_PATH_STRING);
     jpr_comp.pstr = const_cast<char*>(component);
     jpr_comp.len = len;
-    jpr_comp.is_neg = 0;
+    jpr_comp.is_neg = false;
     return 0;
 }
 
@@ -113,9 +113,9 @@ Path::add_array_index(long ixnum)
     comp.pstr = NULL;
     if (ixnum == -1) {
         has_negix = true;
-        comp.is_neg = 1;
+        comp.is_neg = true;
     } else {
-        comp.is_neg = 0;
+        comp.is_neg = false;
     }
     return JSONSL_ERROR_SUCCESS;
 }
@@ -295,7 +295,7 @@ Path::clear() {
         Component& comp = get_component(ii);
         comp.pstr = NULL;
         comp.ptype = JSONSL_PATH_NONE;
-        comp.is_neg = 0;
+        comp.is_neg = false;
     }
 
     // Reset all used components back to default state (ready for re-use); and

@@ -10,6 +10,10 @@
 
 #pragma once
 
+#include "loc.h"
+#include <contrib/jsonsl/jsonsl.h>
+#include <gsl/gsl-lite.hpp>
+
 namespace Subdoc {
 class Validator {
 public:
@@ -67,8 +71,15 @@ public:
         return validate(s.c_str(), s.size(), jsn, maxdepth, flags);
     }
 
-    static int validate(const Loc& loc, jsonsl_t jsn, int maxdepth = -1, int flags = 0) {
-        return validate(loc.at, loc.length, jsn, maxdepth, flags);
+    static int validate(const Loc& loc,
+                        jsonsl_t jsn,
+                        size_t maxdepth,
+                        int flags) {
+        return validate(loc.at,
+                        loc.length,
+                        jsn,
+                        gsl::narrow_cast<int>(maxdepth),
+                        flags);
     }
 
     static const char *errstr(int);
