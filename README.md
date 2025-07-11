@@ -29,24 +29,3 @@ parsed, where _n_ is the position in the file where the match itself ends.
 Performance may also depend on how deep and/or long the path is (since string
 comparison must be done occasionally on the relevant path components).
 
-## Testing commands
-
-The build will produce a `subjson-bench` program which may be used
-to benchmark commands.
-The basic syntax of `bench` is:
-
-    ./subjson-bench -c <COMMAND> -f <JSON FILE> -p <PATH> [ -v <VALUE> ]
-
-You can use `./subjson-bench -c help` to show a list of commands.
-
-For commands which perform mutations, the `-v` argument is required, and
-must contain a string which will evaluate as valid JSON within the context
-of the operation. In most cases this is just a simple JSON value; in the case
-of list operations this may also be a series of JSON values separated by
-commas.
-
-Note that if inserting a string, the string must be specified with surrounding
-quotes. For example
-
-
-    ./subjson-bench -f ../../subjson/jsondata/brewery_5k.json -v '"CENSORED DUE TO PROHIBITION"' -p description -c replace
