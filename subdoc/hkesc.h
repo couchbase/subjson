@@ -63,7 +63,7 @@ public:
     }
 
 private:
-    const char *m_hkbuf = NULL;
+    const char* m_hkbuf = nullptr;
     size_t m_hklen = 0;
     bool m_hkesc = false;
     bool m_strvalid = false;

@@ -106,7 +106,7 @@ Path::add_array_index(long ixnum)
     Component& comp = add(JSONSL_PATH_NUMERIC);
     comp.len = 0;
     comp.idx = ixnum;
-    comp.pstr = NULL;
+    comp.pstr = nullptr;
     if (ixnum == -1) {
         has_negix = true;
         comp.is_neg = true;
@@ -291,7 +291,7 @@ Path::clear() {
     unsigned ii;
     for (ii = 1; ii < size(); ii++) {
         Component& comp = get_component(ii);
-        comp.pstr = NULL;
+        comp.pstr = nullptr;
         comp.ptype = JSONSL_PATH_NONE;
         comp.is_neg = false;
     }

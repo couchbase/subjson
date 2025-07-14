@@ -649,7 +649,7 @@ Operation::do_arith_op()
             return Error::PATH_MISMATCH;
         }
         errno = 0;
-        numres = strtoll(num_loc.at, NULL, 10);
+        numres = strtoll(num_loc.at, nullptr, 10);
 
         if (errno == ERANGE) {
             return Error::NUM_E2BIG;
@@ -833,11 +833,10 @@ Operation::op_exec(const char *pth, size_t npth)
 }
 
 Operation::Operation()
-: m_path(new Path()),
-  m_jsn(Match::jsn_alloc()),
-  m_optype(Command::GET),
-  m_result(NULL)
-{
+    : m_path(new Path()),
+      m_jsn(Match::jsn_alloc()),
+      m_optype(Command::GET),
+      m_result(nullptr) {
 }
 
 Operation::~Operation()
@@ -853,8 +852,8 @@ Operation::clear()
     m_path->clear();
     m_match.clear();
     m_userval.length = 0;
-    m_userval.at = NULL;
-    m_result = NULL;
+    m_userval.at = nullptr;
+    m_result = nullptr;
     m_optype = Command::GET;
 }
 

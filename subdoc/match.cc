@@ -31,7 +31,7 @@ struct ParseContext : public HashKey {
 
     // Internal pointer/length pair used to hold the pointer of the
     // unique array value (if in "unique" mode).
-    const char *uniquebuf = NULL;
+    const char* uniquebuf = nullptr;
 
     void set_unique_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
         uniquebuf = at;
@@ -137,7 +137,7 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
     }
 
     // If the parent is a match candidate
-    if (parent == NULL || parent->mres == M_POSSIBLE) {
+    if (parent == nullptr || parent->mres == M_POSSIBLE) {
         unsigned prtype = parent ? parent->type : JSONSL_T_UNKNOWN;
         size_t nkey;
         const char *key;
@@ -219,7 +219,7 @@ next_sibling_push_callback(jsonsl_t jsn, jsonsl_action_t action,
     Expects(ctx->match->matchres == JSONSL_MATCH_COMPLETE);
     Expects(ctx->match->extra_options == Match::GET_FOLLOWING_SIBLINGS);
 
-    if (parent != NULL && parent->mres == JSONSL_MATCH_POSSIBLE) {
+    if (parent != nullptr && parent->mres == JSONSL_MATCH_POSSIBLE) {
         /* Is the immediate parent! */
         if (parent->type == JSONSL_T_OBJECT) {
             unsigned nobj_elem = static_cast<unsigned>(parent->nelem);
@@ -308,8 +308,8 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
         } else {
             // Maybe we need another round to check for siblings?
             if (m->extra_options == Match::GET_FOLLOWING_SIBLINGS) {
-                jsn->action_callback_POP = NULL;
-                jsn->action_callback_PUSH = NULL;
+                jsn->action_callback_POP = nullptr;
+                jsn->action_callback_PUSH = nullptr;
 
                 // We only care for this on push, but in the off chance where
                 // this is the final element in the parent *anyway*, the parsing
@@ -581,7 +581,7 @@ static const Loc validate_ARRAY_PRE("[", 1);
 static const Loc validate_ARRAY_POST("]", 1);
 static const Loc validate_DICT_PRE("{\"k\":", 5);
 static const Loc validate_DICT_POST("}", 1);
-static const Loc validate_NOOP(NULL, 0);
+static const Loc validate_NOOP(nullptr, 0);
 
 int
 Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mode)
@@ -592,13 +592,13 @@ Validator::validate(const char *s, size_t n, jsonsl_t jsn, int maxdepth, int mod
     const Loc *l_pre, *l_post;
 
     validate_ctx ctx;
-    if (jsn == NULL) {
+    if (jsn == nullptr) {
         jsn = jsonsl_new(Limits::PARSER_DEPTH);
         need_free_jsn = 1;
     }
 
-    jsn->action_callback_POP = NULL;
-    jsn->action_callback_PUSH = NULL;
+    jsn->action_callback_POP = nullptr;
+    jsn->action_callback_PUSH = nullptr;
 
     jsn->action_callback = validate_callback;
     jsn->error_callback = validate_err_callback;

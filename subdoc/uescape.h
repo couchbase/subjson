@@ -146,7 +146,7 @@ UescapeConverter::handle_uescape(size_t pos)
 
     for (size_t ii = pos; ii < pos+4; ii++) {
         char numbuf[2] = { m_inbuf[ii], 0 };
-        char *endptr = NULL;
+        char* endptr = nullptr;
 
         long rv = strtol(numbuf, &endptr, 16);
         if (endptr && *endptr != '\0') {

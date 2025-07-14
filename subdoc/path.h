@@ -20,11 +20,11 @@ typedef jsonsl_jpr_component_st PathComponent;
 
 class PathComponentInfo : public jsonsl_jpr_st {
 public:
-    PathComponentInfo(PathComponent *comps = NULL, size_t n = 0) {
+    PathComponentInfo(PathComponent* comps = nullptr, size_t n = 0) {
         components = comps;
         ncomponents = n;
-        basestr = NULL;
-        orig = NULL;
+        basestr = nullptr;
+        orig = nullptr;
         norig = 0;
         match_type = 0;
     }

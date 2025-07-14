@@ -33,7 +33,7 @@ protected:
     }
 };
 
-jsonsl_t MatchTests::jsn = NULL;
+jsonsl_t MatchTests::jsn = nullptr;
 const std::string MatchTests::json = "{"
         JQ("key1") ":" JQ("val1") ","
         JQ("subdict") ":{" JQ("subkey1") ":" JQ("subval1") "},"

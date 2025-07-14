@@ -37,7 +37,10 @@ protected:
       return res.matchloc().to_string();
   }
   void getAssignNewDoc(string& newdoc);
-  Error runOp(Command, const char *path, const char *value = NULL, size_t nvalue = 0);
+  Error runOp(Command,
+              const char* path,
+              const char* value = nullptr,
+              size_t nvalue = 0);
 };
 
 static ::testing::AssertionResult
@@ -93,7 +96,7 @@ Error
 OpTests::runOp(Command opcode, const char *path, const char *value, size_t nvalue)
 {
     op.clear();
-    if (value != NULL) {
+    if (value != nullptr) {
         if (nvalue == 0) {
             nvalue = strlen(value);
         }
