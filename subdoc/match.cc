@@ -566,7 +566,8 @@ validate_callback(jsonsl_t jsn, jsonsl_action_t action,
         }
 
         if (ctx->flags & Validator::VALUE_SINGLE) {
-            auto *parent = jsonsl_last_state(jsn, state);
+            auto* parent = jsonsl_last_state(jsn, state);
+            Expects(parent && "Parent should not be null");
             int has_multielem = 0;
             if (parent->type == JSONSL_T_LIST && parent->nelem > 1) {
                 has_multielem = 1;
