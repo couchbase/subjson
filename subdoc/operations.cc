@@ -46,15 +46,14 @@ Operation::do_match_common(Match::SearchOptions options)
 
     if (m_match.matchres == JSONSL_MATCH_TYPE_MISMATCH) {
         return Error::PATH_MISMATCH;
-    } else if (m_match.status != JSONSL_ERROR_SUCCESS) {
+    }
+    if (m_match.status != JSONSL_ERROR_SUCCESS) {
         if (m_match.status == JSONSL_ERROR_LEVELS_EXCEEDED) {
             return Error::DOC_ETOODEEP;
-        } else {
-            return Error::DOC_NOTJSON;
         }
-    } else {
-        return Error::SUCCESS;
+        return Error::DOC_NOTJSON;
     }
+    return Error::SUCCESS;
 }
 
 Error
@@ -100,7 +99,8 @@ Operation::do_remove()
 
     if (!rv.success()) {
         return rv;
-    } else if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+    }
+    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
         return Error::PATH_ENOENT;
     }
 
@@ -173,9 +173,8 @@ Operation::do_store_dict()
         if (!m_match.immediate_parent_found) {
             if (m_optype.is_mkdir_p()) {
                 return do_mkdir_p(MKDIR_P_DICT);
-            } else {
-                return Error::PATH_ENOENT;
             }
+            return Error::PATH_ENOENT;
         }
         // Otherwise, the immediate parent is found, and we can
         // continue to add/upsert
@@ -343,11 +342,11 @@ Operation::do_list_prepend()
     if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
         if (m_match.immediate_parent_found) {
             return insert_singleton_element();
-        } else if (m_optype.is_mkdir_p()) {
-            return do_mkdir_p(MKDIR_P_ARRAY);
-        } else {
-            return Error::PATH_ENOENT;
         }
+        if (m_optype.is_mkdir_p()) {
+            return do_mkdir_p(MKDIR_P_ARRAY);
+        }
+        return Error::PATH_ENOENT;
     }
 
     /* LAYOUT:
@@ -488,9 +487,8 @@ Operation::do_list_append()
         // Not complete. Determine if mkdir_p should be used
         if (m_optype.is_mkdir_p()) {
             return do_mkdir_p(MKDIR_P_ARRAY);
-        } else {
-            return Error::PATH_ENOENT;
         }
+        return Error::PATH_ENOENT;
     }
 
     // All other errors should be handled above
@@ -557,8 +555,8 @@ Operation::do_insert()
         newdoc_at(2) = loc_COMMA;
         newdoc_at(3).begin_at_begin(m_doc, match_loc);
         return Error::SUCCESS;
-
-    } else if (m_match.immediate_parent_found) {
+    }
+    if (m_match.immediate_parent_found) {
         const Loc& array_loc = m_match.loc_deepest;
         if (m_match.num_siblings == 0 && lastcomp.idx == 0) {
             // Equivalent to prepend/push_first
@@ -572,8 +570,8 @@ Operation::do_insert()
             newdoc_at(1) = m_userval;
             newdoc_at(2).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
             return Error::SUCCESS;
-
-        } else if (lastcomp.idx == m_match.num_siblings) {
+        }
+        if (lastcomp.idx == m_match.num_siblings) {
             // Equivalent to append/push_last
             /*
              * (assume DOC = [a,b,c,d,e]
@@ -588,13 +586,10 @@ Operation::do_insert()
             newdoc_at(2) = m_userval;
             newdoc_at(3).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
             return Error::SUCCESS;
-
-        } else {
-            return Error::PATH_ENOENT;
         }
-    } else {
         return Error::PATH_ENOENT;
     }
+    return Error::PATH_ENOENT;
 }
 
 static Error
@@ -649,32 +644,33 @@ Operation::do_arith_op()
         const Loc& num_loc = m_match.loc_deepest;
         if (m_match.type != JSONSL_T_SPECIAL) {
             return Error::PATH_MISMATCH;
-        } else if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
-            return Error::PATH_MISMATCH;
-        } else  {
-            errno = 0;
-            numres = strtoll(num_loc.at, NULL, 10);
-
-            if (errno == ERANGE) {
-                return Error::NUM_E2BIG;
-            }
-
-            /* Calculate what to place inside the buffer. We want to be gentle here
-             * and not force 64 bit C arithmetic to confuse users, so use proper
-             * integer overflow/underflow with a 64 (or rather, 63) bit limit. */
-            if (delta >= 0 && numres >= 0) {
-                if (std::numeric_limits<int64_t>::max() - delta < numres) {
-                    return Error::DELTA_OVERFLOW;
-                }
-            } else if (delta < 0 && numres < 0) {
-                if (delta < std::numeric_limits<int64_t>::min() - numres) {
-                    return Error::DELTA_OVERFLOW;
-                }
-            }
-
-            numres += delta;
-            m_result->m_numbuf = std::to_string(numres);
         }
+        if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
+            return Error::PATH_MISMATCH;
+        }
+        errno = 0;
+        numres = strtoll(num_loc.at, NULL, 10);
+
+        if (errno == ERANGE) {
+            return Error::NUM_E2BIG;
+        }
+
+        /* Calculate what to place inside the buffer. We want to be gentle
+         * here and not force 64 bit C arithmetic to confuse users, so use
+         * proper integer overflow/underflow with a 64 (or rather, 63) bit
+         * limit. */
+        if (delta >= 0 && numres >= 0) {
+            if (std::numeric_limits<int64_t>::max() - delta < numres) {
+                return Error::DELTA_OVERFLOW;
+            }
+        } else if (delta < 0 && numres < 0) {
+            if (delta < std::numeric_limits<int64_t>::min() - numres) {
+                return Error::DELTA_OVERFLOW;
+            }
+        }
+
+        numres += delta;
+        m_result->m_numbuf = std::to_string(numres);
     } else {
         if (!m_optype.is_mkdir_p() && !m_match.immediate_parent_found) {
             return Error::PATH_ENOENT;
@@ -748,9 +744,8 @@ Operation::op_exec(const char *pth, size_t npth)
     if (rv != 0) {
         if (rv == JSONSL_ERROR_LEVELS_EXCEEDED) {
             return Error::PATH_E2BIG;
-        } else {
-            return Error::PATH_EINVAL;
         }
+        return Error::PATH_EINVAL;
     }
 
     switch (m_optype) {

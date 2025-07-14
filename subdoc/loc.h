@@ -153,9 +153,8 @@ public:
     [[nodiscard]] std::string to_string() const {
         if (!empty()) {
             return std::string{to_view()};
-        } else {
-            return {};
         }
+        return {};
     }
 
     // Move buffer start ahead n bytes

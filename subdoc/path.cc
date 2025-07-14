@@ -45,27 +45,24 @@ Path::add_num_component(const char *component, size_t len)
     if (component[0] == '-') {
         if (len != 2 || component[1] != '1') {
             return JSONSL_ERROR_INVALID_NUMBER;
-        } else {
-            return add_array_index(-1);
         }
+        return add_array_index(-1);
     }
 
     for (ii = 0; ii < len; ii++) {
         const char *c = &component[ii];
         if (*c < 0x30 || *c > 0x39) {
             return JSONSL_ERROR_INVALID_NUMBER;
-        } else {
-            size_t tmpval = numval;
-            tmpval *= 10;
-            tmpval += *c - 0x30;
-
-            /* check for overflow */
-            if (tmpval < numval) {
-                return JSONSL_ERROR_INVALID_NUMBER;
-            } else {
-                numval = tmpval;
-            }
         }
+        size_t tmpval = numval;
+        tmpval *= 10;
+        tmpval += *c - 0x30;
+
+        /* check for overflow */
+        if (tmpval < numval) {
+            return JSONSL_ERROR_INVALID_NUMBER;
+        }
+        numval = tmpval;
     }
     return add_array_index(numval);
 }
@@ -187,7 +184,8 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
         if (in_json_escape) {
             if (!can_jescape) {
                 return JSONSL_ERROR_JPR_BADPATH;
-            } else if (cur_c == 'u') {
+            }
+            if (cur_c == 'u') {
                 /* We can't handle \u-escapes in paths now! */
                 return JSONSL_ERROR_JPR_BADPATH;
             }
@@ -210,13 +208,14 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
         // Token handling
         if (cur_c == ']') {
             return JSONSL_ERROR_JPR_BADPATH;
-        } else if (cur_c == '[' || cur_c == '.') {
+        }
+        if (cur_c == '[' || cur_c == '.') {
             *n_consumed = ii;
             if (cur_c == '.') {
                 *n_consumed += 1;
             }
 
-            if (in_n1ql_escape || in_json_escape) {
+            if (in_json_escape) {
                 return JSONSL_ERROR_JPR_BADPATH;
             }
             return add_str_component(path, ii, n_backticks);

@@ -178,7 +178,8 @@ UescapeConverter::handle_uescape(size_t pos)
     //    5) Add 0x10000 to U' to obtain the character value U. Terminate.
     if (res == 0x00) {
         return Status::EMBEDDED_NUL;
-    } else if (last_codepoint) {
+    }
+    if (last_codepoint) {
         if (res < 0xDC00 || res > 0xDFFF) {
             return Status::INVALID_SURROGATE; // error
         }

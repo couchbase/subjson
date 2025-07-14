@@ -25,9 +25,8 @@ Util::match_key(const Match& m)
 {
     if (m.has_key()) {
         return m.loc_key.to_string();
-    } else {
-        return string();
     }
+    return {};
 }
 
 string
@@ -92,8 +91,7 @@ Util::get_root_type(Command command, const char *path, size_t len)
 
     if (c == '[') {
         return JSONSL_T_LIST;
-    } else {
-        return JSONSL_T_OBJECT;
     }
+    return JSONSL_T_OBJECT;
 }
 

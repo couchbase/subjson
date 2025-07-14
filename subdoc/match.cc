@@ -95,7 +95,8 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
         if (m->ensure_unique.length < 2) {
             /* not a string */
             return;
-        } else if (slen != m->ensure_unique.length) {
+        }
+        if (slen != m->ensure_unique.length) {
             return; /* Length mismatch */
         }
 
@@ -168,13 +169,12 @@ push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
                     m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
                     jsonsl_stop(jsn);
                     return;
-                } else {
-                    // Set up callbacks for string comparison. This will
-                    // be invoked for each push/pop combination.
-                    jsn->action_callback_POP = unique_callback;
-                    jsn->action_callback_PUSH = unique_callback;
-                    jsn->max_callback_level = st->level + 2;
                 }
+                // Set up callbacks for string comparison. This will
+                // be invoked for each push/pop combination.
+                jsn->action_callback_POP = unique_callback;
+                jsn->action_callback_PUSH = unique_callback;
+                jsn->max_callback_level = st->level + 2;
             }
 
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {
@@ -270,8 +270,8 @@ pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
                 m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
                 jsonsl_stop(jsn);
                 return;
-
-            } else if (!state->nelem) {
+            }
+            if (!state->nelem) {
                 // List is empty
                 m->matchres = JSONSL_MATCH_UNKNOWN;
                 jsonsl_stop(jsn);
@@ -457,9 +457,11 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
 
         if (rv != 0) { /* error */
             return rv;
-        } else if (status != JSONSL_ERROR_SUCCESS) {
+        }
+        if (status != JSONSL_ERROR_SUCCESS) {
             return 0;
-        } else if (matchres != JSONSL_MATCH_COMPLETE) {
+        }
+        if (matchres != JSONSL_MATCH_COMPLETE) {
             break;
         }
 
@@ -492,9 +494,8 @@ Match::exec_match(const char *value, size_t nvalue, const Path *pth, jsonsl_t js
 {
     if (!pth->has_negix) {
         return exec_match_simple(value, nvalue, pth, jsn);
-    } else {
-        return exec_match_negix(value, nvalue, pth, jsn);
     }
+    return exec_match_negix(value, nvalue, pth, jsn);
 }
 
 Match::Match() = default;
