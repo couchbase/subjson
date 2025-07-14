@@ -50,9 +50,8 @@ static void pop_callback(jsonsl_t jsn,
                          jsonsl_state_st*,
                          const jsonsl_char_t*);
 
-static ParseContext *get_ctx(const jsonsl_t jsn)
-{
-    return (ParseContext *)jsn->data;
+static ParseContext* get_ctx(const jsonsl_t jsn) {
+    return static_cast<ParseContext*>(jsn->data);
 }
 
 static int err_callback(jsonsl_t jsn,
@@ -535,7 +534,7 @@ static int
 validate_err_callback(jsonsl_t jsn,
     jsonsl_error_t err, jsonsl_state_st *, jsonsl_char_t *)
 {
-    validate_ctx *ctx = (validate_ctx *)jsn->data;
+    auto* ctx = static_cast<validate_ctx*>(jsn->data);
     ctx->err = err;
     // printf("ERROR: AT=%s\n", at);
     return 0;
@@ -545,7 +544,7 @@ static void
 validate_callback(jsonsl_t jsn, jsonsl_action_t action,
     jsonsl_state_st *state, const jsonsl_char_t *)
 {
-    validate_ctx *ctx = reinterpret_cast<validate_ctx*>(jsn->data);
+    auto* ctx = static_cast<validate_ctx*>(jsn->data);
 
     if (ctx->maxdepth > -1 &&
             state->level - 1 == static_cast<unsigned>(ctx->maxdepth)) {
