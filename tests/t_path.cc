@@ -141,11 +141,6 @@ TEST_F(PathTests, testInvalidSequence) {
     Path ss;
     string pth;
 
-    #if 0 /* TODO */
-    pth = "[1].[2].[3]";
-    ASSERT_NE(0, ss.parse(pth));
-    #endif
-
     pth = "hello[0]world";
     ASSERT_NE(0, ss.parse(pth));
 
