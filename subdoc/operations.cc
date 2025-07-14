@@ -11,11 +11,10 @@
 #include "operations.h"
 #include "util.h"
 #include "validate.h"
-#include <errno.h>
 #include <gsl/gsl-lite.hpp>
-#include <inttypes.h>
-
+#include <cerrno>
 #include <charconv>
+#include <cinttypes>
 #include <limits>
 #include <string>
 

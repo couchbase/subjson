@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <string>
+
 namespace Subdoc {
 
 class UescapeConverter {

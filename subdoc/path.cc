@@ -9,7 +9,6 @@
  */
 
 #define INCLUDE_JSONSL_SRC
-#include "subdoc-api.h"
 #include "path.h"
 
 using namespace Subdoc;

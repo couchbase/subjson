@@ -12,12 +12,11 @@
  * offset where a given path may begin or end.. */
 
 #define INCLUDE_JSONSL_SRC
-#include "jsonsl_header.h"
-#include "subdoc-api.h"
 #include "match.h"
 #include "hkesc.h"
-#include "validate.h"
+#include "jsonsl_header.h"
 #include "util.h"
+#include "validate.h"
 
 using namespace Subdoc;
 
