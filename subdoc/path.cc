@@ -116,34 +116,6 @@ Path::add_array_index(long ixnum)
     return JSONSL_ERROR_SUCCESS;
 }
 
-/* Copied over from jsonsl */
-static const int allowed_json_escapes[0x100] = {
-        /* 0x00 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x1f */
-        /* 0x20 */ 0,0, /* 0x21 */
-        /* 0x22 */ 1 /* <"> */, /* 0x22 */
-        /* 0x23 */ 0,0,0,0,0,0,0,0,0,0,0,0, /* 0x2e */
-        /* 0x2f */ 1 /* </> */, /* 0x2f */
-        /* 0x30 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x4f */
-        /* 0x50 */ 0,0,0,0,0,0,0,0,0,0,0,0, /* 0x5b */
-        /* 0x5c */ 1 /* <\> */, /* 0x5c */
-        /* 0x5d */ 0,0,0,0,0, /* 0x61 */
-        /* 0x62 */ 1 /* <b> */, /* 0x62 */
-        /* 0x63 */ 0,0,0, /* 0x65 */
-        /* 0x66 */ 1 /* <f> */, /* 0x66 */
-        /* 0x67 */ 0,0,0,0,0,0,0, /* 0x6d */
-        /* 0x6e */ 1 /* <n> */, /* 0x6e */
-        /* 0x6f */ 0,0,0, /* 0x71 */
-        /* 0x72 */ 1 /* <r> */, /* 0x72 */
-        /* 0x73 */ 0, /* 0x73 */
-        /* 0x74 */ 1 /* <t> */, /* 0x74 */
-        /* 0x75 */ 1 /* <u> */, /* 0x75 */
-        /* 0x76 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x95 */
-        /* 0x96 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xb5 */
-        /* 0xb6 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xd5 */
-        /* 0xd6 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xf5 */
-        /* 0xf6 */ 0,0,0,0,0,0,0,0,0, /* 0xfe */
-};
-
 int
 Path::parse_bracket(const char *path, size_t len, size_t *n_consumed)
 {
@@ -166,6 +138,24 @@ Path::parse_bracket(const char *path, size_t len, size_t *n_consumed)
     return JSONSL_ERROR_JPR_BADPATH;
 }
 
+// Generated from the table in jsonsl.c (Allowed_Escapes).
+bool isAllowedJsonEscapes(uint8_t code) {
+    switch (code) {
+    case 0x22:
+    case 0x2f:
+    case 0x5c:
+    case 0x62:
+    case 0x66:
+    case 0x6e:
+    case 0x72:
+    case 0x74:
+    case 0x75:
+        return true;
+    default:;
+    }
+    return false;
+}
+
 int
 Path::parse_string(const char *path, size_t len, size_t *n_consumed)
 {
@@ -178,9 +168,9 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
     }
 
     for (size_t ii = 0; ii < len; ii++) {
-        const uint8_t cur_c = static_cast<uint8_t>(path[ii]);
+        const auto cur_c = static_cast<uint8_t>(path[ii]);
         // Escape handling
-        int can_jescape = allowed_json_escapes[static_cast<int>(cur_c)];
+        const auto can_jescape = isAllowedJsonEscapes(cur_c);
         if (in_json_escape) {
             if (!can_jescape) {
                 return JSONSL_ERROR_JPR_BADPATH;
