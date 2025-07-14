@@ -41,28 +41,34 @@ struct ParseContext : public HashKey {
 };
 }
 
-static void push_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
-static void pop_callback(jsonsl_t jsn,jsonsl_action_t, struct jsonsl_state_st *, const jsonsl_char_t *);
+static void push_callback(jsonsl_t jsn,
+                          jsonsl_action_t,
+                          jsonsl_state_st*,
+                          const jsonsl_char_t*);
+static void pop_callback(jsonsl_t jsn,
+                         jsonsl_action_t,
+                         jsonsl_state_st*,
+                         const jsonsl_char_t*);
 
 static ParseContext *get_ctx(const jsonsl_t jsn)
 {
     return (ParseContext *)jsn->data;
 }
 
-static int
-err_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state,
-    jsonsl_char_t *at)
-{
+static int err_callback(jsonsl_t jsn,
+                        jsonsl_error_t err,
+                        jsonsl_state_st* state,
+                        jsonsl_char_t* at) {
     ParseContext *ctx = get_ctx(jsn);
     ctx->match->status = err;
     (void)state; (void)at;
     return 0;
 }
 
-static void
-unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
-    const jsonsl_char_t *at)
-{
+static void unique_callback(jsonsl_t jsn,
+                            jsonsl_action_t action,
+                            jsonsl_state_st* st,
+                            const jsonsl_char_t* at) {
     ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
     int rv;
@@ -123,13 +129,13 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
 /* Make code a bit more readable */
 #define M_POSSIBLE JSONSL_MATCH_POSSIBLE
 
-static void
-push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st,
-    const jsonsl_char_t *at)
-{
+static void push_callback(jsonsl_t jsn,
+                          jsonsl_action_t action,
+                          jsonsl_state_st* st,
+                          const jsonsl_char_t* at) {
     ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
-    struct jsonsl_state_st *parent = jsonsl_last_state(jsn, st);
+    jsonsl_state_st* parent = jsonsl_last_state(jsn, st);
 
     if (st->type == JSONSL_T_HKEY) {
         ctx->set_hk_begin(st, at);
@@ -237,10 +243,10 @@ next_sibling_push_callback(jsonsl_t jsn, jsonsl_action_t action,
     jsonsl_stop(jsn);
 }
 
-static void
-pop_callback(jsonsl_t jsn, jsonsl_action_t, struct jsonsl_state_st *state,
-    const jsonsl_char_t *)
-{
+static void pop_callback(jsonsl_t jsn,
+                         jsonsl_action_t,
+                         jsonsl_state_st* state,
+                         const jsonsl_char_t*) {
     ParseContext *ctx = get_ctx(jsn);
     Match *m = ctx->match;
 
