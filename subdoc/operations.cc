@@ -8,9 +8,6 @@
  *   the file licenses/APL2.txt.
  */
 
-#define INCLUDE_SUBDOC_STRING_SRC
-#define INCLUDE_SUBDOC_NTOHLL
-
 #include "operations.h"
 #include "util.h"
 #include "validate.h"
