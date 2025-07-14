@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 
 namespace Subdoc {
@@ -145,10 +146,10 @@ UescapeConverter::handle_uescape(size_t pos)
     char16_t res = 0;
 
     for (size_t ii = pos; ii < pos+4; ii++) {
-        char numbuf[2] = { m_inbuf[ii], 0 };
+        std::array<char, 2> numbuf = {m_inbuf[ii], 0};
         char* endptr = nullptr;
 
-        long rv = strtol(numbuf, &endptr, 16);
+        const auto rv = strtol(numbuf.data(), &endptr, 16);
         if (endptr && *endptr != '\0') {
             return Status::INVALID_HEXCHARS;
         }

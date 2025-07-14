@@ -17,6 +17,7 @@
 #include "jsonsl_header.h"
 #include "util.h"
 #include "validate.h"
+#include <algorithm>
 
 using namespace Subdoc;
 
@@ -400,13 +401,13 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     size_t level_offset = 0;
 
     const Path::CompInfo& orig = *pth;
-    Path::Component comp_s[Limits::PATH_COMPONENTS_ALLOC];
+    std::array<Path::Component, Limits::PATH_COMPONENTS_ALLOC> comp_s;
 
     /* Last length of the subdocument */
     size_t last_len = nvalue;
     /* Pointer to the beginning of the current subdocument */
     const char *last_start = value;
-    std::copy(orig.begin(), orig.end(), comp_s);
+    std::ranges::copy(orig, comp_s.begin());
 
     while (cur_start < orig.size()) {
         size_t ii;
