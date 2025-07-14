@@ -50,9 +50,13 @@ public:
         ncomponents--;
     }
 
-    typedef PathComponent *iterator;
-    iterator begin() const { return components; }
-    iterator end() const { return components + size(); }
+    using iterator = PathComponent*;
+    iterator begin() const {
+        return components;
+    }
+    iterator end() const {
+        return components + size();
+    }
 };
 
 namespace Subdoc {
