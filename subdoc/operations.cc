@@ -494,7 +494,7 @@ Operation::do_list_append()
     }
 
     // All other errors should be handled above
-    SUBDOC_ASSERT(m_match.matchres == JSONSL_MATCH_COMPLETE);
+    Expects(m_match.matchres == JSONSL_MATCH_COMPLETE);
 
     // Incorrect terminal type!
     if (m_match.type != JSONSL_T_LIST) {

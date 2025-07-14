@@ -31,9 +31,6 @@ public:
 
     static const char *jsonerr(jsonsl_error_t err);
 
-    static void do_assert(const char *e,
-            const char *func, const char *file, int line);
-
     /// Determines the type of container the parent object must be. It derives
     /// this from the path.
     /// @param command the command associated with this path
@@ -57,13 +54,4 @@ ostream& operator<<(ostream&, const Subdoc::Error::Code&);
 inline ostream& operator<<(ostream& os, const Subdoc::Error& err) {
     return os << err.code();
 }
-}
-
-#ifdef _MSC_VER
-#define SUBDOC__func__ __FUNCTION__
-#else
-#define SUBDOC__func__ __func__
-#endif
-
-#define SUBDOC_ASSERT(e) \
-    if (!(e)) { Util::do_assert(#e, SUBDOC__func__, __FILE__, __LINE__); }
+} // namespace std

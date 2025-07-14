@@ -67,17 +67,6 @@ operator<<(ostream& os, const Subdoc::Error::Code& err) {
 }
 }
 
-void
-Util::do_assert(const char *e, const char *func, const char *file,
-        int line)
-{
-    std::string ss;
-    ss.append("Assertion failed (").append(e).append(") ");
-    ss.append("function ").append(func).append(", ");
-    ss.append("file ").append(file).append(", line").append(std::to_string(line));
-    throw std::runtime_error(ss);
-}
-
 jsonsl_type_t
 Util::get_root_type(Command command, const char *path, size_t len)
 {
