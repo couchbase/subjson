@@ -28,7 +28,9 @@ protected:
 
     static void SetUpTestCase() { jsn = Match::jsn_alloc(); }
     static void TearDownTestCase() { Match::jsn_free(jsn); }
-    virtual void SetUp() { m.clear(); }
+    void SetUp() override {
+        m.clear();
+    }
 };
 
 jsonsl_t MatchTests::jsn = NULL;

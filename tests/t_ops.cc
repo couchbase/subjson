@@ -25,9 +25,9 @@ using Subdoc::Result;
 
 class OpTests : public ::testing::Test {
 protected:
-  virtual void SetUp() {
-      op.clear();
-  }
+    void SetUp() override {
+        op.clear();
+    }
 
   Operation op;
   Result res;
