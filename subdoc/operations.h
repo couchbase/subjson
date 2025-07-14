@@ -129,7 +129,7 @@ private:
     Result *m_result;
 
     Error do_match_common(Match::SearchOptions options);
-    Error do_get();
+    Error do_get() const;
     Error do_store_dict();
     Error do_remove();
 
@@ -149,7 +149,7 @@ private:
     // Wrapper around Validator::validate(), this omits the
     // passing of arguments we already have (for example, the new object)
     // and also wraps the error code
-    Error validate(int mode, size_t depth);
+    Error validate(int mode, size_t depth) const;
 
     enum DepthMode {
         /// Last component of the path is the key for the new item

@@ -56,9 +56,7 @@ Operation::do_match_common(Match::SearchOptions options)
     return Error::SUCCESS;
 }
 
-Error
-Operation::do_get()
-{
+Error Operation::do_get() const {
     if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
         return Error::PATH_ENOENT;
     }
@@ -711,7 +709,7 @@ Operation::do_arith_op()
     return Error::SUCCESS;
 }
 
-Error Operation::validate(int mode, size_t depth) {
+Error Operation::validate(int mode, size_t depth) const {
     if (!m_userval.empty()) {
         int rv = Validator::validate(m_userval, m_jsn, depth, mode);
         switch (rv) {
