@@ -1,119 +1,96 @@
-/* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
-*     Copyright 2015-Present Couchbase, Inc.
-*
-*   Use of this software is governed by the Business Source License included
-*   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-*   in that file, in accordance with the Business Source License, use of this
-*   software will be governed by the Apache License, Version 2.0, included in
-*   the file licenses/APL2.txt.
-*/
+ *     Copyright 2015-Present Couchbase, Inc.
+ *
+ *   Use of this software is governed by the Business Source License included
+ *   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+ *   in that file, in accordance with the Business Source License, use of this
+ *   software will be governed by the Apache License, Version 2.0, included in
+ *   the file licenses/APL2.txt.
+ */
 #include "subdoc-tests-common.h"
 #include "subdoc/validate.h"
-using std::string;
-using std::cerr;
-using std::endl;
-using Subdoc::Operation;
-using Subdoc::Match;
-using Subdoc::Loc;
-using Subdoc::Error;
-using Subdoc::Command;
-using Subdoc::Validator;
-using Subdoc::Util;
-using Subdoc::Limits;
-using Subdoc::Result;
 
-class OpTests : public ::testing::Test {
+using namespace Subdoc;
+
+class OpTests : public testing::Test {
 protected:
     void SetUp() override {
         op.clear();
     }
 
-  Operation op;
-  Result res;
+    Operation op;
+    Result res;
 
-  string getNewDoc();
-  string returnedMatch() {
-      return res.matchloc().to_string();
-  }
-  void getAssignNewDoc(string& newdoc);
-  Error runOp(Command,
-              const char* path,
-              const char* value = nullptr,
-              size_t nvalue = 0);
+    std::string getNewDoc() const;
+    auto returnedMatch() const {
+        return res.matchloc().to_string();
+    }
+    void getAssignNewDoc(std::string& newdoc);
+    Error runOp(Command, std::string_view path, std::string_view value = {});
 };
 
-static ::testing::AssertionResult
-ensureErrorResult(const char *expr, Error got, Error wanted = Error::SUCCESS)
-{
+static ::testing::AssertionResult ensureErrorResult(
+        const char* expr, Error got, Error wanted = Error::SUCCESS) {
     using namespace testing;
     if (got != wanted) {
-        return AssertionFailure() << expr << ": Expected "
-                << wanted << std::hex << wanted <<
-                " (" << wanted.description() << "), Got "
-                << got << std::hex << got << " (" << got.description() << ")";
+        return AssertionFailure()
+               << expr << ": Expected " << wanted << std::hex << wanted << " ("
+               << wanted.description() << "), Got " << got << std::hex << got
+               << " (" << got.description() << ")";
     }
     return AssertionSuccess();
 }
-static ::testing::AssertionResult
-ensureErrorResult2(const char *a, const char *, Error got, Error wanted) {
+static ::testing::AssertionResult ensureErrorResult2(const char* a,
+                                                     const char*,
+                                                     Error got,
+                                                     Error wanted) {
     return ensureErrorResult(a, got, wanted);
 }
 
-#define ASSERT_ERROK(exp) \
-    ASSERT_PRED_FORMAT1(ensureErrorResult, exp)
+#define ASSERT_ERROK(exp) ASSERT_PRED_FORMAT1(ensureErrorResult, exp)
 
-#define ASSERT_ERREQ(exp, err) \
-    ASSERT_PRED_FORMAT2(ensureErrorResult2, exp, err)
+#define ASSERT_ERREQ(exp, err) ASSERT_PRED_FORMAT2(ensureErrorResult2, exp, err)
 
-string
-OpTests::getNewDoc()
-{
-    string ret;
+std::string OpTests::getNewDoc() const {
+    std::string ret;
     for (auto ii : res.newdoc()) {
         ret.append(ii.at, ii.length);
     }
 
     // validate
     int rv = Validator::validate(ret, op.parser());
-    std::stringstream ss;
     if (rv != JSONSL_ERROR_SUCCESS) {
         Util::dump_newdoc(res);
     }
     EXPECT_EQ(JSONSL_ERROR_SUCCESS, rv)
-        << Util::jsonerr(static_cast<jsonsl_error_t>(rv));
+            << Util::jsonerr(static_cast<jsonsl_error_t>(rv));
     return ret;
 }
 
-void
-OpTests::getAssignNewDoc(string& newdoc)
-{
+void OpTests::getAssignNewDoc(std::string& newdoc) {
     newdoc = getNewDoc();
     op.set_doc(newdoc);
 }
 
-Error
-OpTests::runOp(Command opcode, const char *path, const char *value, size_t nvalue)
-{
+Error OpTests::runOp(Command opcode,
+                     const std::string_view path,
+                     const std::string_view value) {
     op.clear();
-    if (value != nullptr) {
-        if (nvalue == 0) {
-            nvalue = strlen(value);
-        }
-        op.set_value(value, nvalue);
+    if (!value.empty()) {
+        op.set_value(value.data(), value.length());
     }
     op.set_code(opcode);
+    res.clear();
     op.set_result_buf(&res);
-    return op.op_exec(path, strlen(path));
+    return op.op_exec(path.data(), path.length());
 }
 
 #include "big_json.inc.h"
-TEST_F(OpTests, testOperations)
-{
-    string newdoc;
+TEST_F(OpTests, testOperations) {
+    std::string newdoc;
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "name"));
-    ASSERT_EQ("\"Allagash Brewing\"", Util::match_match(op.match()));
+    ASSERT_EQ(R"("Allagash Brewing")", Util::match_match(op.match()));
     ASSERT_EQ(Error::SUCCESS, runOp(Command::EXISTS, "name"));
 
     Error rv = runOp(Command::REMOVE, "address");
@@ -124,19 +101,19 @@ TEST_F(OpTests, testOperations)
     ASSERT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "address"));
 
     // Insert something back, maybe :)
-    rv = runOp(Command::DICT_ADD, "address", "\"123 Main St.\"");
+    rv = runOp(Command::DICT_ADD, "address", R"("123 Main St.")");
     ASSERT_TRUE(rv.success());
 
     getAssignNewDoc(newdoc);
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "address"));
-    ASSERT_EQ("\"123 Main St.\"", Util::match_match(op.match()));
+    ASSERT_EQ(R"("123 Main St.")", Util::match_match(op.match()));
 
     // Replace the value now:
-    rv = runOp(Command::REPLACE, "address", "\"33 Marginal Rd.\"");
+    rv = runOp(Command::REPLACE, "address", R"("33 Marginal Rd.")");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(newdoc);
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "address"));
-    ASSERT_EQ("\"33 Marginal Rd.\"", Util::match_match(op.match()));
+    ASSERT_EQ(R"("33 Marginal Rd.")", Util::match_match(op.match()));
 
     // Get it back:
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
@@ -146,16 +123,17 @@ TEST_F(OpTests, testOperations)
 
     rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", "[1,2,3]");
     ASSERT_TRUE(rv.success());
-    getNewDoc();
+    // Verify that the complete document can be created successfully and that
+    // the validator pass
+    (void)getNewDoc();
 }
 
 // Mainly checks that we can perform generic DELETE and GET operations
 // on array indices
-TEST_F(OpTests, testGenericOps)
-{
+TEST_F(OpTests, testGenericOps) {
     op.set_doc(SAMPLE_big_json, strlen(SAMPLE_big_json));
     Error rv;
-    string newdoc;
+    std::string newdoc;
 
     rv = runOp(Command::REMOVE, "address[0]");
     ASSERT_TRUE(rv.success());
@@ -164,27 +142,26 @@ TEST_F(OpTests, testGenericOps)
     rv = runOp(Command::GET, "address[0]");
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 
-    rv = runOp(Command::REPLACE, "address",
-        "[\"500 B St.\", \"Anytown\", \"USA\"]");
+    rv = runOp(
+            Command::REPLACE, "address", R"(["500 B St.", "Anytown", "USA"])");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(newdoc);
     rv = runOp(Command::GET, "address[2]");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("\"USA\"", Util::match_match(op.match()));
 
-    rv = runOp(Command::REPLACE, "address[1]", "\"Sacramento\"");
+    rv = runOp(Command::REPLACE, "address[1]", R"("Sacramento")");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(newdoc);
 
     rv = runOp(Command::GET, "address[1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("\"Sacramento\"", Util::match_match(op.match()));
+    ASSERT_EQ(R"("Sacramento")", Util::match_match(op.match()));
 }
 
-TEST_F(OpTests, testReplaceArrayDeep)
-{
+TEST_F(OpTests, testReplaceArrayDeep) {
     // Create an array at max level.
-    string deep;
+    std::string deep;
     for (size_t ii = 0; ii < Limits::MAX_COMPONENTS - 1; ii++) {
         deep += "[";
     }
@@ -195,41 +172,40 @@ TEST_F(OpTests, testReplaceArrayDeep)
     op.set_doc(deep);
 
     // Sanity check - should be able to access maximum depth.
-    string one_minus_max_path;
+    std::string one_minus_max_path;
     for (size_t ii = 0; ii < Limits::MAX_COMPONENTS - 2; ii++) {
         one_minus_max_path += "[0]";
     }
-    string max_path(one_minus_max_path + "[0]");
-    Error rv = runOp(Command::GET, one_minus_max_path.c_str());
+    std::string max_path(one_minus_max_path + "[0]");
+    Error rv = runOp(Command::GET, one_minus_max_path);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("[1]", Util::match_match(op.match()));
 
     // Should be able to replace the array element with a different one.
-    rv = runOp(Command::REPLACE, max_path.c_str(), "2");
+    rv = runOp(Command::REPLACE, max_path, "2");
     ASSERT_TRUE(rv.success());
-    string newdoc;
+    std::string newdoc;
     getAssignNewDoc(newdoc);
-    rv = runOp(Command::GET, one_minus_max_path.c_str());
+    rv = runOp(Command::GET, one_minus_max_path);
     ASSERT_TRUE(rv.success());
     EXPECT_EQ("[2]", Util::match_match(op.match()));
 
     // Should be able to replace the last level array with a different
     // (larger) one.
-    rv = runOp(Command::REPLACE, one_minus_max_path.c_str(), "[3,4]");
+    rv = runOp(Command::REPLACE, one_minus_max_path, "[3,4]");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(newdoc);
-    rv = runOp(Command::GET, one_minus_max_path.c_str());
+    rv = runOp(Command::GET, one_minus_max_path);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("[3,4]", Util::match_match(op.match()));
 
     // Should not be able to make it any deeper (already at maximum).
-    rv = runOp(Command::REPLACE, one_minus_max_path.c_str(), "[[5]]");
+    rv = runOp(Command::REPLACE, one_minus_max_path, "[[5]]");
     ASSERT_EQ(Error::VALUE_ETOODEEP, rv);
 }
 
-TEST_F(OpTests, testListOps)
-{
-    string doc = "{}";
+TEST_F(OpTests, testListOps) {
+    std::string doc = "{}";
     op.set_doc(doc);
 
     Error rv = runOp(Command::DICT_UPSERT, "array", "[]");
@@ -264,13 +240,13 @@ TEST_F(OpTests, testListOps)
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("2", Util::match_match(op.match()));
 
-    rv = runOp(Command::ARRAY_APPEND, "array", "{\"foo\":\"bar\"}");
+    rv = runOp(Command::ARRAY_APPEND, "array", R"({"foo":"bar"})");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
     rv = runOp(Command::GET, "array[3].foo");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("\"bar\"", Util::match_match(op.match()));
+    ASSERT_EQ(R"("bar")", Util::match_match(op.match()));
 
     // Test the various POP commands
     rv = runOp(Command::REMOVE, "array[0]");
@@ -282,7 +258,7 @@ TEST_F(OpTests, testListOps)
 
     rv = runOp(Command::REMOVE, "array[-1]");
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ("{\"foo\":\"bar\"}", Util::match_match(op.match()));
+    ASSERT_EQ(R"({"foo":"bar"})", Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
     rv = runOp(Command::REMOVE, "array[-1]");
@@ -321,9 +297,8 @@ TEST_F(OpTests, testListOps)
     ASSERT_EQ("123", Util::match_match(op.match()));
 }
 
-TEST_F(OpTests, testArrayMultivalue)
-{
-    string doc = "{\"array\":[4,5,6]}";
+TEST_F(OpTests, testArrayMultivalue) {
+    std::string doc = R"({"array":[4,5,6]})";
     Error rv;
     op.set_doc(doc);
 
@@ -352,28 +327,26 @@ TEST_F(OpTests, testArrayMultivalue)
     ASSERT_EQ("-2", Util::match_match(op.match()));
 }
 
-TEST_F(OpTests, testArrayOpsNested)
-{
-    const string array("[0,[1,[2]],{\"key\":\"val\"}]");
+TEST_F(OpTests, testArrayOpsNested) {
+    const std::string array(R"([0,[1,[2]],{"key":"val"}])");
     op.set_doc(array);
     Error rv;
 
     rv = runOp(Command::REMOVE, "[1][1][0]");
     EXPECT_TRUE(rv.success());
-    EXPECT_EQ("[0,[1,[]],{\"key\":\"val\"}]", getNewDoc());
+    EXPECT_EQ(R"([0,[1,[]],{"key":"val"}])", getNewDoc());
 
-    string array2;
+    std::string array2;
     getAssignNewDoc(array2);
     rv = runOp(Command::REMOVE, "[1][1]");
     EXPECT_TRUE(rv.success());
-    EXPECT_EQ("[0,[1],{\"key\":\"val\"}]", getNewDoc());
+    EXPECT_EQ(R"([0,[1],{"key":"val"}])", getNewDoc());
 }
 
 // Toplevel array with two elements.
-TEST_F(OpTests, testArrayDelete)
-{
+TEST_F(OpTests, testArrayDelete) {
     // Toplevel array deletions
-    const string array("[1,2]");
+    const std::string array("[1,2]");
     op.set_doc(array);
     Error rv;
 
@@ -388,7 +361,7 @@ TEST_F(OpTests, testArrayDelete)
     EXPECT_EQ("[1]", getNewDoc());
 
     // One element array. Delete last (final) element (via [0]).
-    const string array2("[1]");
+    const std::string array2("[1]");
     op.set_doc(array2);
 
     rv = runOp(Command::REMOVE, "[0]");
@@ -401,9 +374,8 @@ TEST_F(OpTests, testArrayDelete)
     EXPECT_EQ("[]", getNewDoc());
 }
 
-TEST_F(OpTests, testDictDelete)
-{
-    const string dict("{\"0\": 1,\"1\": 2.0}");
+TEST_F(OpTests, testDictDelete) {
+    const std::string dict(R"({"0": 1,"1": 2.0})");
     op.set_doc(dict);
     Error rv;
 
@@ -412,32 +384,31 @@ TEST_F(OpTests, testDictDelete)
     EXPECT_TRUE(rv.success());
 
     // Check it's gone.
-    string doc;
+    std::string doc;
     getAssignNewDoc(doc);
     rv = runOp(Command::EXISTS, "0");
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 }
 
-TEST_F(OpTests, testUnique)
-{
-    string json = "{}";
-    string doc;
+TEST_F(OpTests, testUnique) {
+    std::string json = "{}";
+    std::string doc;
     Error rv;
 
     op.set_doc(json);
 
-    rv = runOp(Command::ARRAY_ADD_UNIQUE_P, "unique", "\"value\"");
+    rv = runOp(Command::ARRAY_ADD_UNIQUE_P, "unique", R"("value")");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "\"value\"");
+    rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", R"("value")");
     ASSERT_EQ(Error::DOC_EEXISTS, rv);
 
     rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "1");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-    rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "\"1\"");
+    rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", R"("1")");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
@@ -452,14 +423,13 @@ TEST_F(OpTests, testUnique)
     getAssignNewDoc(doc);
 
     rv = runOp(Command::ARRAY_ADD_UNIQUE, "unique", "2");
-    ASSERT_EQ(Error::PATH_MISMATCH, rv) <<
-            "Mismatch with array containing non-primitive elements";
+    ASSERT_EQ(Error::PATH_MISMATCH, rv)
+            << "Mismatch with array containing non-primitive elements";
 }
 
-TEST_F(OpTests, testUniqueToplevel)
-{
-    string json("[]");
-    string doc;
+TEST_F(OpTests, testUniqueToplevel) {
+    std::string json("[]");
+    std::string doc;
     Error rv;
 
     op.set_doc(json);
@@ -472,14 +442,8 @@ TEST_F(OpTests, testUniqueToplevel)
     ASSERT_EQ(Error::DOC_EEXISTS, rv);
 }
 
-#ifndef INT64_MIN
-#define INT64_MIN (-9223372036854775807LL-1)
-#define INT64_MAX 9223372036854775807LL
-#endif
-
-TEST_F(OpTests, testNumeric)
-{
-    string doc = "{}";
+TEST_F(OpTests, testNumeric) {
+    std::string doc = "{}";
     Error rv;
     op.set_doc(doc);
 
@@ -505,19 +469,20 @@ TEST_F(OpTests, testNumeric)
     getAssignNewDoc(doc);
 
     // Try with other things
-    string dummy = std::to_string(INT64_MAX);
-    rv = runOp(Command::COUNTER, "counter", dummy.c_str());
+    std::string dummy = std::to_string(INT64_MAX);
+    rv = runOp(Command::COUNTER, "counter", dummy);
     ASSERT_TRUE(rv.success());
-    ASSERT_EQ(std::to_string(INT64_MAX-99), Util::match_match(op.match()));
+    ASSERT_EQ(std::to_string(INT64_MAX - 99), Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
-    dummy = "-" + std::to_string(INT64_MAX-99);
-    rv = runOp(Command::COUNTER, "counter", dummy.c_str());
+    dummy = "-" + std::to_string(INT64_MAX - 99);
+    rv = runOp(Command::COUNTER, "counter", dummy);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("0", Util::match_match(op.match()));
     getAssignNewDoc(doc);
 
-    rv = runOp(Command::DICT_ADD_P, "counter2", "9999999999999999999999999999999");
+    rv = runOp(
+            Command::DICT_ADD_P, "counter2", "9999999999999999999999999999999");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
@@ -555,19 +520,18 @@ TEST_F(OpTests, MB57177) {
     const auto max = std::to_string(std::numeric_limits<int64_t>::max());
     std::string doc = R"({"min":0, "max":0})";
     op.set_doc(doc);
-    auto rv = runOp(Command::COUNTER, "min", min.c_str());
+    auto rv = runOp(Command::COUNTER, "min", min);
     ASSERT_TRUE(rv.success()) << rv.description();
     ASSERT_EQ(min, Util::match_match(op.match()));
 
     op.set_doc(doc);
-    rv = runOp(Command::COUNTER, "max", max.c_str());
+    rv = runOp(Command::COUNTER, "max", max);
     ASSERT_TRUE(rv.success()) << rv.description();
     ASSERT_EQ(max, Util::match_match(op.match()));
 }
 
-TEST_F(OpTests, testBadNumFormat)
-{
-    string doc = "{}";
+TEST_F(OpTests, testBadNumFormat) {
+    std::string doc = "{}";
     op.set_doc(doc);
 
     ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "bad"));
@@ -579,11 +543,11 @@ TEST_F(OpTests, testBadNumFormat)
     ASSERT_EQ(Error::DELTA_EINVAL, runOp(Command::COUNTER_P, "pth", "01"));
 }
 
-TEST_F(OpTests, testNumericLimits)
-{
+TEST_F(OpTests, testNumericLimits) {
     // Check we can increment from int64_t::max()-1 to max() successfully.
-    const int64_t max = std::numeric_limits<int64_t>::max();
-    const string one_minus_max("{\"counter\":" + std::to_string(max - 1) + "}");
+    constexpr int64_t max = std::numeric_limits<int64_t>::max();
+    const std::string one_minus_max(R"({"counter":)" + std::to_string(max - 1) +
+                                    "}");
     op.set_doc(one_minus_max);
 
     Error rv = runOp(Command::COUNTER, "counter", "1");
@@ -597,8 +561,9 @@ TEST_F(OpTests, testNumericLimits)
     ASSERT_EQ(Error::DELTA_OVERFLOW, rv);
 
     // Same for int64_t::min() - 1 and decrement.
-    const int64_t min = std::numeric_limits<int64_t>::min();
-    const string one_plus_min("{\"counter\":" + std::to_string(min + 1) + "}");
+    constexpr int64_t min = std::numeric_limits<int64_t>::min();
+    const std::string one_plus_min(R"({"counter":)" + std::to_string(min + 1) +
+                                   "}");
     op.set_doc(one_plus_min);
 
     rv = runOp(Command::COUNTER, "counter", "-1");
@@ -612,10 +577,8 @@ TEST_F(OpTests, testNumericLimits)
     ASSERT_EQ(Error::DELTA_OVERFLOW, rv);
 }
 
-TEST_F(OpTests, testValueValidation)
-{
-    string json = "{}";
-    string doc;
+TEST_F(OpTests, testValueValidation) {
+    std::string doc = "{}";
     Error rv;
     op.set_doc(doc);
 
@@ -627,22 +590,22 @@ TEST_F(OpTests, testValueValidation)
 
     // FIXME: Should we allow this? Could be more performant, but might also
     // be confusing!
-    rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", "1,\"k2\":2");
+    rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", R"(1,"k2":2)");
     ASSERT_TRUE(rv.success());
 
     // Dict key without a colon or value.
-    rv = runOp(Command::DICT_ADD, "bad_dict", "{ \"foo\" }");
+    rv = runOp(Command::DICT_ADD, "bad_dict", R"({ "foo" })");
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    rv = runOp(Command::DICT_ADD, "bad_dict", "{ \"foo\": }");
+    rv = runOp(Command::DICT_ADD, "bad_dict", R"({ "foo": })");
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // Dict without a colon or value.
-    rv = runOp(Command::DICT_ADD_P, "bad_dict", "{ \"foo\" }");
+    rv = runOp(Command::DICT_ADD_P, "bad_dict", R"({ "foo" })");
     EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // Dict without a colon.
-    rv = runOp(Command::DICT_ADD_P, "bad_dict", "{ \"foo\": }");
+    rv = runOp(Command::DICT_ADD_P, "bad_dict", R"({ "foo": })");
     EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // null with incorrect name.
@@ -666,10 +629,8 @@ TEST_F(OpTests, testValueValidation)
     EXPECT_EQ(Error::VALUE_CANTINSERT, rv);
 }
 
-
-TEST_F(OpTests, testNegativeIndex)
-{
-    string json = "[1,2,3,4,5,6]";
+TEST_F(OpTests, testNegativeIndex) {
+    std::string json = "[1,2,3,4,5,6]";
     op.set_doc(json);
 
     Error rv = runOp(Command::GET, "[-1]");
@@ -682,7 +643,7 @@ TEST_F(OpTests, testNegativeIndex)
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("9", Util::match_match(op.match()));
 
-    string doc;
+    std::string doc;
     rv = runOp(Command::REMOVE, "[-1].[-1].[-1]");
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
@@ -692,13 +653,12 @@ TEST_F(OpTests, testNegativeIndex)
     ASSERT_TRUE(rv.success());
     getAssignNewDoc(doc);
 
-
     rv = runOp(Command::GET, "[-1].[-1].[-1]");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("10", Util::match_match(op.match()));
 
     // Intermixed paths:
-    json = "{\"k1\": [\"first\", {\"k2\":[6,7,8]},\"last\"] }";
+    json = R"({"k1": ["first", {"k2":[6,7,8]},"last"] })";
     op.set_doc(json);
 
     rv = runOp(Command::GET, "k1[-1]");
@@ -710,9 +670,8 @@ TEST_F(OpTests, testNegativeIndex)
     ASSERT_EQ("8", Util::match_match(op.match()));
 }
 
-TEST_F(OpTests, testRootOps)
-{
-    string json = "[]";
+TEST_F(OpTests, testRootOps) {
+    std::string json = "[]";
     op.set_doc(json);
     Error rv;
 
@@ -732,9 +691,8 @@ TEST_F(OpTests, testRootOps)
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 }
 
-TEST_F(OpTests, testMismatch)
-{
-    string doc = "{}";
+TEST_F(OpTests, testMismatch) {
+    std::string doc = "{}";
     op.set_doc(doc);
     Error rv;
 
@@ -761,9 +719,8 @@ TEST_F(OpTests, testMismatch)
     ASSERT_EQ(Error::PATH_MISMATCH, rv);
 }
 
-TEST_F(OpTests, testWhitespace)
-{
-    string doc = "[ 1, 2, 3,       4        ]";
+TEST_F(OpTests, testWhitespace) {
+    std::string doc = "[ 1, 2, 3,       4        ]";
     op.set_doc(doc);
     Error rv;
 
@@ -772,13 +729,12 @@ TEST_F(OpTests, testWhitespace)
     ASSERT_EQ("4", Util::match_match(op.match()));
 }
 
-TEST_F(OpTests, testTooDeep)
-{
-    std::string deep = "{\"array\":";
-    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS+1) * 2; ii++) {
+TEST_F(OpTests, testTooDeep) {
+    std::string deep = R"({"array":)";
+    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS + 1) * 2; ii++) {
         deep += "[";
     }
-    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS+1) * 2; ii++) {
+    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS + 1) * 2; ii++) {
         deep += "]";
     }
 
@@ -789,10 +745,10 @@ TEST_F(OpTests, testTooDeep)
 
     // Try with a really deep path:
     std::string dp = "dummy";
-    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS+1) * 2; ii++) {
+    for (size_t ii = 0; ii < (Limits::MAX_COMPONENTS + 1) * 2; ii++) {
         dp += ".dummy";
     }
-    rv = runOp(Command::GET, dp.c_str());
+    rv = runOp(Command::GET, dp);
     ASSERT_EQ(Error::PATH_E2BIG, rv);
 }
 
@@ -810,33 +766,34 @@ TEST_F(OpTests, testTooDeepDict) {
 
     // Create base path at one less than the max.
     std::string one_less_max_path(std::to_string(1));
-    for (size_t depth = 2; depth < Limits::MAX_COMPONENTS -1; depth++) {
+    for (size_t depth = 2; depth < Limits::MAX_COMPONENTS - 1; depth++) {
         one_less_max_path += std::string(".") + std::to_string(depth);
     }
 
-    const std::string max_valid_path(one_less_max_path + "." +
-                                     std::to_string(Limits::MAX_COMPONENTS-1));
+    const std::string max_valid_path(
+            one_less_max_path + "." +
+            std::to_string(Limits::MAX_COMPONENTS - 1));
     // Assert we can access elements at the max depth (before we start
     // attempting to add more).
-    Error rv = runOp(Command::GET, max_valid_path.c_str());
+    Error rv = runOp(Command::GET, max_valid_path);
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("{}", Util::match_match(op.match()));
 
     // Should be able to add an element as the same level as the max.
     const std::string equal_max_path(one_less_max_path + ".sibling_max");
-    rv = runOp(Command::DICT_ADD, equal_max_path.c_str(), "\"also at max depth\"");
+    rv = runOp(Command::DICT_ADD, equal_max_path, R"("also at max depth")");
     EXPECT_TRUE(rv.success()) << rv;
     std::string newDoc;
     getAssignNewDoc(newDoc);
 
     // Attempts to add one level deeper should fail.
     std::string too_long_path(max_valid_path + ".too_long");
-    rv = runOp(Command::DICT_ADD, too_long_path.c_str(), "\"past max depth\"");
+    rv = runOp(Command::DICT_ADD, too_long_path, R"("past max depth")");
     EXPECT_EQ(Error::PATH_E2BIG, rv);
 }
 
 TEST_F(OpTests, testArrayInsert) {
-    string doc("[1,2,4,5]");
+    std::string doc("[1,2,4,5]");
     op.set_doc(doc);
     Error rv = runOp(Command::ARRAY_INSERT, "[2]", "3");
     ASSERT_TRUE(rv.success()) << "Insert op recognized";
@@ -860,7 +817,8 @@ TEST_F(OpTests, testArrayInsert) {
     op.set_doc(doc);
     // -1 is not a valid insertion point.
     rv = runOp(Command::ARRAY_INSERT, "[-1]", "4");
-    ASSERT_EQ(Error::PATH_EINVAL, rv) << "Terminal negative index invalid for insert.";
+    ASSERT_EQ(Error::PATH_EINVAL, rv)
+            << "Terminal negative index invalid for insert.";
 
     // Insert at out-of-bounds element
     doc = "[1,2,3]";
@@ -881,7 +839,8 @@ TEST_F(OpTests, testArrayInsert) {
     doc = "[]";
     op.set_doc(doc);
     rv = runOp(Command::ARRAY_INSERT, "[0]", "blah");
-    ASSERT_EQ(Error::VALUE_CANTINSERT, rv) << "CANT_INSERT on invalid JSON value";
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv)
+            << "CANT_INSERT on invalid JSON value";
 
     doc = "{}";
     op.set_doc(doc);
@@ -902,7 +861,7 @@ TEST_F(OpTests, testEmpty) {
 // When using the built-in result context, ensure the internal buffers are
 // cleared between operations
 TEST_F(OpTests, ensureRepeatable) {
-    string doc = "{}";
+    std::string doc = "{}";
     Error rv;
 
     op.set_doc(doc);
@@ -916,9 +875,8 @@ TEST_F(OpTests, ensureRepeatable) {
     getAssignNewDoc(doc);
 }
 
-TEST_F(OpTests, testDeleteNestedArray)
-{
-    string doc = "[0,[10,20,[100]],{\"key\":\"value\"}]";
+TEST_F(OpTests, testDeleteNestedArray) {
+    std::string doc = R"([0,[10,20,[100]],{"key":"value"}])";
     Error rv;
     op.set_doc(doc);
 
@@ -949,35 +907,34 @@ TEST_F(OpTests, testDeleteNestedArray)
     rv = runOp(Command::GET, "[1]");
     ASSERT_EQ(Error::SUCCESS, rv);
     ASSERT_EQ("{\"key\":\"value\"}", Util::match_match(op.match()));
-
 }
 
-TEST_F(OpTests, testEscapedJson)
-{
-    string doc = "{\"" "\\" "\"quoted\":true}";
+TEST_F(OpTests, testEscapedJson) {
+    std::string doc = R"({")"
+                      R"(\)"
+                      R"("quoted":true})";
     Error rv;
     op.set_doc(doc);
-    rv = runOp(Command::GET, "\\\"quoted");
+    rv = runOp(Command::GET, R"(\"quoted)");
     ASSERT_EQ(Error::SUCCESS, rv);
     ASSERT_EQ("true", Util::match_match(op.match()));
 
     // Try with insertion
-    rv = runOp(Command::DICT_UPSERT_P, "another.\\\"nested.field", "null");
+    rv = runOp(Command::DICT_UPSERT_P, R"(another.\"nested.field)", "null");
     ASSERT_EQ(Error::SUCCESS, rv);
 
     getAssignNewDoc(doc);
 
-    ASSERT_EQ(Error::PATH_EINVAL, runOp(Command::GET, "\"missing.quote"));
+    ASSERT_EQ(Error::PATH_EINVAL, runOp(Command::GET, R"("missing.quote)"));
 }
 
-TEST_F(OpTests, testUpsertArrayIndex)
-{
+TEST_F(OpTests, testUpsertArrayIndex) {
     // This test verifies some corner cases where there is a missing
     // array index which would normally be treated like a dictionary.
     // Ensure that we never automatically add an array index without
     // explicit array operations.
 
-    string doc = "{\"array\":[null]}";
+    std::string doc = R"({"array":[null]})";
     Error rv;
     op.set_doc(doc);
 
@@ -1003,10 +960,9 @@ TEST_F(OpTests, testUpsertArrayIndex)
     ASSERT_EQ(Error::PATH_ENOENT, rv);
 }
 
-TEST_F(OpTests, testRootAppend)
-{
+TEST_F(OpTests, testRootAppend) {
     // Tests append on an empty path, which should use an optimized codebase
-    string doc("[]");
+    std::string doc("[]");
     Error rv;
     op.set_doc(doc);
 
@@ -1091,8 +1047,7 @@ TEST_F(OpTests, testRootAppend)
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 }
 
-TEST_F(OpTests, testGetCount)
-{
+TEST_F(OpTests, testGetCount) {
     std::string doc = "{\"array\":[1,2,3,4]}";
     op.set_doc(doc);
     ASSERT_ERROK(runOp(Command::GET_COUNT, "array"));
@@ -1107,9 +1062,10 @@ TEST_F(OpTests, testGetCount)
 
     doc = "{}";
     op.set_doc(doc);
-    ASSERT_ERREQ(runOp(Command::GET_COUNT, "non.exist.path"), Error::PATH_ENOENT);
+    ASSERT_ERREQ(runOp(Command::GET_COUNT, "non.exist.path"),
+                 Error::PATH_ENOENT);
 
-    doc = "{\"a\":\"k\"}";
+    doc = R"({"a":"k"})";
     op.set_doc(doc);
     ASSERT_ERREQ(runOp(Command::GET_COUNT, "n"), Error::PATH_ENOENT);
 
@@ -1130,7 +1086,7 @@ TEST_F(OpTests, testGetCount)
     ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
     ASSERT_EQ("0", returnedMatch());
 
-    doc = "{\"a\":1,\"b\":2}";
+    doc = R"({"a":1,"b":2})";
     op.set_doc(doc);
     ASSERT_ERROK(runOp(Command::GET_COUNT, ""));
     ASSERT_EQ("2", returnedMatch());
@@ -1150,12 +1106,11 @@ enum LastElementType {
 // @param depth the nominal depth of the path
 // @param final_type the type of last element, either an array index or dict key
 // @return the path
-static std::string
-genDeepPath(size_t depth, LastElementType final_type = LAST_ELEM_KEY)
-{
+static std::string genDeepPath(size_t depth,
+                               LastElementType final_type = LAST_ELEM_KEY) {
     std::stringstream ss;
     size_t ii = 0;
-    for (; ii < depth-1; ++ii) {
+    for (; ii < depth - 1; ++ii) {
         ss << "P" << std::to_string(ii) << ".";
     }
     if (final_type == LAST_ELEM_KEY) {
@@ -1166,31 +1121,30 @@ genDeepPath(size_t depth, LastElementType final_type = LAST_ELEM_KEY)
     return ss.str();
 }
 
-TEST_F(OpTests, TestDeepPath)
-{
+TEST_F(OpTests, TestDeepPath) {
     using Subdoc::Path;
 
     // "Traits" structure for the path
     struct CommandInfo {
         Command code; // Command code
         LastElementType last_elem_type; // Expected last element type
-        bool implicit_child; // Whether the real size of the path is actually n+1
+        bool implicit_child; // Whether the real size of the path is actually
+                             // n+1
     };
 
-    static const std::vector<CommandInfo> cinfo({
-        {Command::GET, LAST_ELEM_ANY, false},
-        {Command::EXISTS, LAST_ELEM_ANY, false},
-        {Command::REPLACE, LAST_ELEM_ANY, false},
-        {Command::REMOVE, LAST_ELEM_ANY, false},
-        {Command::DICT_UPSERT, LAST_ELEM_KEY, false},
-        {Command::DICT_ADD, LAST_ELEM_KEY, false},
-        {Command::ARRAY_PREPEND, LAST_ELEM_ANY, true},
-        {Command::ARRAY_APPEND, LAST_ELEM_ANY, true},
-        {Command::ARRAY_ADD_UNIQUE, LAST_ELEM_ANY, true},
-        {Command::ARRAY_INSERT, LAST_ELEM_INDEX, false},
-        {Command::COUNTER, LAST_ELEM_ANY, false},
-        {Command::GET_COUNT, LAST_ELEM_ANY, false}
-    });
+    static const std::vector<CommandInfo> cinfo(
+            {{Command::GET, LAST_ELEM_ANY, false},
+             {Command::EXISTS, LAST_ELEM_ANY, false},
+             {Command::REPLACE, LAST_ELEM_ANY, false},
+             {Command::REMOVE, LAST_ELEM_ANY, false},
+             {Command::DICT_UPSERT, LAST_ELEM_KEY, false},
+             {Command::DICT_ADD, LAST_ELEM_KEY, false},
+             {Command::ARRAY_PREPEND, LAST_ELEM_ANY, true},
+             {Command::ARRAY_APPEND, LAST_ELEM_ANY, true},
+             {Command::ARRAY_ADD_UNIQUE, LAST_ELEM_ANY, true},
+             {Command::ARRAY_INSERT, LAST_ELEM_INDEX, false},
+             {Command::COUNTER, LAST_ELEM_ANY, false},
+             {Command::GET_COUNT, LAST_ELEM_ANY, false}});
 
     for (auto opinfo : cinfo) {
         // List of final-element-types to try:
@@ -1205,7 +1159,7 @@ TEST_F(OpTests, TestDeepPath)
         }
 
         for (auto etype : elemTypes) {
-            size_t ncomps = Subdoc::Limits::MAX_COMPONENTS-1;
+            size_t ncomps = Subdoc::Limits::MAX_COMPONENTS - 1;
             if (opinfo.implicit_child) {
                 // If an implicit child is involved, the maximum allowable
                 // path length is actually one less because the child occupies
@@ -1213,14 +1167,15 @@ TEST_F(OpTests, TestDeepPath)
                 ncomps--;
             }
 
-            string path = genDeepPath(ncomps, etype);
-            Error rv = runOp(opinfo.code, path.c_str(), "123");
-            ASSERT_NE(Error::PATH_E2BIG, rv) << "Opcode: " << std::to_string(opinfo.code);
+            std::string path = genDeepPath(ncomps, etype);
+            Error rv = runOp(opinfo.code, path, "123");
+            ASSERT_NE(Error::PATH_E2BIG, rv)
+                    << "Opcode: " << std::to_string(opinfo.code);
 
             // Failure case:
             ncomps++;
             path = genDeepPath(ncomps, etype);
-            rv = runOp(opinfo.code, path.c_str(), "123");
+            rv = runOp(opinfo.code, path, "123");
 
             if (opinfo.implicit_child) {
                 // If the path is one that contains an implicit child, then
@@ -1228,7 +1183,8 @@ TEST_F(OpTests, TestDeepPath)
                 // the value is too deep (by virtue of it having a depth of >0)
                 ASSERT_EQ(Error::VALUE_ETOODEEP, rv);
             } else {
-                ASSERT_EQ(Error::PATH_E2BIG, rv) << "Opcode: " << std::to_string(opinfo.code);
+                ASSERT_EQ(Error::PATH_E2BIG, rv)
+                        << "Opcode: " << std::to_string(opinfo.code);
             }
         }
     }
@@ -1237,15 +1193,14 @@ TEST_F(OpTests, TestDeepPath)
 TEST_F(OpTests, testUtf8Path) {
     // Ensure we can set and retrieve paths with non-ascii utf8
     // \xc3\xba = ú
-    string path("F\xC3\xBAtbol");
-    string value("\"value\"");
-    string doc("{}");
+    std::string path("F\xC3\xBAtbol");
+    std::string value(R"("value")");
+    std::string doc("{}");
     op.set_doc(doc);
-    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT,
-                              path.c_str(), value.c_str()));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT, path, value));
     getAssignNewDoc(doc);
 
     // Try to retrieve the value
-    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, path.c_str()));
-    ASSERT_EQ("\"value\"", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, path));
+    ASSERT_EQ(R"("value")", returnedMatch());
 }

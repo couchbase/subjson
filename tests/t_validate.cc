@@ -11,16 +11,14 @@ licenses/APL2.txt.
 #include "subdoc-tests-common.h"
 #include "subdoc/validate.h"
 
-using std::string;
 using Subdoc::Validator;
 
-class ValidateTest : public ::testing::Test {
-};
+class ValidateTest : public testing::Test {};
 
 TEST_F(ValidateTest, testPlain) {
     // We're not testing jsonsl itself, but how we return/report validation
     // errors.
-    string txt("[\"Hello\"]");
+    std::string txt(R"(["Hello"])");
     int rv = Validator::validate(txt, nullptr);
     ASSERT_EQ(0, rv) << "Simple validation works OK";
 
@@ -31,7 +29,7 @@ TEST_F(ValidateTest, testPlain) {
 
 TEST_F(ValidateTest, testContext) {
     // Tests stuff in various contexts
-    string txt("null");
+    std::string txt("null");
     int rv = Validator::validate(txt, nullptr);
     ASSERT_NE(0, rv) << "Basic mode does not accept primitives (should fail)";
 
@@ -75,7 +73,7 @@ TEST_F(ValidateTest, testContext) {
 
 TEST_F(ValidateTest, testDepth) {
     // Tests depth constraints
-    string txt("[[[]]]");
+    std::string txt("[[[]]]");
     int rv;
 
     rv = Validator::validate(txt, nullptr, 3);

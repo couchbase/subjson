@@ -1,27 +1,23 @@
-/* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
-*     Copyright 2015-Present Couchbase, Inc.
-*
-*   Use of this software is governed by the Business Source License included
-*   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-*   in that file, in accordance with the Business Source License, use of this
-*   software will be governed by the Apache License, Version 2.0, included in
-*   the file licenses/APL2.txt.
-*/
+ *     Copyright 2015-Present Couchbase, Inc.
+ *
+ *   Use of this software is governed by the Business Source License included
+ *   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+ *   in that file, in accordance with the Business Source License, use of this
+ *   software will be governed by the Apache License, Version 2.0, included in
+ *   the file licenses/APL2.txt.
+ */
 
-#include <gtest/gtest.h>
 #include "subdoc/uescape.h"
+#include <gtest/gtest.h>
 
-using std::string;
 using Subdoc::UescapeConverter;
+using Status = UescapeConverter::Status;
 
-typedef UescapeConverter::Status Status;
-
-class UescapeTests : public ::testing::Test {
-};
+class UescapeTests : public testing::Test {};
 
 TEST_F(UescapeTests, testBasic) {
-    string in("nothing here"), out;
+    std::string in("nothing here"), out;
     auto rv = UescapeConverter::convert(in, out);
     ASSERT_EQ(in, out);
     ASSERT_TRUE(rv);
@@ -41,9 +37,9 @@ TEST_F(UescapeTests, testBasic) {
 
 TEST_F(UescapeTests, testSurrogates) {
     // http://www.fileformat.info/info/unicode/char/1d11e/index.htm
-    string in("Clef\\uD834\\uDD1E"), out;
+    std::string in("Clef\\uD834\\uDD1E"), out;
     // The way it's encoded in UTF8
-    string exp("Clef\xf0\x9d\x84\x9e");
+    std::string exp("Clef\xf0\x9d\x84\x9e");
 
     auto rv = UescapeConverter::convert(in, out);
     ASSERT_TRUE(rv);
@@ -63,7 +59,7 @@ TEST_F(UescapeTests, testSurrogates) {
 }
 
 TEST_F(UescapeTests, testInvalidHex) {
-    string in("\\uTTTT"), out;
+    std::string in("\\uTTTT"), out;
     auto rv = UescapeConverter::convert(in, out);
     ASSERT_FALSE(rv);
     ASSERT_EQ(Status::INVALID_HEXCHARS, rv.code());

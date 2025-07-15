@@ -1,33 +1,31 @@
-/* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
-*     Copyright 2015-Present Couchbase, Inc.
-*
-*   Use of this software is governed by the Business Source License included
-*   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-*   in that file, in accordance with the Business Source License, use of this
-*   software will be governed by the Apache License, Version 2.0, included in
-*   the file licenses/APL2.txt.
-*/
+ *     Copyright 2015-Present Couchbase, Inc.
+ *
+ *   Use of this software is governed by the Business Source License included
+ *   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+ *   in that file, in accordance with the Business Source License, use of this
+ *   software will be governed by the Apache License, Version 2.0, included in
+ *   the file licenses/APL2.txt.
+ */
 #include "subdoc-tests-common.h"
 
-using std::string;
-using std::cerr;
-using std::endl;
-using Subdoc::Path;
-using Subdoc::Match;
-using Subdoc::Util;
+using namespace Subdoc;
 
 #define JQ(s) "\"" s "\""
 
-class MatchTests : public ::testing::Test {
+class MatchTests : public testing::Test {
 protected:
     static const std::string json;
     static jsonsl_t jsn;
     Path pth;
     Match m;
 
-    static void SetUpTestCase() { jsn = Match::jsn_alloc(); }
-    static void TearDownTestCase() { Match::jsn_free(jsn); }
+    static void SetUpTestCase() {
+        jsn = Match::jsn_alloc();
+    }
+    static void TearDownTestCase() {
+        Match::jsn_free(jsn);
+    }
     void SetUp() override {
         m.clear();
     }
@@ -45,60 +43,53 @@ const std::string MatchTests::json = "{"
         JQ("U\\u002DEscape") ":null"
        "}";
 
-TEST_F(MatchTests, testToplevelDict)
-{
+TEST_F(MatchTests, testToplevelDict) {
     pth.parse("key1");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
-    ASSERT_EQ("\"val1\"", Util::match_match(m));
-    ASSERT_EQ("\"key1\"", Util::match_key(m));
+    ASSERT_EQ(R"("val1")", Util::match_match(m));
+    ASSERT_EQ(R"("key1")", Util::match_key(m));
 }
 
-TEST_F(MatchTests, testNestedDict)
-{
+TEST_F(MatchTests, testNestedDict) {
     pth.parse("subdict.subkey1");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
-    ASSERT_EQ("\"subval1\"", Util::match_match(m));
-    ASSERT_EQ("\"subkey1\"", Util::match_key(m));
+    ASSERT_EQ(R"("subval1")", Util::match_match(m));
+    ASSERT_EQ(R"("subkey1")", Util::match_key(m));
 }
 
-TEST_F(MatchTests, testArrayIndex)
-{
+TEST_F(MatchTests, testArrayIndex) {
     pth.parse("sublist[1]");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
-    ASSERT_EQ("\"elem2\"", Util::match_match(m));
+    ASSERT_EQ(R"("elem2")", Util::match_match(m));
     ASSERT_FALSE(m.has_key());
 }
 
-TEST_F(MatchTests, testMismatchArrayAsDict)
-{
+TEST_F(MatchTests, testMismatchArrayAsDict) {
     pth.parse("key1[9]");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_TYPE_MISMATCH, m.matchres);
 }
 
-TEST_F(MatchTests, testMismatchDictAsArray)
-{
+TEST_F(MatchTests, testMismatchDictAsArray) {
     pth.parse("subdict[0]");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_TYPE_MISMATCH, m.matchres);
 }
 
-TEST_F(MatchTests, testMatchContainerValue)
-{
+TEST_F(MatchTests, testMatchContainerValue) {
     pth.parse("numbers");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ("[1,2,3,4,5,6,7,8,9,0]", Util::match_match(m));
 }
 
-TEST_F(MatchTests, testFinalComponentNotFound)
-{
+TEST_F(MatchTests, testFinalComponentNotFound) {
     pth.parse("empty.field");
     m.exec_match(json, pth, jsn);
     ASSERT_NE(0, m.immediate_parent_found);
@@ -106,17 +97,15 @@ TEST_F(MatchTests, testFinalComponentNotFound)
     ASSERT_EQ("{}", Util::match_parent(m));
 }
 
-TEST_F(MatchTests, testOOBArrayIndex)
-{
+TEST_F(MatchTests, testOOBArrayIndex) {
     pth.parse("sublist[4]");
     m.exec_match(json, pth, jsn);
     ASSERT_NE(0, m.immediate_parent_found);
     ASSERT_EQ(2, m.match_level);
-    ASSERT_EQ("[\"elem1\",\"elem2\",\"elem3\"]", Util::match_parent(m));
+    ASSERT_EQ(R"(["elem1","elem2","elem3"])", Util::match_parent(m));
 }
 
-TEST_F(MatchTests, testAllComponentsNotFound)
-{
+TEST_F(MatchTests, testAllComponentsNotFound) {
     pth.parse("non.existent.path");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(0, m.immediate_parent_found);
@@ -124,8 +113,7 @@ TEST_F(MatchTests, testAllComponentsNotFound)
     ASSERT_EQ(json, Util::match_parent(m));
 }
 
-TEST_F(MatchTests, testSingletonComponentNotFound)
-{
+TEST_F(MatchTests, testSingletonComponentNotFound) {
     pth.parse("toplevel");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(1, m.match_level);
@@ -133,18 +121,16 @@ TEST_F(MatchTests, testSingletonComponentNotFound)
     ASSERT_EQ(json, Util::match_parent(m));
 }
 
-TEST_F(MatchTests, testUescape)
-{
+TEST_F(MatchTests, testUescape) {
     // See if we can find the 'u-escape' here.
     m.clear();
     pth.parse("U-Escape");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
-    ASSERT_EQ("\"U\\u002DEscape\"", m.loc_key.to_string());
+    ASSERT_EQ(R"("U\u002DEscape")", m.loc_key.to_string());
 }
 
-TEST_F(MatchTests, testGetLastElement)
-{
+TEST_F(MatchTests, testGetLastElement) {
     pth.parse("sublist");
     m.get_last = 1;
     m.exec_match(json, pth, jsn);
@@ -153,7 +139,7 @@ TEST_F(MatchTests, testGetLastElement)
     ASSERT_EQ(3, m.match_level);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     ASSERT_EQ(JSONSL_T_STRING, m.type);
-    ASSERT_EQ("\"elem3\"", Util::match_match(m));
+    ASSERT_EQ(R"("elem3")", Util::match_match(m));
     ASSERT_EQ(2U, m.position);
     ASSERT_EQ(2U, m.num_siblings);
 
@@ -170,8 +156,7 @@ TEST_F(MatchTests, testGetLastElement)
     ASSERT_EQ(0U, m.num_siblings);
 }
 
-TEST_F(MatchTests, testGetNumSiblings)
-{
+TEST_F(MatchTests, testGetNumSiblings) {
     pth.parse("nested_list[0][0]");
     // By default, siblings are not extracted
     ASSERT_EQ(Match::GET_MATCH_ONLY, m.extra_options);
@@ -209,8 +194,7 @@ TEST_F(MatchTests, testGetPosition) {
 
 // It's important that we test this at the Match level as well, even though
 // tests are already present at the 'Operation' and 'Path' level.
-TEST_F(MatchTests, testNegativeIndex)
-{
+TEST_F(MatchTests, testNegativeIndex) {
     pth.parse("sublist[-1]");
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
@@ -228,8 +212,7 @@ TEST_F(MatchTests, testNegativeIndex)
     ASSERT_EQ(4U, m.match_level);
 }
 
-TEST_F(MatchTests, testMatchUnique)
-{
+TEST_F(MatchTests, testMatchUnique) {
     pth.parse("empty_list");
     m.ensure_unique.assign("key", 3);
     m.exec_match(json, pth, jsn);
