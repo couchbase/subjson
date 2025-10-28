@@ -3,12 +3,8 @@ project(subjson LANGUAGES C CXX)
 include(CTest)
 
 if (WIN32)
-    # Set Compiler warning level to /W4
-    add_compile_options(/W4 /wd4505)
-    #if (COUCHBASE_KV_COMMIT_VALIDATION)
-        # Enable warnings as errors when building under CV
-        #add_compile_definitions(/WX)
-    #endif ()
+    # Disable C4505 - "unreferenced local function has been removed,"
+    add_compile_options(/wd4505)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(
             -Werror=shorten-64-to-32
