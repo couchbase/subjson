@@ -12,6 +12,7 @@
 
 #include "loc.h"
 #include "path.h"
+#include <string>
 
 namespace Subdoc {
 
@@ -134,6 +135,33 @@ public:
      * the contents here are unique. Will set an error code accordingly, if
      * types are mismatched. */
     Loc ensure_unique;
+
+    /**
+     * If set (non-null `at`), scan the matched array's children for
+     * element(s) whose raw JSON text equals this value, removing the
+     * first (or all, if #remove_all_matches) such element(s) from the
+     * document. Used by Command::ARRAY_REMOVE_FIRST /
+     * Command::ARRAY_REMOVE_ALL. The caller must also set
+     * #filtered_buf. Mutually exclusive with #ensure_unique.
+     */
+    Loc match_value;
+
+    /**Request flag; if true (with #match_value set), remove every
+     * matching child rather than stopping after the first. */
+    bool remove_all_matches = false;
+
+    /**Output: set to true if at least one array child matching
+     * #match_value was found (and thus removed). */
+    unsigned char value_removed = 0;
+
+    /**
+     * Output scratch buffer used to accumulate the surviving (i.e. not
+     * removed) array children, comma-separated, while scanning for
+     * #match_value. Must be supplied (non-null) by the caller before
+     * calling exec_match() with #match_value set; appended to (not
+     * cleared) during the scan.
+     */
+    std::string* filtered_buf = nullptr;
 
     int exec_match(const char *value, size_t nvalue, const Path *path, jsonsl_t jsn);
     int exec_match(const Loc& loc, const Path* path, jsonsl_t jsn) {

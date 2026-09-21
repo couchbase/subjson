@@ -166,6 +166,7 @@ private:
     Error do_list_append();
     Error do_empty_append();
     Error do_list_prepend();
+    Error do_array_remove_value(bool removeAll);
     Error do_arith_op();
     Error do_insert();
     Error do_container_size();

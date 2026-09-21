@@ -177,6 +177,18 @@ public:
          */
         GET_COUNT = 0x0B,
 
+        /**Removes the first element of a list whose raw JSON text is equal
+         * to the supplied value, leaving any further equal elements
+         * untouched. Values compared can only be primitives (and can only
+         * be compared against primitives already in the list), just like
+         * ARRAY_ADD_UNIQUE. Returns SUBDOC_PATH_ENOENT if no equal element
+         * is found. */
+        ARRAY_REMOVE_FIRST = 0x0C,
+
+        /**As ARRAY_REMOVE_FIRST, but removes *every* element equal to the
+         * supplied value. */
+        ARRAY_REMOVE_ALL = 0x0D,
+
         INVALID = 0xff,
         FLAG_MKDIR_P = 0x80
     };

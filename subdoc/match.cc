@@ -30,15 +30,16 @@ struct ParseContext : public HashKey {
 
     Match *match;
 
-    // Internal pointer/length pair used to hold the pointer of the
-    // unique array value (if in "unique" mode).
-    const char* uniquebuf = nullptr;
+    // Internal pointer used to hold the start of the current array
+    // child's token, while scanning children in "unique" or
+    // "match_value" (remove-by-value) mode.
+    const char* childbuf = nullptr;
 
-    void set_unique_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
-        uniquebuf = at;
+    void set_child_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
+        childbuf = at;
     }
 
-    const char *get_unique() const { return uniquebuf; }
+    const char *get_child_begin() const { return childbuf; }
 };
 }
 
@@ -76,7 +77,7 @@ static void unique_callback(jsonsl_t jsn,
 
     if (action == JSONSL_ACTION_PUSH) {
         /* abs. beginning of token */
-        ctx->set_unique_begin(st, at);
+        ctx->set_child_begin(st, at);
         return;
     }
 
@@ -106,13 +107,13 @@ static void unique_callback(jsonsl_t jsn,
             return; /* Length mismatch */
         }
 
-        rv = strncmp(ctx->get_unique() + 1, m->ensure_unique.at + 1, slen-2);
+        rv = strncmp(ctx->get_child_begin() + 1, m->ensure_unique.at + 1, slen-2);
 
     } else if (st->type == JSONSL_T_SPECIAL) {
         if (m->ensure_unique.length != slen) {
             return;
         }
-        rv = strncmp(ctx->get_unique(), m->ensure_unique.at, slen);
+        rv = strncmp(ctx->get_child_begin(), m->ensure_unique.at, slen);
     } else {
         /* We can't reliably indicate uniqueness for non-primitives */
         m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
@@ -124,6 +125,75 @@ static void unique_callback(jsonsl_t jsn,
         m->unique_item_found = 1;
         jsonsl_stop(jsn);
     }
+}
+
+/**
+ * Callback used to scan an array's children for element(s) whose raw
+ * JSON text equals Match::match_value, removing the first (or all, if
+ * Match::remove_all_matches) such element(s). Surviving children are
+ * copied verbatim (comma-separated) into Match::filtered_buf, so the
+ * caller can splice the array's content wholesale regardless of how
+ * many elements were removed (avoiding an unbounded number of Result
+ * output segments). Mirrors unique_callback's child-comparison logic,
+ * but never stops early: since surviving elements past a removed one
+ * still need to be collected, the scan always continues through to
+ * the array's closing token.
+ */
+static void remove_value_callback(jsonsl_t jsn,
+                                  jsonsl_action_t action,
+                                  jsonsl_state_st* st,
+                                  const jsonsl_char_t* at) {
+    ParseContext *ctx = get_ctx(jsn);
+    Match *m = ctx->match;
+    int rv;
+    size_t slen;
+
+    if (action == JSONSL_ACTION_PUSH) {
+        ctx->set_child_begin(st, at);
+        return;
+    }
+
+    if (st->mres == JSONSL_MATCH_COMPLETE) {
+        // Popping the array itself: the scan of its children is done.
+        jsn->action_callback_POP = pop_callback;
+        jsn->action_callback_PUSH = push_callback;
+        jsn->max_callback_level = st->level+1;
+        pop_callback(jsn, action, st, at);
+        return;
+    }
+
+    slen = st->pos_cur - st->pos_begin;
+    Expects(st->level == m->match_level + 1U);
+
+    bool matches = false;
+    if (st->type == JSONSL_T_STRING) {
+        slen++;
+        if (m->match_value.length >= 2 && slen == m->match_value.length) {
+            rv = strncmp(ctx->get_child_begin() + 1, m->match_value.at + 1, slen-2);
+            matches = (rv == 0);
+        }
+    } else if (st->type == JSONSL_T_SPECIAL) {
+        if (m->match_value.length == slen) {
+            rv = strncmp(ctx->get_child_begin(), m->match_value.at, slen);
+            matches = (rv == 0);
+        }
+    } else {
+        /* We can't reliably compare non-primitives */
+        m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+        jsonsl_stop(jsn);
+        return;
+    }
+
+    if (matches && (m->remove_all_matches || !m->value_removed)) {
+        // Drop this child: don't copy it into filtered_buf.
+        m->value_removed = 1;
+        return;
+    }
+
+    if (!m->filtered_buf->empty()) {
+        m->filtered_buf->push_back(',');
+    }
+    m->filtered_buf->append(ctx->get_child_begin(), slen);
 }
 
 /* Make code a bit more readable */
@@ -187,6 +257,17 @@ static void push_callback(jsonsl_t jsn,
                 // be invoked for each push/pop combination.
                 jsn->action_callback_POP = unique_callback;
                 jsn->action_callback_PUSH = unique_callback;
+                jsn->max_callback_level = st->level + 2;
+            } else if (m->match_value.at) {
+                if (st->type != JSONSL_T_LIST) {
+                    // Can't remove-by-value from anything but an array!
+                    m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+                    jsonsl_stop(jsn);
+                    return;
+                }
+                // Set up callbacks to scan/filter each child.
+                jsn->action_callback_POP = remove_value_callback;
+                jsn->action_callback_PUSH = remove_value_callback;
                 jsn->max_callback_level = st->level + 2;
             }
 

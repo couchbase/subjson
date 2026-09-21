@@ -444,6 +444,141 @@ TEST_F(OpTests, testUniqueToplevel) {
     ASSERT_EQ(Error::DOC_EEXISTS, rv);
 }
 
+TEST_F(OpTests, testArrayRemoveFirst) {
+    Error rv;
+
+    // Basic: single match, gets removed.
+    std::string json = "[1,2,3]";
+    op.set_doc(json);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "2");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ("[1,3]", getNewDoc());
+
+    // Multiple matches: only the first is removed, the rest survive
+    // untouched (and in their original order).
+    std::string dup = R"([1,"a",1,"a",1])";
+    op.set_doc(dup);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "1");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ(R"(["a",1,"a",1])", getNewDoc());
+
+    // Not found.
+    std::string nomatch = "[1,2,3]";
+    op.set_doc(nomatch);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "99");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    // Only element removed -> empty array.
+    std::string single = R"(["only"])";
+    op.set_doc(single);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", R"("only")");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ("[]", getNewDoc());
+
+    // Empty array -> not found.
+    std::string empty = "[]";
+    op.set_doc(empty);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "1");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    // Non-primitive value to search for -> VALUE_CANTINSERT.
+    std::string arr = "[1,2,3]";
+    op.set_doc(arr);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "[]");
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
+
+    // Array containing a non-primitive element -> PATH_MISMATCH.
+    std::string nested = "[1,[2],3]";
+    op.set_doc(nested);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "3");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
+
+    // Path doesn't resolve to a list -> PATH_MISMATCH.
+    std::string dict = R"({"a":1})";
+    op.set_doc(dict);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "1");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
+
+    // Nested path pointing at an array.
+    std::string nestedArr = R"({"list":[1,2,3]})";
+    op.set_doc(nestedArr);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "list", "2");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ(R"({"list":[1,3]})", getNewDoc());
+}
+
+TEST_F(OpTests, testArrayRemoveAll) {
+    Error rv;
+
+    // Removes every matching element, preserving order of the rest.
+    std::string dup = R"([1,"a",1,"a",1])";
+    op.set_doc(dup);
+    rv = runOp(Command::ARRAY_REMOVE_ALL, "", "1");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ(R"(["a","a"])", getNewDoc());
+
+    // Removing every element leaves an empty array.
+    std::string same = "[5,5,5]";
+    op.set_doc(same);
+    rv = runOp(Command::ARRAY_REMOVE_ALL, "", "5");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ("[]", getNewDoc());
+
+    // Not found.
+    std::string nomatch = "[1,2,3]";
+    op.set_doc(nomatch);
+    rv = runOp(Command::ARRAY_REMOVE_ALL, "", "99");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
+
+    // Non-numeric/non-string primitives (bool/null) compare correctly.
+    std::string mixed = "[true,false,null,true,1]";
+    op.set_doc(mixed);
+    rv = runOp(Command::ARRAY_REMOVE_ALL, "", "true");
+    ASSERT_TRUE(rv.success());
+    EXPECT_EQ("[false,null,1]", getNewDoc());
+
+    // Array containing a non-primitive element -> PATH_MISMATCH, even
+    // though a primitive sibling preceding it matched.
+    std::string nested = "[1,[2],3]";
+    op.set_doc(nested);
+    rv = runOp(Command::ARRAY_REMOVE_ALL, "", "1");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
+
+    // ... and also when none of the primitive siblings match.
+    op.set_doc(nested);
+    rv = runOp(Command::ARRAY_REMOVE_ALL, "", "99");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
+}
+
+TEST_F(OpTests, testArrayRemoveAllManyMatches) {
+    // Result::m_newdoc has a fixed 8-slot capacity, but
+    // do_array_remove_value() never needs more than 3 of those slots
+    // regardless of match count: survivors are concatenated into a
+    // dynamically-growing buffer, not spliced in as one segment per
+    // removed element. Exercise well past 8 matches to cover that.
+    std::string doc = "[";
+    for (int ii = 0; ii < 20; ++ii) {
+        if (ii) {
+            doc += ",";
+        }
+        doc += (ii % 2 == 0) ? "1" : "2";
+    }
+    doc += "]";
+    op.set_doc(doc);
+
+    Error rv = runOp(Command::ARRAY_REMOVE_ALL, "", "1");
+    ASSERT_TRUE(rv.success());
+    std::string expected = "[";
+    for (int ii = 0; ii < 10; ++ii) {
+        if (ii) {
+            expected += ",";
+        }
+        expected += "2";
+    }
+    expected += "]";
+    EXPECT_EQ(expected, getNewDoc());
+}
+
 TEST_F(OpTests, testNumeric) {
     std::string doc = "{}";
     Error rv;
@@ -1194,6 +1329,8 @@ TEST_F(OpTests, TestDeepPath) {
              {Command::ARRAY_PREPEND, LAST_ELEM_ANY, true},
              {Command::ARRAY_APPEND, LAST_ELEM_ANY, true},
              {Command::ARRAY_ADD_UNIQUE, LAST_ELEM_ANY, true},
+             {Command::ARRAY_REMOVE_FIRST, LAST_ELEM_ANY, true},
+             {Command::ARRAY_REMOVE_ALL, LAST_ELEM_ANY, true},
              {Command::ARRAY_INSERT, LAST_ELEM_INDEX, false},
              {Command::COUNTER, LAST_ELEM_ANY, false},
              {Command::GET_COUNT, LAST_ELEM_ANY, false}});

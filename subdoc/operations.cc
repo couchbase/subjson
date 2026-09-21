@@ -364,6 +364,59 @@ Operation::do_list_prepend()
     return Error::SUCCESS;
 }
 
+/**
+ * Implements Command::ARRAY_REMOVE_FIRST / Command::ARRAY_REMOVE_ALL.
+ *
+ * Locates the array named by the path, then scans its children for
+ * element(s) whose raw text equals m_userval, removing the first (or
+ * all, if removeAll) such element(s). The array's surviving children
+ * are collected verbatim into m_result->m_bkbuf by the
+ * remove_value_callback machinery in match.cc (this keeps the number
+ * of Result output segments constant regardless of how many elements
+ * are removed, unlike a REMOVE-style splice per removed element).
+ */
+Error
+Operation::do_array_remove_value(bool removeAll)
+{
+    m_match.match_value = m_userval;
+    m_match.remove_all_matches = removeAll;
+    // remove_value_callback() relies on filtered_buf starting out empty
+    // to decide when to emit a separating comma.
+    m_result->m_bkbuf.clear();
+    m_match.filtered_buf = &m_result->m_bkbuf;
+    // The surviving elements collected into filtered_buf can never
+    // exceed the size of the document they came from; reserving that
+    // upfront keeps the scan to at most one allocation instead of
+    // reallocating (and recopying already-collected bytes) as it grows.
+    m_result->m_bkbuf.reserve(m_doc.length);
+
+    Error rv = do_match_common(Match::GET_MATCH_ONLY);
+    if (!rv.success()) {
+        return rv;
+    }
+
+    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+        return Error::PATH_ENOENT;
+    }
+
+    if (m_match.type != JSONSL_T_LIST) {
+        return Error::PATH_MISMATCH;
+    }
+
+    if (!m_match.value_removed) {
+        // Array exists, but doesn't contain the requested value.
+        return Error::PATH_ENOENT;
+    }
+
+    const Loc& array_loc = m_match.loc_deepest;
+    newdoc_at(0).end_at_begin(m_doc, array_loc, Loc::OVERLAP);
+    newdoc_at(1).assign(m_result->m_bkbuf.data(), m_result->m_bkbuf.size());
+    newdoc_at(2).begin_at_end(m_doc, array_loc, Loc::OVERLAP);
+
+    m_result->m_newlen = 3;
+    return Error::SUCCESS;
+}
+
 Error
 Operation::do_container_size()
 {
@@ -809,6 +862,20 @@ Operation::op_exec(const char *pth, size_t npth)
             return status;
         }
         return do_insert();
+
+    case Command::ARRAY_REMOVE_FIRST:
+    case Command::ARRAY_REMOVE_ALL:
+        // Value to remove must be a single, primitive value - same as
+        // ARRAY_ADD_UNIQUE.
+        status = validate(Validator::PARENT_ARRAY |
+                                   Validator::VALUE_PRIMITIVE |
+                                   Validator::VALUE_SINGLE,
+                           get_maxdepth(PATH_IS_PARENT));
+        if (!status.success()) {
+            return status;
+        }
+        return do_array_remove_value(m_optype.base() ==
+                                      Command::ARRAY_REMOVE_ALL);
 
     case Command::COUNTER:
     case Command::COUNTER_P:

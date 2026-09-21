@@ -256,3 +256,58 @@ TEST_F(MatchTests, testMatchUnique) {
     ASSERT_FALSE(m.unique_item_found);
     ASSERT_NE(0U, m.num_children);
 }
+
+TEST_F(MatchTests, testMatchRemoveValue) {
+    std::string kept;
+
+    // Item found: it's excluded from filtered_buf, survivors kept in
+    // order.
+    pth.parse("numbers");
+    m.match_value.assign("3", 1);
+    m.filtered_buf = &kept;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.value_removed);
+    ASSERT_EQ("1,2,4,5,6,7,8,9,0", kept);
+
+    // Item not found: filtered_buf reconstructs every element.
+    m.clear();
+    kept.clear();
+    pth.parse("numbers");
+    m.match_value.assign("42", 2);
+    m.filtered_buf = &kept;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_FALSE(m.value_removed);
+    ASSERT_EQ("1,2,3,4,5,6,7,8,9,0", kept);
+
+    // remove_all_matches removes every matching child.
+    m.clear();
+    kept.clear();
+    pth.parse("numbers");
+    m.match_value.assign("0", 1);
+    m.remove_all_matches = true;
+    m.filtered_buf = &kept;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.value_removed);
+    ASSERT_EQ("1,2,3,4,5,6,7,8,9", kept);
+
+    // Path mismatch: array contains a non-primitive element.
+    m.clear();
+    kept.clear();
+    pth.parse("nested_list");
+    m.match_value.assign("foo", 3);
+    m.filtered_buf = &kept;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_TYPE_MISMATCH, m.matchres);
+
+    // Path mismatch: target isn't a list at all.
+    m.clear();
+    kept.clear();
+    pth.parse("empty");
+    m.match_value.assign("foo", 3);
+    m.filtered_buf = &kept;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_TYPE_MISMATCH, m.matchres);
+}
