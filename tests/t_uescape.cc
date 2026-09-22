@@ -58,6 +58,17 @@ TEST_F(UescapeTests, testSurrogates) {
     ASSERT_EQ(Status::INVALID_SURROGATE, rv.code());
 }
 
+TEST_F(UescapeTests, testSurrogateInterruptedByLiteral) {
+    // A high surrogate followed by ordinary literal text before the
+    // low surrogate arrives must not leave the pairing state pending:
+    // otherwise a later, unrelated low surrogate would be silently
+    // combined with the stale high surrogate instead of erroring.
+    std::string in("\\uD800junk\\uDC00"), out;
+    auto rv = UescapeConverter::convert(in, out);
+    ASSERT_FALSE(rv);
+    ASSERT_EQ(Status::INVALID_SURROGATE, rv.code());
+}
+
 TEST_F(UescapeTests, testInvalidHex) {
     std::string in("\\uTTTT"), out;
     auto rv = UescapeConverter::convert(in, out);

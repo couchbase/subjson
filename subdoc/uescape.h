@@ -86,6 +86,11 @@ UescapeConverter::convert()
 
             // Skip over the 6-1 characters of {\,u,x,x,x,x}
             ii += 5;
+        } else if (last_codepoint) {
+            // A high surrogate must be immediately followed by its low
+            // surrogate; anything else in between (even ordinary text)
+            // means the pairing is broken.
+            return Status::INVALID_SURROGATE;
         } else {
             m_out += m_inbuf[ii];
         }
