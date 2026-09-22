@@ -10,6 +10,7 @@
 
 #define INCLUDE_JSONSL_SRC
 #include "path.h"
+#include <limits>
 
 using namespace Subdoc;
 
@@ -65,7 +66,16 @@ Path::add_num_component(const char *component, size_t len)
         }
         numval = tmpval;
     }
-    return add_array_index(numval);
+
+    // add_array_index() takes a signed 'long' and reserves -1 as a
+    // sentinel for "last element". Reject any index that wouldn't
+    // survive that narrowing conversion without changing sign (and
+    // thus risk colliding with the sentinel), rather than silently
+    // reinterpreting a huge index as "last element".
+    if (numval > static_cast<size_t>(std::numeric_limits<long>::max())) {
+        return JSONSL_ERROR_INVALID_NUMBER;
+    }
+    return add_array_index(static_cast<long>(numval));
 }
 
 int

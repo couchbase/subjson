@@ -8,6 +8,7 @@
  *   the file licenses/APL2.txt.
  */
 #include "subdoc-tests-common.h"
+#include <limits>
 
 using namespace Subdoc;
 
@@ -115,6 +116,32 @@ TEST_F(PathTests, testNegativePath) {
     ss.clear();
     pth = "foo[-2]";
     ASSERT_NE(0, ss.parse(pth));
+}
+
+TEST_F(PathTests, testArrayIndexOverflow) {
+    Path ss;
+
+    // An index of exactly LONG_MAX must still be accepted: it's the
+    // largest value that survives add_array_index()'s size_t -> long
+    // narrowing without changing sign.
+    auto ok = std::to_string(std::numeric_limits<long>::max());
+    std::string pth = "arr[" + ok + "]";
+    ASSERT_EQ(0, ss.parse(pth)) << pth;
+
+    // One past LONG_MAX must be rejected, not silently narrowed.
+    ss.clear();
+    auto toobig =
+            static_cast<unsigned long long>(std::numeric_limits<long>::max()) +
+            1;
+    pth = "arr[" + std::to_string(toobig) + "]";
+    ASSERT_NE(0, ss.parse(pth)) << pth;
+
+    // The specific collision this guards against: an index that
+    // narrows to exactly -1 must not be silently reinterpreted as
+    // add_array_index()'s "last element" sentinel.
+    ss.clear();
+    pth = "arr[18446744073709551615]";
+    ASSERT_NE(0, ss.parse(pth)) << pth;
 }
 
 TEST_F(PathTests, testInvalidSequence) {
