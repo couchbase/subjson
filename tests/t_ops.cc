@@ -9,6 +9,8 @@
  */
 #include "subdoc-tests-common.h"
 #include "subdoc/validate.h"
+#include <cstring>
+#include <memory>
 
 using namespace Subdoc;
 
@@ -512,6 +514,24 @@ TEST_F(OpTests, testNumeric) {
     rv = runOp(Command::COUNTER, "[0]", "1");
     ASSERT_TRUE(rv.success());
     ASSERT_EQ("-19", Util::match_match(op.match()));
+}
+
+TEST_F(OpTests, testCounterTruncatedBuffer) {
+    // do_arith_op() must bound its scan of the matched number to
+    // num_loc.length rather than relying on strtoll() to find a
+    // non-digit terminator: the document buffer handed to set_doc()
+    // is not required to be NUL-terminated, and a document that ends
+    // abruptly right after the matched number (no closing '}') must
+    // be rejected cleanly, not read past its own allocation.
+    // Allocate a buffer to (hopefully) let Asan see a heap-buffer-overflow
+    std::string src = R"({"counter":41)";
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    auto buf = std::make_unique<char[]>(src.size());
+    std::memcpy(buf.get(), src.data(), src.size());
+    op.set_doc(buf.get(), src.size());
+
+    Error rv = runOp(Command::COUNTER, "counter", "1");
+    ASSERT_EQ(Error::PATH_MISMATCH, rv);
 }
 
 TEST_F(OpTests, MB57177) {

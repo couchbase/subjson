@@ -12,7 +12,6 @@
 #include "util.h"
 #include "validate.h"
 #include <gsl/gsl-lite.hpp>
-#include <cerrno>
 #include <charconv>
 #include <cinttypes>
 #include <limits>
@@ -652,11 +651,23 @@ Operation::do_arith_op()
         if (m_match.sflags & ~(JSONSL_SPECIALf_NUMERIC)) {
             return Error::PATH_MISMATCH;
         }
-        errno = 0;
-        numres = strtoll(num_loc.at, nullptr, 10);
-
-        if (errno == ERANGE) {
+        // Bound the scan to num_loc.length rather than using strtoll(),
+        // which would scan past it looking for a non-digit terminator
+        // if the matched token sits at the end of a caller-supplied,
+        // non-NUL-terminated buffer.
+        auto [ptr, ec] = std::from_chars(
+                num_loc.at, num_loc.at + num_loc.length, numres);
+        if (ec == std::errc::result_out_of_range) {
             return Error::NUM_E2BIG;
+        }
+        if (ec != std::errc() || ptr != num_loc.at + num_loc.length) {
+            // sflags being purely JSONSL_SPECIALf_NUMERIC normally means
+            // num_loc is a clean digit sequence, but a truncated/
+            // incomplete document fed to jsonsl (e.g. one missing its
+            // closing bracket) can surface a degenerate match here.
+            // Reject it rather than trusting content we couldn't
+            // actually parse.
+            return Error::PATH_MISMATCH;
         }
 
         /* Calculate what to place inside the buffer. We want to be gentle
