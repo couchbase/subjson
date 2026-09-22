@@ -148,6 +148,13 @@ static void push_callback(jsonsl_t jsn,
         size_t nkey;
         const char *key;
         key = ctx->get_hk(nkey);
+        if (ctx->hk_error()) {
+            // Malformed \u-escape in an object key: the document can't
+            // be reliably matched against the requested path.
+            m->status = JSONSL_ERROR_UESCAPE_TOOSHORT;
+            jsonsl_stop(jsn);
+            return;
+        }
 
         /* Run the match */
         st->mres = jsonsl_path_match(ctx->jpr, parent, st, key, nkey);

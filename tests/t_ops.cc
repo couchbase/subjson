@@ -534,6 +534,18 @@ TEST_F(OpTests, testCounterTruncatedBuffer) {
     ASSERT_EQ(Error::PATH_MISMATCH, rv);
 }
 
+TEST_F(OpTests, testMalformedHashKeyEscape) {
+    // An object key with an embedded \u0000 escape can't be
+    // decoded (UescapeConverter::convert() rejects embedded NULs).
+    // The document must be rejected outright rather than silently
+    // matching against whatever partial/garbled key text convert()
+    // managed to produce before failing.
+    std::string doc = R"({"\u0000bad":"x"})";
+    op.set_doc(doc);
+    Error rv = runOp(Command::GET, "foo");
+    ASSERT_EQ(Error::DOC_NOTJSON, rv);
+}
+
 TEST_F(OpTests, MB57177) {
     // Verify that the counter may cover the entire range from min to max
     const auto min = std::to_string(std::numeric_limits<int64_t>::min());

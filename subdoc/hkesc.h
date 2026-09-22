@@ -24,6 +24,7 @@ public:
     template <typename StateType>
     void set_hk_begin(const StateType *, const char *at) {
         m_strvalid = false;
+        m_hkerror = false;
         m_hkbuf = at + 1;
     }
 
@@ -52,9 +53,15 @@ public:
 
         // TODO: use jsonsl_util_unescape_ex() instead. However this requires
         // a dedicated character table
-        UescapeConverter::convert(m_hkbuf, m_hklen, m_hkstr);
+        m_hkerror = !UescapeConverter::convert(m_hkbuf, m_hklen, m_hkstr);
         m_strvalid = true;
         return get_hk(nkey);
+    }
+
+    /// True if the most recent get_hk() call found a malformed \u
+    /// escape in the key and could not decode it.
+    bool hk_error() const {
+        return m_hkerror;
     }
 
     void hk_rawloc(Loc &loc) const {
@@ -67,6 +74,7 @@ private:
     size_t m_hklen = 0;
     bool m_hkesc = false;
     bool m_strvalid = false;
+    bool m_hkerror = false;
     std::string m_hkstr;
 };
 }
