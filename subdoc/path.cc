@@ -170,9 +170,8 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
     for (size_t ii = 0; ii < len; ii++) {
         const auto cur_c = static_cast<uint8_t>(path[ii]);
         // Escape handling
-        const auto can_jescape = isAllowedJsonEscapes(cur_c);
         if (in_json_escape) {
-            if (!can_jescape) {
+            if (!isAllowedJsonEscapes(cur_c)) {
                 return JSONSL_ERROR_JPR_BADPATH;
             }
             if (cur_c == 'u') {
