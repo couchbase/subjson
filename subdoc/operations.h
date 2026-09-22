@@ -185,6 +185,9 @@ private:
 
     //! Equivalent to m_newdoc[n]. This is here so our frequent access
     //! can occupy less line space.
-    Loc& newdoc_at(size_t n) { return m_result->m_newdoc[n]; }
+    Loc& newdoc_at(size_t n) {
+        Expects(n < m_result->m_newdoc.size());
+        return m_result->m_newdoc[n];
+    }
 };
 } // namespace Subdoc

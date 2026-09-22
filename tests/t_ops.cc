@@ -546,6 +546,19 @@ TEST_F(OpTests, testMalformedHashKeyEscape) {
     ASSERT_EQ(Error::DOC_NOTJSON, rv);
 }
 
+TEST_F(OpTests, testResultPushNewdocCapacity) {
+    // Result::m_newdoc is a fixed-capacity array; push_newdoc() is the
+    // bounds-checked way to append to it (unlike Operation's private
+    // newdoc_at(), which every current call site indexes directly
+    // with a compile-time-known, in-range index). Confirm it actually
+    // enforces that capacity rather than silently overflowing.
+    Loc seg("x", 1);
+    for (size_t ii = 0; ii < 8; ++ii) {
+        ASSERT_TRUE(res.push_newdoc(seg)) << "segment " << ii;
+    }
+    ASSERT_FALSE(res.push_newdoc(seg));
+}
+
 TEST_F(OpTests, MB57177) {
     // Verify that the counter may cover the entire range from min to max
     const auto min = std::to_string(std::numeric_limits<int64_t>::min());
