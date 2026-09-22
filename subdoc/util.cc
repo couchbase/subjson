@@ -72,7 +72,7 @@ Util::get_root_type(Command command, const char *path, size_t len)
     char c = 0;
     // Find first non-whitespace character
     for (size_t ii = 0; ii < len; ++ii) {
-        if (!isspace(path[ii])) {
+        if (!is_json_ws(path[ii])) {
             c = path[ii];
             break;
         }

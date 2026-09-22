@@ -23,6 +23,7 @@ using Subdoc::Operation;
 using Subdoc::Path;
 using Subdoc::Match;
 using Subdoc::Command;
+using Subdoc::is_json_ws;
 
 static Loc loc_COMMA(",", 1);
 static Loc loc_QUOTE("\"", 1);
@@ -389,29 +390,6 @@ Operation::do_container_size()
     return Error::SUCCESS;
 }
 
-static bool
-is_json_ws(char c) {
-    // (i.e. non-whitespace) character. RFC 7159 says:
-    // Insignificant whitespace is allowed before or after any of the six
-    // structural characters.
-    //
-    //   ws = *(
-    //           %x20 /              ; Space
-    //           %x09 /              ; Horizontal tab
-    //           %x0A /              ; Line feed or New line
-    //           %x0D )              ; Carriage return
-
-    switch (c) {
-    case 0x20:
-    case 0x09:
-    case 0x0A:
-    case 0x0D:
-        return true;
-    default:
-        return false;
-    }
-}
-
 Error
 Operation::do_empty_append()
 {
@@ -425,7 +403,7 @@ Operation::do_empty_append()
     const char *a_end = (m_doc.at + m_doc.length) - 1;
 
     // Find terminating bracket
-    for (; a_end != m_doc.at && isspace(*a_end); --a_end) {
+    for (; a_end != m_doc.at && is_json_ws(*a_end); --a_end) {
     }
 
     if (a_end == m_doc.at || *a_end != ']') {
@@ -451,7 +429,7 @@ Operation::do_empty_append()
         newdoc_at(1) = m_userval;
         newdoc_at(2).assign(a_end, 1);
         m_result->m_newlen = 3;
-    } else if (!isspace(*e_comma)) {
+    } else if (!is_json_ws(*e_comma)) {
         newdoc_at(1) = loc_COMMA;
         newdoc_at(2) = m_userval;
         newdoc_at(3).assign(a_end, 1);

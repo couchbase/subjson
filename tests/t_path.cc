@@ -118,6 +118,18 @@ TEST_F(PathTests, testNegativePath) {
     ASSERT_NE(0, ss.parse(pth));
 }
 
+TEST_F(PathTests, testIsJsonWs) {
+    // is_json_ws() takes a plain (possibly signed) char and must not
+    // rely on isspace(), which is undefined behavior for byte values
+    // that aren't representable as unsigned char or EOF (e.g. any
+    // byte >= 0x80, such as a UTF-8 continuation byte).
+    for (int c = 0; c < 256; ++c) {
+        bool expected = (c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D);
+        EXPECT_EQ(expected, is_json_ws(static_cast<char>(c)))
+                << "byte 0x" << std::hex << c;
+    }
+}
+
 TEST_F(PathTests, testArrayIndexOverflow) {
     Path ss;
 

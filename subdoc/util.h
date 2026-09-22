@@ -14,6 +14,22 @@
 
 namespace Subdoc {
 
+/// True if c is JSON insignificant whitespace (RFC 7159 section 2):
+/// space, tab, LF or CR. Unlike isspace(), this takes a plain char
+/// (not restricted to values representable as unsigned char or EOF)
+/// and never depends on locale.
+inline bool is_json_ws(char c) {
+    switch (c) {
+    case 0x20:
+    case 0x09:
+    case 0x0A:
+    case 0x0D:
+        return true;
+    default:
+        return false;
+    }
+}
+
 /// This class contains various utilities, mainly useful for testing/debugging
 class Util {
 public:

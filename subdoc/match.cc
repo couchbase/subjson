@@ -296,7 +296,7 @@ static void pop_callback(jsonsl_t jsn,
             // Remove trailing whitespace. This is because the child is
             // deemed to end one character before the parent does, however
             // there may be whitespace. This is usually OK but confuses tests.
-            while (isspace(m->loc_deepest.at[m->loc_deepest.length-1])) {
+            while (is_json_ws(m->loc_deepest.at[m->loc_deepest.length-1])) {
                 --m->loc_deepest.length;
             }
 
