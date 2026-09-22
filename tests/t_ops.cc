@@ -999,6 +999,13 @@ TEST_F(OpTests, testRootAppend) {
     rv = runOp(Command::ARRAY_APPEND, "", "123");
     ASSERT_EQ(Error::DOC_NOTJSON, rv);
 
+    // An empty document must be rejected outright rather than read
+    // backward from one-past-the-end of the (empty) buffer.
+    doc = "";
+    op.set_doc(doc);
+    rv = runOp(Command::ARRAY_APPEND, "", "123");
+    ASSERT_EQ(Error::DOC_NOTJSON, rv);
+
     doc = "{}";
     op.set_doc(doc);
     rv = runOp(Command::ARRAY_APPEND, "", "123");

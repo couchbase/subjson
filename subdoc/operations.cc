@@ -416,6 +416,12 @@ is_json_ws(char c) {
 Error
 Operation::do_empty_append()
 {
+    if (m_doc.length == 0) {
+        // Nothing to scan backward from; an empty buffer is never a
+        // valid JSON array.
+        return Error::DOC_NOTJSON;
+    }
+
     // Empty path. Do a custom parse/insertion
     const char *a_end = (m_doc.at + m_doc.length) - 1;
 
