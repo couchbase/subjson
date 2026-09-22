@@ -23,6 +23,7 @@ Path::convert_escaped(const char *src, size_t& len)
         m_cached.pop_back();
     }
     std::string& s = *m_used.back();
+    s.reserve(len);
 
     for (size_t ii = 0; ii < len; ii++) {
         if (src[ii] != '`') {
