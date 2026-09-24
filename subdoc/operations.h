@@ -15,6 +15,8 @@
 #include "path.h"
 #include "match.h"
 
+#include <gsl/gsl-lite.hpp>
+
 #include <array>
 
 namespace Subdoc {
@@ -99,9 +101,31 @@ public:
 
     void set_value(const char *s, size_t n) { m_userval.assign(s, n); }
     void set_value(const std::string& s) { set_value(s.c_str(), s.size()); }
+    // Reject temporaries: the assigned Loc only references the buffer, so
+    // a std::string prvalue/xvalue would leave it dangling once this call
+    // returns.
+    void set_value(std::string&&) = delete;
+    // Convenience for string literals (and other NUL-terminated char
+    // arrays with static storage duration), which safely outlive the
+    // Operation: set_value("foo") instead of set_value("foo", 3).
+    template <size_t N>
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    void set_value(const char (&s)[N]) {
+        Expects(s[N - 1] == '\0');
+        set_value(s, N - 1);
+    }
     void set_result_buf(Result *res) { m_result = res; }
     void set_doc(const char *s, size_t n) { m_doc.assign(s, n); }
     void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
+    // Reject temporaries: see set_value(std::string&&) above.
+    void set_doc(std::string&&) = delete;
+    // Convenience for string literals; see set_value(const char (&)[N]).
+    template <size_t N>
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    void set_doc(const char (&s)[N]) {
+        Expects(s[N - 1] == '\0');
+        set_doc(s, N - 1);
+    }
     void set_code(uint8_t code) { m_optype = code; }
 
     const Match& match() const { return m_match; }
