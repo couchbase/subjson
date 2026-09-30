@@ -11,6 +11,7 @@
 #pragma once
 
 #include <array>
+#include <cstdlib>
 #include <string>
 
 namespace Subdoc {
@@ -154,7 +155,7 @@ UescapeConverter::handle_uescape(size_t pos)
         std::array<char, 2> numbuf = {m_inbuf[ii], 0};
         char* endptr = nullptr;
 
-        const auto rv = strtol(numbuf.data(), &endptr, 16);
+        const auto rv = std::strtol(numbuf.data(), &endptr, 16);
         if (endptr && *endptr != '\0') {
             return Status::INVALID_HEXCHARS;
         }
