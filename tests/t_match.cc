@@ -257,6 +257,43 @@ TEST_F(MatchTests, testMatchUnique) {
     ASSERT_NE(0U, m.num_children);
 }
 
+TEST_F(MatchTests, testMatchUniquePosition) {
+    // First element.
+    pth.parse("numbers");
+    m.ensure_unique.assign("1", 1);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.unique_item_found);
+    ASSERT_EQ(0U, m.unique_item_position);
+
+    // Last element.
+    m.clear();
+    pth.parse("numbers");
+    m.ensure_unique.assign("0", 1);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.unique_item_found);
+    ASSERT_EQ(9U, m.unique_item_position);
+
+    // String element in the middle.
+    m.clear();
+    pth.parse("sublist");
+    m.ensure_unique.assign(JQ("elem2"), 7);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.unique_item_found);
+    ASSERT_EQ(1U, m.unique_item_position);
+
+    // Array nested within an array.
+    m.clear();
+    pth.parse("nested_list[0]");
+    m.ensure_unique.assign("5", 1);
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    ASSERT_TRUE(m.unique_item_found);
+    ASSERT_EQ(4U, m.unique_item_position);
+}
+
 TEST_F(MatchTests, testMatchRemoveValue) {
     std::string kept;
 

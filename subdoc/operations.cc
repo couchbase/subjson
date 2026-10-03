@@ -417,6 +417,43 @@ Operation::do_array_remove_value(bool removeAll)
     return Error::SUCCESS;
 }
 
+/**
+ * Implements Command::ARRAY_INDEX_OF.
+ *
+ * Locates the array named by the path, then scans its children (using the
+ * same machinery as ARRAY_ADD_UNIQUE's uniqueness check) for the first
+ * element whose raw text equals m_userval. The zero-based index of that
+ * element is returned as the match, or VALUE_ENOENT if there is no such
+ * element.
+ */
+Error Operation::do_array_index_of() {
+    m_match.ensure_unique = m_userval;
+
+    Error rv = do_match_common(Match::GET_MATCH_ONLY);
+    if (!rv.success()) {
+        return rv;
+    }
+
+    if (m_match.matchres != JSONSL_MATCH_COMPLETE) {
+        return Error::PATH_ENOENT;
+    }
+
+    if (m_match.type != JSONSL_T_LIST) {
+        return Error::PATH_MISMATCH;
+    }
+
+    if (!m_match.unique_item_found) {
+        // Array exists, but doesn't contain the requested value.
+        return Error::VALUE_ENOENT;
+    }
+
+    m_result->m_numbuf = std::to_string(m_match.unique_item_position);
+    m_result->m_match.assign(m_result->m_numbuf.c_str(),
+                             m_result->m_numbuf.size());
+
+    return Error::SUCCESS;
+}
+
 Error
 Operation::do_container_size()
 {
@@ -876,6 +913,17 @@ Operation::op_exec(const char *pth, size_t npth)
         }
         return do_array_remove_value(m_optype.base() ==
                                       Command::ARRAY_REMOVE_ALL);
+
+    case Command::ARRAY_INDEX_OF:
+        // Value to look for must be a single, primitive value - same as
+        // ARRAY_ADD_UNIQUE.
+        status = validate(Validator::PARENT_ARRAY | Validator::VALUE_PRIMITIVE |
+                                  Validator::VALUE_SINGLE,
+                          get_maxdepth(PATH_IS_PARENT));
+        if (!status.success()) {
+            return status;
+        }
+        return do_array_index_of();
 
     case Command::COUNTER:
     case Command::COUNTER_P:

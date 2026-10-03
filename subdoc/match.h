@@ -122,6 +122,10 @@ public:
      * already exists */
     unsigned char unique_item_found = 0;
 
+    /**If #unique_item_found is set, the zero-based position within the
+     * matched array of the (first) element equal to #ensure_unique */
+    size_t unique_item_position = 0;
+
     /**
      * Deepest match found. If the match was completely found, then this
      * points to the actual match. Otherwise, this is one of the parents.

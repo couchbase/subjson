@@ -193,6 +193,15 @@ public:
          * supplied value. */
         ARRAY_REMOVE_ALL = 0x0D,
 
+        /**Returns the zero-based index of the first element of a list whose
+         * raw JSON text is equal to the supplied value. Returns VALUE_ENOENT
+         * if the list exists but contains no such element. Values compared
+         * can only be primitives, just like ARRAY_ADD_UNIQUE. As with
+         * ARRAY_ADD_UNIQUE the scan stops at the first match;
+         * SUBDOC_PATH_MISMATCH is returned if a non-primitive element is
+         * encountered before a match is found. */
+        ARRAY_INDEX_OF = 0x0E,
+
         INVALID = 0xff,
         FLAG_MKDIR_P = 0x80
     };

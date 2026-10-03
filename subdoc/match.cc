@@ -123,6 +123,9 @@ static void unique_callback(jsonsl_t jsn,
 
     if (rv == 0) {
         m->unique_item_found = 1;
+        // The parent array's element count includes the child being
+        // popped, so its position is one less than that.
+        m->unique_item_position = jsonsl_last_state(jsn, st)->nelem - 1;
         jsonsl_stop(jsn);
     }
 }

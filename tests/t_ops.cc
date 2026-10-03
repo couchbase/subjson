@@ -585,6 +585,87 @@ TEST_F(OpTests, testArrayRemoveAllManyMatches) {
     EXPECT_EQ(expected, getNewDoc());
 }
 
+TEST_F(OpTests, testArrayIndexOf) {
+    // Found: index of the element is returned.
+    std::string json = "[1,2,3]";
+    op.set_doc(json);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "1"));
+    ASSERT_EQ("0", returnedMatch());
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "3"));
+    ASSERT_EQ("2", returnedMatch());
+
+    // Multiple matches: the index of the first one is returned.
+    std::string dup = R"([1,"a",1,"a",1])";
+    op.set_doc(dup);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", R"("a")"));
+    ASSERT_EQ("1", returnedMatch());
+
+    // Not found: VALUE_ENOENT (the array itself does exist).
+    op.set_doc(json);
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "", "99"), Error::VALUE_ENOENT);
+
+    // Empty array: VALUE_ENOENT.
+    std::string empty = "[]";
+    op.set_doc(empty);
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "", "1"), Error::VALUE_ENOENT);
+
+    // Raw text comparison: a string doesn't match the equivalent
+    // number, and differently spelled numbers don't match each other.
+    std::string mixed = R"(["1",1.0,1])";
+    op.set_doc(mixed);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "1"));
+    ASSERT_EQ("2", returnedMatch());
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", R"("1")"));
+    ASSERT_EQ("0", returnedMatch());
+
+    // Non-numeric/non-string primitives (bool/null) compare correctly.
+    std::string special = "[true,false,null]";
+    op.set_doc(special);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "null"));
+    ASSERT_EQ("2", returnedMatch());
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "false"));
+    ASSERT_EQ("1", returnedMatch());
+
+    // Nested path pointing at an array.
+    std::string nestedArr = R"({"list":[1,2,3],"other":[4]})";
+    op.set_doc(nestedArr);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "list", "2"));
+    ASSERT_EQ("1", returnedMatch());
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "list", "4"),
+                 Error::VALUE_ENOENT);
+
+    // Path doesn't exist -> PATH_ENOENT.
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "missing", "1"),
+                 Error::PATH_ENOENT);
+
+    // Path doesn't resolve to a list -> PATH_MISMATCH.
+    std::string dict = R"({"a":1})";
+    op.set_doc(dict);
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "", "1"), Error::PATH_MISMATCH);
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "a", "1"),
+                 Error::PATH_MISMATCH);
+
+    // Non-primitive value to search for -> VALUE_CANTINSERT.
+    op.set_doc(json);
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "", "[]"),
+                 Error::VALUE_CANTINSERT);
+
+    // Array containing a non-primitive element before any match ->
+    // PATH_MISMATCH. The scan stops at the first match though, so a
+    // match preceding the non-primitive element is still found (as for
+    // ARRAY_ADD_UNIQUE).
+    std::string nested = "[1,[2],3]";
+    op.set_doc(nested);
+    ASSERT_ERREQ(runOp(Command::ARRAY_INDEX_OF, "", "3"), Error::PATH_MISMATCH);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "1"));
+    ASSERT_EQ("0", returnedMatch());
+
+    // The document isn't modified.
+    op.set_doc(json);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "2"));
+    ASSERT_EQ(0U, res.newdoc().size());
+}
+
 TEST_F(OpTests, testNumeric) {
     std::string doc = "{}";
     Error rv;
