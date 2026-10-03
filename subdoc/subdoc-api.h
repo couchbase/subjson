@@ -52,6 +52,10 @@ public:
         /** Inserting the value would cause the document to be too deep */
         VALUE_ETOODEEP,
 
+        /** The path exists, but the array it refers to does not contain
+         * the requested value */
+        VALUE_ENOENT,
+
         /* MEMCACHED ERROR CODES */
         GLOBAL_ENOSUPPORT,
     };
@@ -181,8 +185,8 @@ public:
          * to the supplied value, leaving any further equal elements
          * untouched. Values compared can only be primitives (and can only
          * be compared against primitives already in the list), just like
-         * ARRAY_ADD_UNIQUE. Returns SUBDOC_PATH_ENOENT if no equal element
-         * is found. */
+         * ARRAY_ADD_UNIQUE. Returns VALUE_ENOENT if the array exists but no
+         * equal element is found. */
         ARRAY_REMOVE_FIRST = 0x0C,
 
         /**As ARRAY_REMOVE_FIRST, but removes *every* element equal to the

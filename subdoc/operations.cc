@@ -405,7 +405,7 @@ Operation::do_array_remove_value(bool removeAll)
 
     if (!m_match.value_removed) {
         // Array exists, but doesn't contain the requested value.
-        return Error::PATH_ENOENT;
+        return Error::VALUE_ENOENT;
     }
 
     const Loc& array_loc = m_match.loc_deepest;
@@ -948,6 +948,8 @@ Error::description() const
         return "Expected non-empty value for command";
     case Error::VALUE_ETOODEEP:
         return "Adding this value would make the document too deep";
+    case Error::VALUE_ENOENT:
+        return "The requested value does not exist in the array";
     case Error::GLOBAL_ENOSUPPORT:
         return "Operation not implemented";
     case Error::DOC_ETOODEEP:

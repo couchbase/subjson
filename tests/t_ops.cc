@@ -466,7 +466,7 @@ TEST_F(OpTests, testArrayRemoveFirst) {
     std::string nomatch = "[1,2,3]";
     op.set_doc(nomatch);
     rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "99");
-    ASSERT_EQ(Error::PATH_ENOENT, rv);
+    ASSERT_EQ(Error::VALUE_ENOENT, rv);
 
     // Only element removed -> empty array.
     std::string single = R"(["only"])";
@@ -479,7 +479,7 @@ TEST_F(OpTests, testArrayRemoveFirst) {
     std::string empty = "[]";
     op.set_doc(empty);
     rv = runOp(Command::ARRAY_REMOVE_FIRST, "", "1");
-    ASSERT_EQ(Error::PATH_ENOENT, rv);
+    ASSERT_EQ(Error::VALUE_ENOENT, rv);
 
     // Non-primitive value to search for -> VALUE_CANTINSERT.
     std::string arr = "[1,2,3]";
@@ -505,6 +505,12 @@ TEST_F(OpTests, testArrayRemoveFirst) {
     rv = runOp(Command::ARRAY_REMOVE_FIRST, "list", "2");
     ASSERT_TRUE(rv.success());
     EXPECT_EQ(R"({"list":[1,3]})", getNewDoc());
+
+    // Path to the array doesn't exist -> PATH_ENOENT (as opposed to
+    // VALUE_ENOENT when the array exists but lacks the value).
+    op.set_doc(nestedArr);
+    rv = runOp(Command::ARRAY_REMOVE_FIRST, "nosuchlist", "2");
+    ASSERT_EQ(Error::PATH_ENOENT, rv);
 }
 
 TEST_F(OpTests, testArrayRemoveAll) {
@@ -528,7 +534,7 @@ TEST_F(OpTests, testArrayRemoveAll) {
     std::string nomatch = "[1,2,3]";
     op.set_doc(nomatch);
     rv = runOp(Command::ARRAY_REMOVE_ALL, "", "99");
-    ASSERT_EQ(Error::PATH_ENOENT, rv);
+    ASSERT_EQ(Error::VALUE_ENOENT, rv);
 
     // Non-numeric/non-string primitives (bool/null) compare correctly.
     std::string mixed = "[true,false,null,true,1]";
