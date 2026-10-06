@@ -2035,6 +2035,13 @@ TEST_F(OpTests, ArrayScanAppendToTruncatedDocument) {
     EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_ADD_UNIQUE, "a", "4"));
 }
 
+TEST_F(OpTests, ArrayScanRemoveFromTruncatedDocument) {
+    const std::string json = R"({"a":[1,2,3)";
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_REMOVE_FIRST, "a", "1"));
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_REMOVE_ALL, "a", "1"));
+}
+
 TEST_F(OpTests, RemoveValueNestedPath) {
     const std::string json = R"({"a":{"b":[[1],["x",2,"x"]]},"c":0})";
     op.set_doc(json);

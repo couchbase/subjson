@@ -394,8 +394,8 @@ Operation::do_list_prepend()
  * Locates the array named by the path, then scans its children for
  * element(s) whose raw text equals m_userval, removing the first (or
  * all, if removeAll) such element(s). The array's surviving children
- * are collected verbatim into m_result->m_bkbuf by the
- * remove_value_callback machinery in match.cc (this keeps the number
+ * are collected verbatim into m_result->m_bkbuf by filter_array()
+ * (via match.cc) (this keeps the number
  * of Result output segments constant regardless of how many elements
  * are removed, unlike a REMOVE-style splice per removed element).
  */
@@ -404,8 +404,8 @@ Operation::do_array_remove_value(bool removeAll)
 {
     m_match.match_value = trim_value(m_userval);
     m_match.remove_all_matches = removeAll;
-    // remove_value_callback() relies on filtered_buf starting out empty
-    // to decide when to emit a separating comma.
+    // filter_array() relies on filtered_buf starting out empty to
+    // decide when to emit a separating comma.
     m_result->m_bkbuf.clear();
     m_match.filtered_buf = &m_result->m_bkbuf;
     // The surviving elements collected into filtered_buf can never

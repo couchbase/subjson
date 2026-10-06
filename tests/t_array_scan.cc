@@ -14,6 +14,8 @@
 #include <gtest/gtest.h>
 #include <random>
 #include <string>
+#include <utility>
+#include <vector>
 
 using Subdoc::ArrayScanResult;
 using Subdoc::Match;
@@ -233,6 +235,149 @@ TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
                 << doc;
     }
     Match::jsn_free(jsn);
+}
+
+namespace {
+
+/** Run filter_array() and return the status and the survivors */
+std::pair<ScanStatus, std::string> filter(std::string_view array,
+                                          std::string_view needle,
+                                          bool remove_all) {
+    std::string survivors;
+    const auto result =
+            Subdoc::filter_array(array, needle, remove_all, survivors);
+    return {result.status, survivors};
+}
+
+} // namespace
+
+TEST(ArrayScanTest, FilterFirst) {
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string("1,3")),
+              filter("[1,2,3]", "2", false));
+    EXPECT_EQ(
+            std::make_pair(ScanStatus::Success, std::string(R"("a",1,"a",1)")),
+            filter(R"([1,"a",1,"a",1])", "1", false));
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string()),
+              filter(R"(["only"])", R"("only")", false));
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string("1,2,3")),
+              filter("[1,2,3]", "99", false));
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string()),
+              filter("[]", "1", false));
+}
+
+TEST(ArrayScanTest, FilterAll) {
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string(R"("a","a")")),
+              filter(R"([1,"a",1,"a",1])", "1", true));
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string()),
+              filter("[5,5,5]", "5", true));
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string("2,3,4")),
+              filter("[1,2,3,1,4,1]", "1", true));
+}
+
+TEST(ArrayScanTest, FilterCountsRemoved) {
+    std::string survivors;
+    auto result = Subdoc::filter_array("[1,2,1,3,1]", "1", true, survivors);
+    EXPECT_EQ(ScanStatus::Success, result.status);
+    EXPECT_EQ(3, result.num_removed);
+    EXPECT_EQ(5, result.num_elements);
+    EXPECT_EQ(11, result.length);
+
+    survivors.clear();
+    result = Subdoc::filter_array("[1,2,1,3,1]", "1", false, survivors);
+    EXPECT_EQ(1, result.num_removed);
+
+    survivors.clear();
+    result = Subdoc::filter_array("[1,2,1,3,1]", "4", true, survivors);
+    EXPECT_EQ(0, result.num_removed);
+}
+
+TEST(ArrayScanTest, FilterWhitespace) {
+    // Whitespace around the removed elements is dropped, and whitespace
+    // between consecutive survivors is kept
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string("1 , 2,3 ,\n4")),
+              filter("[ 1 , 2 , 9 , 3 ,\n4 ]", "9", false));
+}
+
+TEST(ArrayScanTest, FilterStrings) {
+    EXPECT_EQ(std::make_pair(ScanStatus::Success,
+                             std::string("\"]\",\"a\\\"b\",\",\"")),
+              filter("[\"]\",\"x\",\"a\\\"b\",\"x\",\",\"]", R"("x")", true));
+    // The full text of the element is compared
+    EXPECT_EQ(std::make_pair(ScanStatus::Success, std::string(R"("23")")),
+              filter(R"(["23"])", "1234", true));
+}
+
+TEST(ArrayScanTest, FilterNonPrimitive) {
+    // A container anywhere in the array is an error, even after the
+    // element to remove is found
+    EXPECT_EQ(ScanStatus::NonPrimitive, filter("[1,[2],3]", "1", false).first);
+    EXPECT_EQ(ScanStatus::NonPrimitive, filter("[1,2,{}]", "1", false).first);
+    EXPECT_EQ(ScanStatus::NonPrimitive, filter("[[1],1]", "9", true).first);
+}
+
+TEST(ArrayScanTest, FilterMalformed) {
+    EXPECT_EQ(ScanStatus::Malformed, filter("[1,2", "1", false).first);
+    EXPECT_EQ(ScanStatus::Malformed, filter(R"([1,"2])", "1", true).first);
+}
+
+/**
+ * Verify filter_array() against a trivial implementation on random arrays
+ * of primitives (which also cross the 64 byte block boundaries)
+ */
+TEST(ArrayScanTest, FilterRandom) {
+    std::mt19937 gen(0xfeed);
+    for (int iteration = 0; iteration < 2000; ++iteration) {
+        std::vector<std::string> elements;
+        const int count = int(gen() % 60);
+        for (int ii = 0; ii < count; ++ii) {
+            // A small value space ensures plenty of duplicates
+            switch (gen() % 4) {
+            case 0:
+                elements.emplace_back(std::to_string(gen() % 5));
+                break;
+            case 1:
+                elements.emplace_back(R"("x\"],\\)" +
+                                      std::to_string(gen() % 5) + "\"");
+                break;
+            case 2:
+                elements.emplace_back(gen() % 70, 'y');
+                elements.back() = "\"" + elements.back() + "\"";
+                break;
+            default:
+                elements.emplace_back(gen() % 2 ? "true" : "null");
+                break;
+            }
+        }
+        auto join = [](const std::vector<std::string>& values) {
+            std::string ret;
+            for (const auto& value : values) {
+                if (!ret.empty()) {
+                    ret.push_back(',');
+                }
+                ret.append(value);
+            }
+            return ret;
+        };
+        const std::string array = "[" + join(elements) + "]";
+        const std::string needle = elements.empty()
+                                           ? std::string("0")
+                                           : elements[gen() % elements.size()];
+
+        for (const bool remove_all : {false, true}) {
+            std::vector<std::string> expected;
+            bool removed = false;
+            for (const auto& element : elements) {
+                if (element == needle && (remove_all || !removed)) {
+                    removed = true;
+                } else {
+                    expected.emplace_back(element);
+                }
+            }
+            ASSERT_EQ(std::make_pair(ScanStatus::Success, join(expected)),
+                      filter(array + R"(,{"a":[1]}])", needle, remove_all))
+                    << array << " needle:" << needle;
+        }
+    }
 }
 
 // The depth is limited as by a parser which needs a level for every value:

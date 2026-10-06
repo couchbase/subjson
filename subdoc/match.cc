@@ -34,17 +34,6 @@ struct ParseContext : public HashKey {
 
     /** One past the last character of the buffer being parsed */
     const char* buffer_end;
-
-    // Internal pointer used to hold the start of the current array
-    // child's token, while scanning children in "match_value"
-    // (remove-by-value) mode.
-    const char* childbuf = nullptr;
-
-    void set_child_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
-        childbuf = at;
-    }
-
-    const char *get_child_begin() const { return childbuf; }
 };
 }
 
@@ -72,77 +61,6 @@ static int err_callback(jsonsl_t jsn,
 }
 
 /**
- * Callback used to scan an array's children for element(s) whose raw
- * JSON text equals Match::match_value, removing the first (or all, if
- * Match::remove_all_matches) such element(s). Surviving children are
- * copied verbatim (comma-separated) into Match::filtered_buf, so the
- * caller can splice the array's content wholesale regardless of how
- * many elements were removed (avoiding an unbounded number of Result
- * output segments). Never stops early: since surviving elements past a
- * removed one still need to be collected, the scan always continues
- * through to the array's closing token.
- */
-static void remove_value_callback(jsonsl_t jsn,
-                                  jsonsl_action_t action,
-                                  jsonsl_state_st* st,
-                                  const jsonsl_char_t* at) {
-    ParseContext *ctx = get_ctx(jsn);
-    Match *m = ctx->match;
-    int rv;
-    size_t slen;
-
-    if (action == JSONSL_ACTION_PUSH) {
-        ctx->set_child_begin(st, at);
-        return;
-    }
-
-    if (st->mres == JSONSL_MATCH_COMPLETE) {
-        // Popping the array itself: the scan of its children is done.
-        jsn->action_callback_POP = pop_callback;
-        jsn->action_callback_PUSH = push_callback;
-        jsn->max_callback_level = st->level+1;
-        pop_callback(jsn, action, st, at);
-        return;
-    }
-
-    slen = st->pos_cur - st->pos_begin;
-    Expects(st->level == m->match_level + 1U);
-
-    bool matches = false;
-    if (st->type == JSONSL_T_STRING) {
-        slen++;
-        if (m->match_value.length >= 2 && slen == m->match_value.length) {
-            // Compare the entire token (including the quotes) as the
-            // value may be a non-string of the same length (e.g. 1234
-            // vs "23")
-            rv = memcmp(ctx->get_child_begin(), m->match_value.at, slen);
-            matches = (rv == 0);
-        }
-    } else if (st->type == JSONSL_T_SPECIAL) {
-        if (m->match_value.length == slen) {
-            rv = strncmp(ctx->get_child_begin(), m->match_value.at, slen);
-            matches = (rv == 0);
-        }
-    } else {
-        /* We can't reliably compare non-primitives */
-        m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-        jsonsl_stop(jsn);
-        return;
-    }
-
-    if (matches && (m->remove_all_matches || !m->value_removed)) {
-        // Drop this child: don't copy it into filtered_buf.
-        m->value_removed = 1;
-        return;
-    }
-
-    if (!m->filtered_buf->empty()) {
-        m->filtered_buf->push_back(',');
-    }
-    m->filtered_buf->append(ctx->get_child_begin(), slen);
-}
-
-/**
  * The maximum nesting depth of the container (which was just pushed) for
  * the scanner, which is the same as jsonsl's: jsonsl needs a stack level
  * for every value, so containers may be nested until the last level, and
@@ -154,11 +72,15 @@ static size_t jsonsl_depth_limit(const jsonsl_t jsn,
 }
 
 /**
- * Locate the end of the matched array (and search for Match::ensure_unique
- * if set) with scan_array() rather than letting jsonsl parse all of the
- * array's contents, then stop the parser. Sets the same fields in the
- * match as pop_callback() would have when popping the array, and reports
- * the same depth error as jsonsl would have.
+ * Locate the end of the matched array with scan_array() rather than
+ * letting jsonsl parse all of the array's contents, then stop the parser.
+ * Sets the same fields in the match as pop_callback() would have when
+ * popping the array, and reports the same depth error as jsonsl would
+ * have.
+ *
+ * If Match::ensure_unique is set the array is searched for it, and if
+ * Match::match_value is set the elements which aren't removed are
+ * collected into Match::filtered_buf (see filter_array()).
  *
  * @param st The state of the matched array
  * @param at Pointer to the opening bracket of the matched array
@@ -170,10 +92,18 @@ static void scan_matched_array(jsonsl_t jsn,
     Match* m = ctx->match;
     jsonsl_stop(jsn);
 
+    const std::string_view array{at, static_cast<size_t>(ctx->buffer_end - at)};
+    const size_t max_depth = jsonsl_depth_limit(jsn, st);
     const auto result =
-            scan_array({at, static_cast<size_t>(ctx->buffer_end - at)},
-                       {m->ensure_unique.at, m->ensure_unique.length},
-                       jsonsl_depth_limit(jsn, st));
+            m->match_value.at
+                    ? filter_array(array,
+                                   {m->match_value.at, m->match_value.length},
+                                   m->remove_all_matches,
+                                   *m->filtered_buf,
+                                   max_depth)
+                    : scan_array(array,
+                                 {m->ensure_unique.at, m->ensure_unique.length},
+                                 max_depth);
 
     switch (result.status) {
     case ArrayScanResult::Status::Success:
@@ -181,6 +111,7 @@ static void scan_matched_array(jsonsl_t jsn,
         m->loc_deepest.length = result.length;
         m->immediate_parent_found = 1;
         m->num_children = result.num_elements;
+        m->value_removed = result.num_removed != 0;
         return;
     case ArrayScanResult::Status::Found:
         m->unique_item_found = 1;
@@ -267,10 +198,7 @@ static void push_callback(jsonsl_t jsn,
                     jsonsl_stop(jsn);
                     return;
                 }
-                // Set up callbacks to scan/filter each child.
-                jsn->action_callback_POP = remove_value_callback;
-                jsn->action_callback_PUSH = remove_value_callback;
-                jsn->max_callback_level = st->level + 2;
+                scan_matched_array(jsn, ctx, st, at);
             }
 
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {

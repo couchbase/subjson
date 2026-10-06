@@ -263,11 +263,20 @@ bool is_empty_container(const char* begin, size_t size, size_t pos) {
     return idx < size && (begin[idx] == ']' || begin[idx] == '}');
 }
 
-} // namespace
-
-ArrayScanResult scan_array(std::string_view buffer,
-                           std::string_view needle,
-                           size_t max_depth) {
+/**
+ * Scan the array at the beginning of the buffer.
+ *
+ * @param buffer The buffer to scan (starting with the opening bracket)
+ * @param visitor If non-null, called with each top-level element (with
+ *                surrounding whitespace removed) in order, and the scan
+ *                stops with Status::Found when it returns false. When
+ *                visiting elements the scan stops with Status::NonPrimitive
+ *                if an element is an array or object.
+ */
+template <typename Visitor>
+ArrayScanResult scan_array_impl(std::string_view buffer,
+                                Visitor* visitor,
+                                size_t max_depth) {
     using Status = ArrayScanResult::Status;
     ArrayScanResult result;
     if (buffer.empty() || buffer.front() != '[') {
@@ -304,35 +313,44 @@ ArrayScanResult scan_array(std::string_view buffer,
     size_t depth = 0;
     size_t num_commas = 0;
     // Offset of the first character of the current top-level element
-    // (only maintained when searching for the needle)
+    // (only maintained when visiting elements)
     size_t element_begin = 1;
     // Set when the current top-level element is an array or object (only
-    // when searching for the needle)
+    // when visiting elements)
     bool non_primitive = false;
     // Carried over between blocks
     bool prev_escaped = false;
     uint64_t in_string_carry = 0;
 
+    // Visit the element ending at pos, return false if the scan should
+    // stop (with the result updated)
+    auto visit = [&](size_t pos) -> bool {
+        if (non_primitive) {
+            result.status = Status::NonPrimitive;
+            return false;
+        }
+        if (!(*visitor)(trim_json_ws({begin + element_begin, begin + pos}))) {
+            result.status = Status::Found;
+            result.found_index = num_commas;
+            return false;
+        }
+        element_begin = pos + 1;
+        return true;
+    };
+
     // Process the top-level commas in the mask, return false if the
     // scan should stop (with the result updated)
     auto top_level_commas = [&](uint64_t commas, size_t offset) -> bool {
-        if (needle.empty()) {
+        if (visitor == nullptr) {
             num_commas += std::popcount(commas);
             return true;
         }
         while (commas) {
             const size_t pos = offset + std::countr_zero(commas);
             commas &= commas - 1;
-            if (non_primitive) {
-                result.status = Status::NonPrimitive;
+            if (!visit(pos)) {
                 return false;
             }
-            if (trim_json_ws({begin + element_begin, begin + pos}) == needle) {
-                result.status = Status::Found;
-                result.found_index = num_commas;
-                return false;
-            }
-            element_begin = pos + 1;
             ++num_commas;
         }
         return true;
@@ -375,11 +393,11 @@ ArrayScanResult scan_array(std::string_view buffer,
             prev = idx + 1;
 
             if (masks.open & bracket) {
-                if (depth == 1 && !needle.empty()) {
-                    // Uniqueness can't be determined for non-primitives.
-                    // This is reported when the element is compared (once
-                    // it has been scanned), so that a depth error in it
-                    // takes precedence.
+                if (depth == 1 && visitor != nullptr) {
+                    // Elements can't be compared with non-primitives. This
+                    // is reported when the element is visited (once it has
+                    // been scanned), so that a depth error in it takes
+                    // precedence.
                     non_primitive = true;
                 }
                 ++depth;
@@ -402,14 +420,7 @@ ArrayScanResult scan_array(std::string_view buffer,
                 if (begin[pos] != ']') {
                     return result;
                 }
-                if (non_primitive) {
-                    result.status = Status::NonPrimitive;
-                    return result;
-                }
-                if (!needle.empty() && trim_json_ws({begin + element_begin,
-                                                     begin + pos}) == needle) {
-                    result.status = Status::Found;
-                    result.found_index = num_commas;
+                if (visitor != nullptr && !visit(pos)) {
                     return result;
                 }
                 result.status = Status::Success;
@@ -425,6 +436,62 @@ ArrayScanResult scan_array(std::string_view buffer,
     }
 
     // Ran off the end of the buffer
+    return result;
+}
+
+/** Placeholder visitor type used when elements aren't visited */
+using NoVisitor = bool (*)(std::string_view);
+
+} // namespace
+
+ArrayScanResult scan_array(std::string_view buffer,
+                           std::string_view needle,
+                           size_t max_depth) {
+    if (needle.empty()) {
+        return scan_array_impl<NoVisitor>(buffer, nullptr, max_depth);
+    }
+    auto compare = [needle](std::string_view element) {
+        return element != needle;
+    };
+    return scan_array_impl(buffer, &compare, max_depth);
+}
+
+ArrayScanResult filter_array(std::string_view buffer,
+                             std::string_view needle,
+                             bool remove_all,
+                             std::string& survivors,
+                             size_t max_depth) {
+    // Survivors are copied in runs of consecutive elements (including the
+    // separators between them) rather than one by one
+    const char* run_begin = nullptr;
+    const char* run_end = nullptr;
+    size_t num_removed = 0;
+    auto flush = [&]() {
+        if (run_begin != nullptr) {
+            if (!survivors.empty()) {
+                survivors.push_back(',');
+            }
+            survivors.append(run_begin, run_end);
+            run_begin = nullptr;
+        }
+    };
+    auto filter = [&](std::string_view element) {
+        if ((remove_all || num_removed == 0) && element == needle) {
+            ++num_removed;
+            flush();
+        } else {
+            if (run_begin == nullptr) {
+                run_begin = element.data();
+            }
+            run_end = element.data() + element.size();
+        }
+        return true;
+    };
+    auto result = scan_array_impl(buffer, &filter, max_depth);
+    if (result.status == ArrayScanResult::Status::Success) {
+        flush();
+        result.num_removed = num_removed;
+    }
     return result;
 }
 

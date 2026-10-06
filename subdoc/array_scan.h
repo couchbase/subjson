@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <string>
 #include <string_view>
 
 namespace Subdoc {
@@ -55,6 +56,12 @@ struct ArrayScanResult {
      * valid when status is Found.
      */
     size_t found_index = 0;
+
+    /**
+     * The number of elements removed by filter_array(). Only valid when
+     * status is Success.
+     */
+    size_t num_removed = 0;
 };
 
 /**
@@ -92,6 +99,38 @@ struct ArrayScanResult {
 ArrayScanResult scan_array(
         std::string_view buffer,
         std::string_view needle,
+        size_t max_depth = std::numeric_limits<size_t>::max());
+
+/**
+ * Scan the JSON array starting at the beginning of the provided buffer
+ * (with the same restrictions as scan_array()) and collect the top-level
+ * elements which are not removed into survivors.
+ *
+ * An element is removed if it is byte-wise equal to the needle (ignoring
+ * surrounding whitespace in the document); either only the first such
+ * element or all of them. The surviving elements are appended to
+ * survivors separated by commas, keeping their original order (whitespace
+ * between consecutive surviving elements is preserved).
+ *
+ * @param buffer The buffer to scan. The first character must be the opening
+ *               bracket of the array, and the buffer may extend beyond the
+ *               end of the array.
+ * @param needle The (non-empty) value to remove
+ * @param remove_all If true remove all matching elements, otherwise only
+ *                   the first one
+ * @param survivors Where to append the surviving elements. Data is appended
+ *                  to it even if the scan fails.
+ * @param max_depth The maximum nesting depth (see scan_array())
+ * @return The result of the scan. Status::NonPrimitive is returned if any
+ *         element in the array is an array or object (regardless of its
+ *         position). On Status::Success num_removed holds the number of
+ *         removed elements.
+ */
+ArrayScanResult filter_array(
+        std::string_view buffer,
+        std::string_view needle,
+        bool remove_all,
+        std::string& survivors,
         size_t max_depth = std::numeric_limits<size_t>::max());
 
 } // namespace Subdoc
