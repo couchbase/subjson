@@ -23,6 +23,7 @@
 #include <bit>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 #if defined(__aarch64__) || defined(_M_ARM64)
 #include <arm_neon.h>
@@ -251,6 +252,9 @@ uint64_t range_mask(size_t lo, size_t hi) {
     return below_hi & ~below_lo;
 }
 
+/** Value for scan_container_impl()'s target when not locating an element */
+constexpr size_t NoTarget = std::numeric_limits<size_t>::max();
+
 /**
  * Check if the container whose opening bracket (or brace) is at the given
  * offset is empty
@@ -279,12 +283,17 @@ bool is_array(std::string_view buffer) {
  *                visiting elements the scan stops with Status::NonPrimitive
  *                if an element is an array or object (once the element has
  *                been scanned). Must be null when scanning an object.
+ * @param target If not NoTarget (and visitor is null), the index of the
+ *               element to locate; the scan stops with Status::Found once
+ *               the element is located.
  * @param max_depth The maximum nesting depth (see scan_array())
  */
 template <typename Visitor>
-ArrayScanResult scan_container_impl(std::string_view buffer,
-                                    Visitor* visitor,
-                                    size_t max_depth) {
+ArrayScanResult scan_container_impl(
+        std::string_view buffer,
+        Visitor* visitor,
+        size_t target = NoTarget,
+        size_t max_depth = std::numeric_limits<size_t>::max()) {
     using Status = ArrayScanResult::Status;
     ArrayScanResult result;
     if (buffer.empty() || (buffer.front() != '[' && buffer.front() != '{')) {
@@ -349,9 +358,33 @@ ArrayScanResult scan_container_impl(std::string_view buffer,
         return true;
     };
 
+    // The target element ends at pos, return false (the scan should stop)
+    auto found_target = [&](size_t pos, bool has_next) -> bool {
+        const auto element = trim_json_ws({begin + element_begin, begin + pos});
+        result.status = Status::Found;
+        result.element_offset = size_t(element.data() - begin);
+        result.element_length = element.size();
+        result.has_next = has_next;
+        return false;
+    };
+
     // Process the top-level commas in the mask, return false if the
     // scan should stop (with the result updated)
     auto top_level_commas = [&](uint64_t commas, size_t offset) -> bool {
+        if (visitor == nullptr && target != NoTarget && commas &&
+            num_commas + std::popcount(commas) >= target) {
+            // The target element begins and/or ends in this range
+            while (commas) {
+                const size_t pos = offset + std::countr_zero(commas);
+                commas &= commas - 1;
+                if (num_commas == target) {
+                    return found_target(pos, true);
+                }
+                ++num_commas;
+                element_begin = pos + 1;
+            }
+            return true;
+        }
         if (visitor == nullptr) {
             if (commas) {
                 num_commas += std::popcount(commas);
@@ -438,14 +471,20 @@ ArrayScanResult scan_container_impl(std::string_view buffer,
                 if (visitor != nullptr && !visit(pos)) {
                     return result;
                 }
+                if (target != NoTarget && num_commas == target) {
+                    found_target(pos, false);
+                    return result;
+                }
                 result.status = Status::Success;
                 result.length = pos + 1;
                 result.num_elements = num_commas + 1;
-                const auto last =
-                        trim_json_ws({begin + (last_comma ? last_comma + 1 : 1),
-                                      begin + pos});
-                result.last_element_offset = size_t(last.data() - begin);
-                result.last_element_length = last.size();
+                if (target == NoTarget) {
+                    const auto last = trim_json_ws(
+                            {begin + (last_comma ? last_comma + 1 : 1),
+                             begin + pos});
+                    result.element_offset = size_t(last.data() - begin);
+                    result.element_length = last.size();
+                }
                 return result;
             }
         }
@@ -471,16 +510,26 @@ ArrayScanResult scan_array(std::string_view buffer,
         return {};
     }
     if (needle.empty()) {
-        return scan_container_impl<NoVisitor>(buffer, nullptr, max_depth);
+        return scan_container_impl<NoVisitor>(
+                buffer, nullptr, NoTarget, max_depth);
     }
     auto compare = [needle](std::string_view element) {
         return element != needle;
     };
-    return scan_container_impl(buffer, &compare, max_depth);
+    return scan_container_impl(buffer, &compare, NoTarget, max_depth);
+}
+
+ArrayScanResult find_array_element(std::string_view buffer,
+                                   size_t index,
+                                   size_t max_depth) {
+    if (!is_array(buffer)) {
+        return {};
+    }
+    return scan_container_impl<NoVisitor>(buffer, nullptr, index, max_depth);
 }
 
 ArrayScanResult scan_container(std::string_view buffer, size_t max_depth) {
-    return scan_container_impl<NoVisitor>(buffer, nullptr, max_depth);
+    return scan_container_impl<NoVisitor>(buffer, nullptr, NoTarget, max_depth);
 }
 
 ArrayScanResult filter_array(std::string_view buffer,
@@ -517,7 +566,7 @@ ArrayScanResult filter_array(std::string_view buffer,
     if (!is_array(buffer)) {
         return {};
     }
-    auto result = scan_container_impl(buffer, &filter, max_depth);
+    auto result = scan_container_impl(buffer, &filter, NoTarget, max_depth);
     if (result.status == ArrayScanResult::Status::Success) {
         flush();
         result.num_removed = num_removed;

@@ -180,12 +180,13 @@ public:
     std::string* filtered_buf = nullptr;
 
     /**
-     * Internal flag; set when the last element of an array (#get_last) was
-     * located with the array scanner, in which case the details about the
-     * element (type, flags and number of children) must be filled in by
-     * parsing the element.
+     * Internal flag; set when the matched element (the last element in an
+     * array for #get_last, or an element at a given index) was located with
+     * the array scanner, in which case the details about the element (type,
+     * flags and number of children) must be filled in by parsing the
+     * element.
      */
-    bool last_element_scanned = false;
+    bool element_scanned = false;
 
     int exec_match(const char *value, size_t nvalue, const Path *path, jsonsl_t jsn);
     int exec_match(const Loc& loc, const Path* path, jsonsl_t jsn) {

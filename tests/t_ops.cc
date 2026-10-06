@@ -2270,6 +2270,13 @@ TEST_F(OpTests, ArrayIndexDepthLimit) {
     }
 }
 
+TEST_F(OpTests, IndexScanTruncatedDocument) {
+    const std::string json = R"({"a":[1,2,3)";
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET, "a[5]"));
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_INSERT, "a[3]", "4"));
+}
+
 // Operations on members located after arrays and objects
 TEST_F(OpTests, MemberAfterContainers) {
     const std::string json =

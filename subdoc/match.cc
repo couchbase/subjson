@@ -34,6 +34,13 @@ struct ParseContext : public HashKey {
 
     /** One past the last character of the buffer being parsed */
     const char* buffer_end;
+
+    /**
+     * Set to false when the buffer is fed to the parser in pieces, as
+     * scanning (for instance to an array index) requires the array to be
+     * contiguous in memory up to buffer_end.
+     */
+    bool allow_index_scan = true;
 };
 }
 
@@ -174,14 +181,94 @@ static void scan_matched_last_element(jsonsl_t jsn,
         return;
     }
 
-    m->loc_deepest.assign(at + result.last_element_offset,
-                          result.last_element_length);
+    m->loc_deepest.assign(at + result.element_offset, result.element_length);
     m->match_level = st->level + 1;
     m->immediate_parent_found = 1;
     m->num_siblings = result.num_elements - 1;
     m->position = m->num_siblings;
     m->loc_key.clear();
-    m->last_element_scanned = true;
+    m->element_scanned = true;
+}
+
+/**
+ * Check if the element at the next level of the path can be located with
+ * find_array_element() rather than letting jsonsl parse all of the
+ * elements preceding it. This is the case when the array is the immediate
+ * parent of the final path component, and that component is a (non
+ * negative) index.
+ *
+ * @param st The state of an array which is a possible match
+ */
+static bool can_scan_to_index(const ParseContext* ctx,
+                              const jsonsl_state_st* st) {
+    const Match* m = ctx->match;
+    if (!ctx->allow_index_scan || st->type != JSONSL_T_LIST || m->get_last ||
+        m->ensure_unique.at || m->match_value.at ||
+        st->level + 1 != ctx->jpr->ncomponents) {
+        return false;
+    }
+    const auto& component = ctx->jpr->components[st->level];
+    return component.ptype == JSONSL_PATH_NUMERIC && !component.is_neg;
+}
+
+/**
+ * Locate the element (with the index given by the final path component)
+ * in the array with find_array_element() rather than letting jsonsl parse
+ * all of the elements preceding it, then stop the parser. Sets the same
+ * fields in the match as push_callback() / pop_callback() (and
+ * next_sibling_push_callback()) would have, except for the type, flags
+ * and number of children of the element which are filled in by
+ * Match::describe_scanned_element().
+ *
+ * If the array doesn't have that many elements the array itself is the
+ * deepest match (the immediate parent), as with jsonsl.
+ *
+ * @param st The state of the array
+ * @param at Pointer to the opening bracket of the array
+ */
+static void scan_matched_index(jsonsl_t jsn,
+                               ParseContext* ctx,
+                               const jsonsl_state_st* st,
+                               const jsonsl_char_t* at) {
+    Match* m = ctx->match;
+    jsonsl_stop(jsn);
+
+    const size_t index = ctx->jpr->components[st->level].idx;
+    const auto result =
+            find_array_element({at, static_cast<size_t>(ctx->buffer_end - at)},
+                               index,
+                               jsonsl_depth_limit(jsn, st));
+    switch (result.status) {
+    case ArrayScanResult::Status::Found:
+        m->matchres = JSONSL_MATCH_COMPLETE;
+        m->loc_deepest.assign(at + result.element_offset,
+                              result.element_length);
+        m->match_level = st->level + 1;
+        m->position = index;
+        m->loc_key.clear();
+        m->immediate_parent_found = 1;
+        if (m->extra_options == Match::GET_FOLLOWING_SIBLINGS) {
+            // The number of elements seen until the following sibling (or
+            // the end of the array), excluding the match
+            m->num_siblings = result.has_next ? index + 1 : index;
+        }
+        m->element_scanned = true;
+        return;
+    case ArrayScanResult::Status::Success:
+        // The array doesn't have that many elements
+        m->loc_deepest.assign(at, result.length);
+        m->num_siblings = result.num_elements;
+        m->type = JSONSL_T_LIST;
+        m->immediate_parent_found = 1;
+        return;
+    case ArrayScanResult::Status::NonPrimitive:
+    case ArrayScanResult::Status::Malformed:
+        m->status = JSONSL_ERROR_GENERIC;
+        return;
+    case ArrayScanResult::Status::TooDeep:
+        m->status = JSONSL_ERROR_LEVELS_EXCEEDED;
+        return;
+    }
 }
 
 /* Make code a bit more readable */
@@ -273,6 +360,9 @@ static void push_callback(jsonsl_t jsn,
             // Update our depth thus far
             m->match_level = st->level;
             m->loc_deepest.at = at;
+            if (can_scan_to_index(ctx, st)) {
+                scan_matched_index(jsn, ctx, st, at);
+            }
         } else if (st->mres == JSONSL_MATCH_TYPE_MISMATCH) {
             st->ignore_callback = 1;
             m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
@@ -439,7 +529,7 @@ int Match::exec_match_simple(const char* value,
     jsonsl_feed(jsn, value, nvalue);
     jsonsl_reset(jsn);
 
-    if (status == JSONSL_ERROR_SUCCESS && last_element_scanned) {
+    if (status == JSONSL_ERROR_SUCCESS && element_scanned) {
         describe_scanned_element(jsn);
     }
     return 0;
@@ -447,12 +537,12 @@ int Match::exec_match_simple(const char* value,
 
 /**
  * Fill in the type, flags and number of children of the element located
- * by scan_matched_last_element() (in #loc_deepest) by letting jsonsl parse
- * just that element. It is wrapped in an array (without copying it) so
- * that jsonsl can tell where a primitive ends.
+ * by scan_matched_last_element() or scan_matched_index() (in
+ * #loc_deepest) by letting jsonsl parse just that element. It is wrapped in an
+ * array (without copying it) so that jsonsl can tell where a primitive ends.
  */
 void Match::describe_scanned_element(jsonsl_t jsn) {
-    last_element_scanned = false;
+    element_scanned = false;
 
     std::array<Path::Component, 2> components{};
     components[0].ptype = JSONSL_PATH_ROOT;
@@ -465,6 +555,8 @@ void Match::describe_scanned_element(jsonsl_t jsn) {
     // No need to tokenize the contents if the element is a container
     element.skip_container_contents = true;
     ParseContext ctx(&element, &path, loc_deepest.at + loc_deepest.length);
+    // The wrapping array isn't contiguous with the element in memory
+    ctx.allow_index_scan = false;
     prepare_parser(jsn, ctx);
     jsonsl_feed(jsn, "[", 1);
     if (!jsn->stopfl) {

@@ -22,7 +22,10 @@ struct ArrayScanResult {
     enum class Status {
         /** The end of the array was located */
         Success,
-        /** The needle was found as one of the elements in the array */
+        /**
+         * The needle was found as one of the elements in the array (or
+         * the element requested with find_array_element() exists)
+         */
         Found,
         /**
          * A container (array or object) was found in the array before the
@@ -64,13 +67,22 @@ struct ArrayScanResult {
     size_t num_removed = 0;
 
     /**
-     * The offset (from the beginning of the buffer) and length of the last
-     * element in the array, with surrounding whitespace removed. Only set
-     * by scan_array() (and only valid when status is Success and
-     * num_elements is non-zero).
+     * The offset (from the beginning of the buffer) and length of an
+     * element in the array, with surrounding whitespace removed:
+     *
+     * - scan_array() without a needle: the last element (only valid when
+     *   status is Success and num_elements is non-zero)
+     * - find_array_element(): the requested element (only valid when status
+     *   is Found)
      */
-    size_t last_element_offset = 0;
-    size_t last_element_length = 0;
+    size_t element_offset = 0;
+    size_t element_length = 0;
+
+    /**
+     * Set by find_array_element() when the requested element is followed
+     * by another element.
+     */
+    bool has_next = false;
 };
 
 /**
@@ -108,6 +120,26 @@ struct ArrayScanResult {
 ArrayScanResult scan_array(
         std::string_view buffer,
         std::string_view needle,
+        size_t max_depth = std::numeric_limits<size_t>::max());
+
+/**
+ * Locate the element with the given (zero-based) index in the JSON array
+ * starting at the beginning of the provided buffer, with the same
+ * restrictions as scan_array(). Only the part of the array up to (and
+ * including) the separator following the element is scanned.
+ *
+ * @param buffer The buffer to scan. The first character must be the opening
+ *               bracket of the array, and the buffer may extend beyond the
+ *               end of the array.
+ * @param index The index of the element to locate
+ * @param max_depth The maximum nesting depth (see scan_array())
+ * @return The result of the scan. Status::Found if the element exists (see
+ *         element_offset, element_length and has_next), or Status::Success
+ *         if the array has fewer elements (see length and num_elements).
+ */
+ArrayScanResult find_array_element(
+        std::string_view buffer,
+        size_t index,
         size_t max_depth = std::numeric_limits<size_t>::max());
 
 /**

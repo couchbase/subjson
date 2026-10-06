@@ -145,7 +145,7 @@ std::string lastElement(std::string_view array) {
     const std::string doc = std::string(array) + R"(,"next":[1,2]})";
     const auto result = scan_array(doc, {});
     EXPECT_EQ(ScanStatus::Success, result.status) << array;
-    return doc.substr(result.last_element_offset, result.last_element_length);
+    return doc.substr(result.element_offset, result.element_length);
 }
 
 } // namespace
@@ -452,6 +452,100 @@ TEST(ArrayScanTest, FilterRandom) {
             ASSERT_EQ(std::make_pair(ScanStatus::Success, join(expected)),
                       filter(array + R"(,{"a":[1]}])", needle, remove_all))
                     << array << " needle:" << needle;
+        }
+    }
+}
+
+TEST(ArrayScanTest, FindElement) {
+    const std::string array = R"([ 1 , "a\"],b" ,[2,[3]],{"x":"]"}, null ])";
+    auto element = [&array](size_t index) {
+        const auto result = Subdoc::find_array_element(array + ",9]", index);
+        EXPECT_EQ(ScanStatus::Found, result.status) << index;
+        return std::make_pair(
+                array.substr(result.element_offset, result.element_length),
+                result.has_next);
+    };
+    EXPECT_EQ(std::make_pair(std::string("1"), true), element(0));
+    EXPECT_EQ(std::make_pair(std::string("\"a\\\"],b\""), true), element(1));
+    EXPECT_EQ(std::make_pair(std::string("[2,[3]]"), true), element(2));
+    EXPECT_EQ(std::make_pair(std::string(R"({"x":"]"})"), true), element(3));
+    EXPECT_EQ(std::make_pair(std::string("null"), false), element(4));
+
+    // Past the end
+    auto result = Subdoc::find_array_element(array, 5);
+    EXPECT_EQ(ScanStatus::Success, result.status);
+    EXPECT_EQ(5, result.num_elements);
+    EXPECT_EQ(array.size(), result.length);
+    result = Subdoc::find_array_element("[]", 0);
+    EXPECT_EQ(ScanStatus::Success, result.status);
+    EXPECT_EQ(0, result.num_elements);
+
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::find_array_element("[1,2", 5).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::find_array_element(R"({"a":1})", 0).status);
+}
+
+/**
+ * Verify find_array_element() (and the last element reported by
+ * scan_array()) against a trivial implementation on random arrays which
+ * cross the 64 byte block boundaries
+ */
+TEST(ArrayScanTest, FindElementRandom) {
+    std::mt19937 gen(0xbeef);
+    for (int iteration = 0; iteration < 1000; ++iteration) {
+        std::vector<std::string> elements;
+        const int count = int(gen() % 50);
+        for (int ii = 0; ii < count; ++ii) {
+            switch (gen() % 4) {
+            case 0:
+                elements.emplace_back(std::to_string(gen() % 1000));
+                break;
+            case 1:
+                elements.emplace_back(R"("x\"],\\)" +
+                                      std::string(gen() % 70, 'y') + "\"");
+                break;
+            case 2:
+                elements.emplace_back(R"({"a":[1,"]"],"b":{}})");
+                break;
+            default:
+                elements.emplace_back("[[],[" + std::to_string(ii) + "]]");
+                break;
+            }
+        }
+        std::string array = "[";
+        for (int ii = 0; ii < count; ++ii) {
+            if (ii) {
+                array.append(gen() % 3 ? "," : " , ");
+            }
+            array.append(elements[ii]);
+        }
+        array.append("]");
+        const std::string doc = array + R"(,"next":[1,2,3]})";
+
+        for (int ii = 0; ii <= count; ++ii) {
+            const auto result = Subdoc::find_array_element(doc, ii);
+            if (ii == count) {
+                ASSERT_EQ(ScanStatus::Success, result.status) << array;
+                ASSERT_EQ(size_t(count), result.num_elements) << array;
+                ASSERT_EQ(array.size(), result.length) << array;
+            } else {
+                ASSERT_EQ(ScanStatus::Found, result.status)
+                        << array << " " << ii;
+                ASSERT_EQ(elements[ii],
+                          doc.substr(result.element_offset,
+                                     result.element_length))
+                        << array << " " << ii;
+                ASSERT_EQ(ii + 1 < count, result.has_next) << array;
+            }
+        }
+
+        const auto result = scan_array(doc, {});
+        ASSERT_EQ(ScanStatus::Success, result.status) << array;
+        if (count) {
+            ASSERT_EQ(elements.back(),
+                      doc.substr(result.element_offset, result.element_length))
+                    << array;
         }
     }
 }
