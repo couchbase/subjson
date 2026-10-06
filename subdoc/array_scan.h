@@ -62,6 +62,15 @@ struct ArrayScanResult {
      * status is Success.
      */
     size_t num_removed = 0;
+
+    /**
+     * The offset (from the beginning of the buffer) and length of the last
+     * element in the array, with surrounding whitespace removed. Only set
+     * by scan_array() (and only valid when status is Success and
+     * num_elements is non-zero).
+     */
+    size_t last_element_offset = 0;
+    size_t last_element_length = 0;
 };
 
 /**

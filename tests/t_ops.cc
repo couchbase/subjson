@@ -2107,6 +2107,19 @@ TEST_F(OpTests, LastElementGet) {
     EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "t[-1]"));
 }
 
+// An object has no last element
+TEST_F(OpTests, LastElementOfObject) {
+    const std::string json = R"({"o":{"a":[1,2],"b":"]"},"e":{},"t":1})";
+    op.set_doc(json);
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "o[-1]"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "o[-1].a"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "e[-1]"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::REPLACE, "o[-1]", "1"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::REMOVE, "o[-1]"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET_COUNT, "o[-1]"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_APPEND, "o[-1]", "1"));
+}
+
 TEST_F(OpTests, LastElementMutations) {
     const std::string json = R"({"a":[1,2, 5 ],"f":[1.5],"l":[[],[1]]})";
     op.set_doc(json);
@@ -2148,8 +2161,25 @@ TEST_F(OpTests, LastElementDepthLimit) {
                         << message;
                 EXPECT_EQ(expected, runOp(Command::REMOVE, "a[-1]")) << message;
             }
+            // An object has no last element, but the depth error takes
+            // precedence (as the whole object is parsed)
+            const auto json = R"({"a":{"x":)" + deep + "}}";
+            op.set_doc(json);
+            const auto message =
+                    "depth: " + std::to_string(depth) + " json: " + json;
+            const auto expected =
+                    tooDeep ? Error::DOC_ETOODEEP : Error::PATH_MISMATCH;
+            EXPECT_EQ(expected, runOp(Command::GET, "a[-1]")) << message;
+            EXPECT_EQ(expected, runOp(Command::REMOVE, "a[-1]")) << message;
         }
     }
+}
+
+TEST_F(OpTests, LastElementScanTruncatedDocument) {
+    const std::string json = R"({"a":[1,2,3)";
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET, "a[-1]"));
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::REMOVE, "a[-1]"));
 }
 
 TEST_F(OpTests, ArrayIndexGet) {

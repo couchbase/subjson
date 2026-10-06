@@ -327,6 +327,8 @@ ArrayScanResult scan_container_impl(std::string_view buffer,
     // Set when the current top-level element is an array or object (only
     // when visiting elements)
     bool non_primitive = false;
+    // Offset of the last top-level comma seen (0 if none)
+    size_t last_comma = 0;
     // Carried over between blocks
     bool prev_escaped = false;
     uint64_t in_string_carry = 0;
@@ -351,7 +353,11 @@ ArrayScanResult scan_container_impl(std::string_view buffer,
     // scan should stop (with the result updated)
     auto top_level_commas = [&](uint64_t commas, size_t offset) -> bool {
         if (visitor == nullptr) {
-            num_commas += std::popcount(commas);
+            if (commas) {
+                num_commas += std::popcount(commas);
+                last_comma =
+                        offset + (BlockSize - 1) - std::countl_zero(commas);
+            }
             return true;
         }
         while (commas) {
@@ -435,6 +441,11 @@ ArrayScanResult scan_container_impl(std::string_view buffer,
                 result.status = Status::Success;
                 result.length = pos + 1;
                 result.num_elements = num_commas + 1;
+                const auto last =
+                        trim_json_ws({begin + (last_comma ? last_comma + 1 : 1),
+                                      begin + pos});
+                result.last_element_offset = size_t(last.data() - begin);
+                result.last_element_length = last.size();
                 return result;
             }
         }

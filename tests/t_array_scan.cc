@@ -137,6 +137,49 @@ TEST(ArrayScanTest, BlockBoundaries) {
 
 namespace {
 
+/**
+ * Scan the array at the beginning of the document (with trailing data)
+ * and return the last element as located by the scanner.
+ */
+std::string lastElement(std::string_view array) {
+    const std::string doc = std::string(array) + R"(,"next":[1,2]})";
+    const auto result = scan_array(doc, {});
+    EXPECT_EQ(ScanStatus::Success, result.status) << array;
+    return doc.substr(result.last_element_offset, result.last_element_length);
+}
+
+} // namespace
+
+TEST(ArrayScanTest, LastElement) {
+    EXPECT_EQ("1", lastElement("[1]"));
+    EXPECT_EQ("3", lastElement("[1,2,3]"));
+    // Surrounding whitespace isn't part of the element
+    EXPECT_EQ("-1.5e10", lastElement("[ 1 , true ,\t-1.5e10 \n]"));
+    EXPECT_EQ("null", lastElement("[ null ]"));
+    // Commas and brackets inside strings and containers are ignored
+    EXPECT_EQ("\"a,\\\"],b\"", lastElement("[1,\"a,\\\"],b\"]"));
+    EXPECT_EQ(R"({"a":[4,5],"b":","})",
+              lastElement(R"([1,[2,3],{"a":[4,5],"b":","}])"));
+    EXPECT_EQ("[1,2]", lastElement("[[1,2]]"));
+    EXPECT_EQ("[]", lastElement("[1,[]]"));
+
+    // The last comma and the end of the array in different 64 byte blocks
+    const std::string escaped = R"("a\\\"],\\\\")";
+    for (size_t pad = 0; pad < 130; ++pad) {
+        const std::string last = "\"" + std::string(pad, 'x') + "\"";
+        EXPECT_EQ(last,
+                  lastElement("[" + escaped + "," + std::string(pad, ' ') +
+                              last + " ]"))
+                << pad;
+        EXPECT_EQ(escaped,
+                  lastElement("[" + last + "," + std::string(pad, ' ') +
+                              escaped + "]"))
+                << pad;
+    }
+}
+
+namespace {
+
 /** Generate a random JSON value (biased towards nasty strings) */
 void randomScanValue(std::mt19937& gen, std::string& out, int depth) {
     std::uniform_int_distribution<int> kind(0, depth > 3 ? 3 : 5);

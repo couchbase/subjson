@@ -137,6 +137,53 @@ static void scan_matched_container(jsonsl_t jsn,
     }
 }
 
+/**
+ * Locate the last element of the matched array with scan_array() rather
+ * than letting jsonsl parse all of the array's elements, then stop the
+ * parser. Sets the same fields in the match as pop_callback() would have
+ * when transposing the match to the last element (Match::get_last),
+ * except for the type, flags and number of children of the element which
+ * are filled in by Match::describe_scanned_element(). Reports the same
+ * depth error as jsonsl would have for the array.
+ *
+ * @param st The state of the matched array
+ * @param at Pointer to the opening bracket of the matched array
+ */
+static void scan_matched_last_element(jsonsl_t jsn,
+                                      ParseContext* ctx,
+                                      const jsonsl_state_st* st,
+                                      const jsonsl_char_t* at) {
+    Match* m = ctx->match;
+    jsonsl_stop(jsn);
+
+    const auto result =
+            scan_array({at, static_cast<size_t>(ctx->buffer_end - at)},
+                       {},
+                       jsonsl_depth_limit(jsn, st));
+    if (result.status == ArrayScanResult::Status::TooDeep) {
+        m->status = JSONSL_ERROR_LEVELS_EXCEEDED;
+        return;
+    }
+    if (result.status != ArrayScanResult::Status::Success) {
+        m->status = JSONSL_ERROR_GENERIC;
+        return;
+    }
+    if (result.num_elements == 0) {
+        // List is empty
+        m->matchres = JSONSL_MATCH_UNKNOWN;
+        return;
+    }
+
+    m->loc_deepest.assign(at + result.last_element_offset,
+                          result.last_element_length);
+    m->match_level = st->level + 1;
+    m->immediate_parent_found = 1;
+    m->num_siblings = result.num_elements - 1;
+    m->position = m->num_siblings;
+    m->loc_key.clear();
+    m->last_element_scanned = true;
+}
+
 /* Make code a bit more readable */
 #define M_POSSIBLE JSONSL_MATCH_POSSIBLE
 
@@ -187,7 +234,16 @@ static void push_callback(jsonsl_t jsn,
                 m->position = static_cast<unsigned>(parent->nelem - 1);
             }
 
-            if (m->ensure_unique.at) {
+            if (m->get_last && st->type == JSONSL_T_LIST) {
+                scan_matched_last_element(jsn, ctx, st, at);
+            } else if (m->get_last && st->type == JSONSL_T_OBJECT) {
+                // Not a list! Locate the end of the object first, so that
+                // a depth error in it is reported as jsonsl would have
+                scan_matched_container(jsn, ctx, st, at);
+                if (m->status == JSONSL_ERROR_SUCCESS) {
+                    m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+                }
+            } else if (m->ensure_unique.at) {
                 if (st->type != JSONSL_T_LIST) {
                     // Can't check "uniquness" in an array!
                     m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
@@ -297,44 +353,9 @@ static void pop_callback(jsonsl_t jsn,
         }
 
         if (m->get_last) {
-            if (state->type != JSONSL_T_LIST) {
-                // Not a list!
-                m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-                jsonsl_stop(jsn);
-                return;
-            }
-            if (!state->nelem) {
-                // List is empty
-                m->matchres = JSONSL_MATCH_UNKNOWN;
-                jsonsl_stop(jsn);
-                return;
-            }
-
-            // Transpose the match
-            const jsonsl_state_st *child = jsonsl_last_child(jsn, state);
-
-            // For containers, pos does not include the terminating token
-            size_t child_endpos = jsn->pos;
-
-            m->loc_deepest.length = child_endpos - child->pos_begin;
-            m->loc_deepest.at = jsn->base + child->pos_begin;
-
-            // Remove trailing whitespace. This is because the child is
-            // deemed to end one character before the parent does, however
-            // there may be whitespace. This is usually OK but confuses tests.
-            while (is_json_ws(m->loc_deepest.at[m->loc_deepest.length-1])) {
-                --m->loc_deepest.length;
-            }
-
-            m->match_level = child->level;
-            m->sflags = child->special_flags;
-            m->type = child->type;
-            m->num_children = child->nelem;
-
-            // Parent is an array, get pos/sibling information directly from it
-            m->num_siblings = state->nelem - 1;
-            m->position = m->num_siblings;
-            m->loc_key.clear();
+            // Arrays and objects are scanned by push_callback(), so this
+            // is a primitive which has no last element
+            m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
             jsonsl_stop(jsn);
 
         } else {
@@ -397,23 +418,74 @@ static void pop_callback(jsonsl_t jsn,
     jsonsl_stop(jsn);
 }
 
-int
-Match::exec_match_simple(const char *value, size_t nvalue,
-    const Path::CompInfo *jpr, jsonsl_t jsn)
-{
-    ParseContext ctx(this, const_cast<Path::CompInfo*>(jpr), value + nvalue);
-    status = JSONSL_ERROR_SUCCESS;
-
+/** Set up the parser to run the match described by the context */
+static void prepare_parser(jsonsl_t jsn, ParseContext& ctx) {
     jsonsl_enable_all_callbacks(jsn);
     jsn->action_callback_PUSH = push_callback;
     jsn->action_callback_POP = pop_callback;
     jsn->error_callback = err_callback;
     jsn->max_callback_level = ctx.jpr->ncomponents + 1;
     jsn->data = &ctx;
+}
 
+int Match::exec_match_simple(const char* value,
+                             size_t nvalue,
+                             const Path::CompInfo* jpr,
+                             jsonsl_t jsn) {
+    ParseContext ctx(this, const_cast<Path::CompInfo*>(jpr), value + nvalue);
+    status = JSONSL_ERROR_SUCCESS;
+
+    prepare_parser(jsn, ctx);
     jsonsl_feed(jsn, value, nvalue);
     jsonsl_reset(jsn);
+
+    if (status == JSONSL_ERROR_SUCCESS && last_element_scanned) {
+        describe_scanned_element(jsn);
+    }
     return 0;
+}
+
+/**
+ * Fill in the type, flags and number of children of the element located
+ * by scan_matched_last_element() (in #loc_deepest) by letting jsonsl parse
+ * just that element. It is wrapped in an array (without copying it) so
+ * that jsonsl can tell where a primitive ends.
+ */
+void Match::describe_scanned_element(jsonsl_t jsn) {
+    last_element_scanned = false;
+
+    std::array<Path::Component, 2> components{};
+    components[0].ptype = JSONSL_PATH_ROOT;
+    components[1].ptype = JSONSL_PATH_NUMERIC;
+    components[1].is_arridx = 1;
+    components[1].idx = 0;
+    Path::CompInfo path(components.data(), components.size());
+
+    Match element;
+    // No need to tokenize the contents if the element is a container
+    element.skip_container_contents = true;
+    ParseContext ctx(&element, &path, loc_deepest.at + loc_deepest.length);
+    prepare_parser(jsn, ctx);
+    jsonsl_feed(jsn, "[", 1);
+    if (!jsn->stopfl) {
+        jsonsl_feed(jsn, loc_deepest.at, loc_deepest.length);
+    }
+    if (!jsn->stopfl) {
+        jsonsl_feed(jsn, "]", 1);
+    }
+    jsonsl_reset(jsn);
+
+    if (element.status != JSONSL_ERROR_SUCCESS) {
+        status = element.status;
+        return;
+    }
+    if (element.matchres != JSONSL_MATCH_COMPLETE) {
+        status = JSONSL_ERROR_GENERIC;
+        return;
+    }
+    type = element.type;
+    sflags = element.sflags;
+    num_children = element.num_children;
 }
 
 int

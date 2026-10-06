@@ -179,6 +179,14 @@ public:
      */
     std::string* filtered_buf = nullptr;
 
+    /**
+     * Internal flag; set when the last element of an array (#get_last) was
+     * located with the array scanner, in which case the details about the
+     * element (type, flags and number of children) must be filled in by
+     * parsing the element.
+     */
+    bool last_element_scanned = false;
+
     int exec_match(const char *value, size_t nvalue, const Path *path, jsonsl_t jsn);
     int exec_match(const Loc& loc, const Path* path, jsonsl_t jsn) {
         return exec_match(loc.at, loc.length, path, jsn);
@@ -196,5 +204,6 @@ public:
 private:
     inline int exec_match_simple(const char *value, size_t nvalue, const Path::CompInfo *jpr, jsonsl_t jsn);
     inline int exec_match_negix(const char *value, size_t nvalue, const Path *pth, jsonsl_t jsn);
+    void describe_scanned_element(jsonsl_t jsn);
 };
 } // namespace Subdoc
