@@ -175,6 +175,25 @@ TEST_F(MatchTests, testGetNumSiblings) {
     ASSERT_TRUE(m.is_first());
 }
 
+TEST_F(MatchTests, testSkipContentsWithFollowingSiblings) {
+    // The siblings following the match must be counted the same way
+    // whether or not the contents of the matched array are skipped
+    pth.parse("sublist");
+    m.extra_options = Match::GET_FOLLOWING_SIBLINGS;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    const auto num_siblings = m.num_siblings;
+    ASSERT_GT(num_siblings, 0U);
+
+    m.clear();
+    m.extra_options = Match::GET_FOLLOWING_SIBLINGS;
+    m.skip_array_contents = true;
+    m.exec_match(json, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ(R"(["elem1","elem2","elem3"])", Util::match_match(m));
+    EXPECT_EQ(num_siblings, m.num_siblings);
+}
+
 TEST_F(MatchTests, testGetPosition) {
     int ii = 0;
     for (const auto* key : {"key1",

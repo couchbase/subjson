@@ -1885,3 +1885,50 @@ TEST_F(OpTests, testNewKeyMustBeValidJsonString) {
               runOp(Command::DICT_ADD, "\xf4\x8f\xbf\xbf", "1")); // U+10FFFF
     EXPECT_EQ("{\"o\":{},\"\xf4\x8f\xbf\xbf\":1}", getNewDoc());
 }
+
+TEST_F(OpTests, ArrayScanAppendWithTrickyStrings) {
+    const std::string json = R"({"a":["]","\"]",{"x":"]}"},[["\\"]]],"b":[1]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", "42"));
+    std::string doc;
+    getAssignNewDoc(doc);
+    EXPECT_EQ(
+            "{\"a\":[\"]\",\"\\\"]\",{\"x\":\"]}\"},[[\"\\\\\"]],42],\"b\":[1]"
+            "}",
+            doc);
+}
+
+TEST_F(OpTests, ArrayScanAppendEmptyArray) {
+    const std::string json = R"({"a":[ ],"b":[1]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", "42"));
+    std::string doc;
+    getAssignNewDoc(doc);
+    EXPECT_EQ(R"({"a":[42],"b":[1]})", doc);
+}
+
+TEST_F(OpTests, ArrayScanAppendNestedPath) {
+    const std::string json = R"({"a":{"b":[[1],[2,3]]},"c":0})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a.b[1]", "4"));
+    std::string doc;
+    getAssignNewDoc(doc);
+    EXPECT_EQ(R"({"a":{"b":[[1],[2,3,4]]},"c":0})", doc);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a.b[-1]", "5"));
+    getAssignNewDoc(doc);
+    EXPECT_EQ(R"({"a":{"b":[[1],[2,3,4,5]]},"c":0})", doc);
+}
+
+TEST_F(OpTests, ArrayScanAppendToNonArray) {
+    const std::string json = R"({"a":{"b":1}})";
+    op.set_doc(json);
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_APPEND, "a", "4"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_ADD_UNIQUE, "a", "4"));
+}
+
+TEST_F(OpTests, ArrayScanAppendToTruncatedDocument) {
+    const std::string json = R"({"a":[1,2,3)";
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_APPEND, "a", "4"));
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_ADD_UNIQUE, "a", "4"));
+}

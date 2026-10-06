@@ -13,6 +13,7 @@
 
 #define INCLUDE_JSONSL_SRC
 #include "match.h"
+#include "array_scan.h"
 #include "hkesc.h"
 #include "jsonsl_header.h"
 #include "util.h"
@@ -23,16 +24,20 @@ using namespace Subdoc;
 
 namespace {
 struct ParseContext : public HashKey {
-    ParseContext(Match *match, Path::CompInfo *jpr) : jpr(jpr), match(match){
+    ParseContext(Match* match, Path::CompInfo* jpr, const char* buffer_end)
+        : jpr(jpr), match(match), buffer_end(buffer_end) {
     }
 
     Path::CompInfo* jpr;
 
     Match *match;
 
+    /** One past the last character of the buffer being parsed */
+    const char* buffer_end;
+
     // Internal pointer used to hold the start of the current array
-    // child's token, while scanning children in "unique" or
-    // "match_value" (remove-by-value) mode.
+    // child's token, while scanning children in "match_value"
+    // (remove-by-value) mode.
     const char* childbuf = nullptr;
 
     void set_child_begin(const jsonsl_state_st *, const jsonsl_char_t *at) {
@@ -66,72 +71,6 @@ static int err_callback(jsonsl_t jsn,
     return 0;
 }
 
-static void unique_callback(jsonsl_t jsn,
-                            jsonsl_action_t action,
-                            jsonsl_state_st* st,
-                            const jsonsl_char_t* at) {
-    ParseContext *ctx = get_ctx(jsn);
-    Match *m = ctx->match;
-    int rv;
-    size_t slen;
-
-    if (action == JSONSL_ACTION_PUSH) {
-        /* abs. beginning of token */
-        ctx->set_child_begin(st, at);
-        return;
-    }
-
-    if (st->mres == JSONSL_MATCH_COMPLETE) {
-        // Popping the parent level!
-        jsn->action_callback_POP = pop_callback;
-        jsn->action_callback_PUSH = push_callback;
-
-        // Prevent descent into parser again
-        jsn->max_callback_level = st->level+1;
-        pop_callback(jsn, action, st, at);
-        return;
-    }
-
-    slen = st->pos_cur - st->pos_begin;
-
-    Expects(st->level == m->match_level + 1U);
-
-    if (st->type == JSONSL_T_STRING) {
-        slen++;
-
-        if (m->ensure_unique.length < 2) {
-            /* not a string */
-            return;
-        }
-        if (slen != m->ensure_unique.length) {
-            return; /* Length mismatch */
-        }
-
-        // Compare the entire token (including the quotes) as the value
-        // may be a non-string of the same length (e.g. 1234 vs "23")
-        rv = memcmp(ctx->get_child_begin(), m->ensure_unique.at, slen);
-
-    } else if (st->type == JSONSL_T_SPECIAL) {
-        if (m->ensure_unique.length != slen) {
-            return;
-        }
-        rv = strncmp(ctx->get_child_begin(), m->ensure_unique.at, slen);
-    } else {
-        /* We can't reliably indicate uniqueness for non-primitives */
-        m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
-        jsonsl_stop(jsn);
-        return;
-    }
-
-    if (rv == 0) {
-        m->unique_item_found = 1;
-        // The parent array's element count includes the child being
-        // popped, so its position is one less than that.
-        m->unique_item_position = jsonsl_last_state(jsn, st)->nelem - 1;
-        jsonsl_stop(jsn);
-    }
-}
-
 /**
  * Callback used to scan an array's children for element(s) whose raw
  * JSON text equals Match::match_value, removing the first (or all, if
@@ -139,10 +78,9 @@ static void unique_callback(jsonsl_t jsn,
  * copied verbatim (comma-separated) into Match::filtered_buf, so the
  * caller can splice the array's content wholesale regardless of how
  * many elements were removed (avoiding an unbounded number of Result
- * output segments). Mirrors unique_callback's child-comparison logic,
- * but never stops early: since surviving elements past a removed one
- * still need to be collected, the scan always continues through to
- * the array's closing token.
+ * output segments). Never stops early: since surviving elements past a
+ * removed one still need to be collected, the scan always continues
+ * through to the array's closing token.
  */
 static void remove_value_callback(jsonsl_t jsn,
                                   jsonsl_action_t action,
@@ -204,6 +142,44 @@ static void remove_value_callback(jsonsl_t jsn,
     m->filtered_buf->append(ctx->get_child_begin(), slen);
 }
 
+/**
+ * Locate the end of the matched array (and search for Match::ensure_unique
+ * if set) with scan_array() rather than letting jsonsl parse all of the
+ * array's contents, then stop the parser. Sets the same fields in the
+ * match as pop_callback() would have when popping the array.
+ *
+ * @param at Pointer to the opening bracket of the matched array
+ */
+static void scan_matched_array(jsonsl_t jsn,
+                               ParseContext* ctx,
+                               const jsonsl_char_t* at) {
+    Match* m = ctx->match;
+    jsonsl_stop(jsn);
+
+    const auto result =
+            scan_array({at, static_cast<size_t>(ctx->buffer_end - at)},
+                       {m->ensure_unique.at, m->ensure_unique.length});
+
+    switch (result.status) {
+    case ArrayScanResult::Status::Success:
+        m->loc_deepest.at = at;
+        m->loc_deepest.length = result.length;
+        m->immediate_parent_found = 1;
+        m->num_children = result.num_elements;
+        return;
+    case ArrayScanResult::Status::Found:
+        m->unique_item_found = 1;
+        m->unique_item_position = result.found_index;
+        return;
+    case ArrayScanResult::Status::NonPrimitive:
+        m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
+        return;
+    case ArrayScanResult::Status::Malformed:
+        m->status = JSONSL_ERROR_GENERIC;
+        return;
+    }
+}
+
 /* Make code a bit more readable */
 #define M_POSSIBLE JSONSL_MATCH_POSSIBLE
 
@@ -261,11 +237,11 @@ static void push_callback(jsonsl_t jsn,
                     jsonsl_stop(jsn);
                     return;
                 }
-                // Set up callbacks for string comparison. This will
-                // be invoked for each push/pop combination.
-                jsn->action_callback_POP = unique_callback;
-                jsn->action_callback_PUSH = unique_callback;
-                jsn->max_callback_level = st->level + 2;
+                scan_matched_array(jsn, ctx, at);
+            } else if (m->skip_array_contents && !m->get_last &&
+                       m->extra_options != Match::GET_FOLLOWING_SIBLINGS &&
+                       st->type == JSONSL_T_LIST) {
+                scan_matched_array(jsn, ctx, at);
             } else if (m->match_value.at) {
                 if (st->type != JSONSL_T_LIST) {
                     // Can't remove-by-value from anything but an array!
@@ -471,7 +447,7 @@ int
 Match::exec_match_simple(const char *value, size_t nvalue,
     const Path::CompInfo *jpr, jsonsl_t jsn)
 {
-    ParseContext ctx(this, const_cast<Path::CompInfo*>(jpr));
+    ParseContext ctx(this, const_cast<Path::CompInfo*>(jpr), value + nvalue);
     status = JSONSL_ERROR_SUCCESS;
 
     jsonsl_enable_all_callbacks(jsn);
@@ -513,6 +489,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     const Loc remove_value = match_value;
     const bool remove_all = remove_all_matches;
     std::string* const filtered = filtered_buf;
+    const bool skip_array = skip_array_contents;
 
     while (cur_start < orig.size()) {
         size_t ii;
@@ -563,6 +540,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             match_value = remove_value;
             remove_all_matches = remove_all;
             filtered_buf = filtered;
+            skip_array_contents = skip_array;
         }
 
         rv = exec_match_simple(last_start, last_len, &tmp, jsn);

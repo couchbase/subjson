@@ -11,6 +11,7 @@
 
 #include "operations.h"
 #include <iostream>
+#include <string_view>
 
 namespace Subdoc {
 
@@ -28,6 +29,19 @@ inline bool is_json_ws(char c) {
     default:
         return false;
     }
+}
+
+/**
+ * Get the value without the JSON whitespace (see is_json_ws()) around it.
+ */
+inline std::string_view trim_json_ws(std::string_view value) {
+    while (!value.empty() && is_json_ws(value.front())) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && is_json_ws(value.back())) {
+        value.remove_suffix(1);
+    }
+    return value;
 }
 
 /// This class contains various utilities, mainly useful for testing/debugging

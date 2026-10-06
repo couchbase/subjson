@@ -14,6 +14,7 @@ endif ()
 enable_code_coverage_report()
 
 add_library(subjson STATIC
+            subdoc/array_scan.cc
             subdoc/match.cc
             subdoc/operations.cc
             subdoc/path.cc

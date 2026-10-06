@@ -1,0 +1,364 @@
+/*
+ *     Copyright 2026-Present Couchbase, Inc.
+ *
+ *   Use of this software is governed by the Business Source License included
+ *   in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+ *   in that file, in accordance with the Business Source License, use of this
+ *   software will be governed by the Apache License, Version 2.0, included in
+ *   the file licenses/APL2.txt.
+ */
+
+/*
+ * The array is scanned in blocks of 64 bytes. Each block is classified into
+ * bitmasks (one bit per byte) of the characters of interest, the bits for
+ * characters inside strings are masked out (by tracking unescaped quotes
+ * with a prefix xor), and only the bits for brackets and top-level commas
+ * are then visited. This lets us skip over the contents of the array
+ * without looking at each character individually.
+ */
+
+#include "array_scan.h"
+#include "util.h"
+#include <array>
+#include <bit>
+#include <cstdint>
+#include <cstring>
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+#include <arm_neon.h>
+#define SUBDOC_ARRAY_SCAN_NEON 1
+#elif defined(__SSE2__) || defined(_M_X64)
+#include <emmintrin.h>
+#define SUBDOC_ARRAY_SCAN_SSE2 1
+#endif
+
+/**
+ * Force inlining of classify(). It is called once per 64 byte block in the
+ * inner loop of the scanner, and the compiler doesn't always inline it (GCC
+ * at -O2 emits a call returning the masks through memory, and with AVX2 a
+ * vzeroupper on every call).
+ */
+#if defined(_MSC_VER)
+#define SUBDOC_ALWAYS_INLINE __forceinline
+#else
+#define SUBDOC_ALWAYS_INLINE inline __attribute__((always_inline))
+#endif
+
+namespace Subdoc {
+
+namespace {
+
+constexpr size_t BlockSize = 64;
+
+/** Bitmasks for the characters of interest in a 64 byte block */
+struct BlockMasks {
+    uint64_t quote;
+    uint64_t backslash;
+    /** '[' and '{' */
+    uint64_t open;
+    /** ']' and '}' */
+    uint64_t close;
+    uint64_t comma;
+};
+
+#if defined(SUBDOC_ARRAY_SCAN_NEON)
+/**
+ * Build a 64 bit mask from 4 vectors where each lane is either 0xff or 0
+ * (NEON lacks an equivalent to SSE's movemask)
+ */
+inline uint64_t movemask(uint8x16_t v0,
+                         uint8x16_t v1,
+                         uint8x16_t v2,
+                         uint8x16_t v3) {
+    const uint8x16_t bits = {
+            1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
+    uint8x16_t sum0 = vpaddq_u8(vandq_u8(v0, bits), vandq_u8(v1, bits));
+    uint8x16_t sum1 = vpaddq_u8(vandq_u8(v2, bits), vandq_u8(v3, bits));
+    sum0 = vpaddq_u8(sum0, sum1);
+    sum0 = vpaddq_u8(sum0, sum0);
+    return vgetq_lane_u64(vreinterpretq_u64_u8(sum0), 0);
+}
+
+SUBDOC_ALWAYS_INLINE BlockMasks classify(const char* block) {
+    const auto* ptr = reinterpret_cast<const uint8_t*>(block);
+    std::array<uint8x16_t, 4> chunks{{vld1q_u8(ptr),
+                                      vld1q_u8(ptr + 16),
+                                      vld1q_u8(ptr + 32),
+                                      vld1q_u8(ptr + 48)}};
+    // '[' (0x5b) and '{' (0x7b) only differ in bit 0x20, and so do
+    // ']' (0x5d) and '}' (0x7d)
+    const uint8x16_t case_bit = vdupq_n_u8(0x20);
+    auto match = [&chunks](auto transform, uint8_t ch) {
+        const uint8x16_t needle = vdupq_n_u8(ch);
+        return movemask(vceqq_u8(transform(chunks[0]), needle),
+                        vceqq_u8(transform(chunks[1]), needle),
+                        vceqq_u8(transform(chunks[2]), needle),
+                        vceqq_u8(transform(chunks[3]), needle));
+    };
+    auto identity = [](uint8x16_t v) { return v; };
+    auto fold = [case_bit](uint8x16_t v) { return vorrq_u8(v, case_bit); };
+    return {.quote = match(identity, '"'),
+            .backslash = match(identity, '\\'),
+            .open = match(fold, '{'),
+            .close = match(fold, '}'),
+            .comma = match(identity, ',')};
+}
+#elif defined(SUBDOC_ARRAY_SCAN_SSE2)
+SUBDOC_ALWAYS_INLINE BlockMasks classify(const char* block) {
+    // Separate variables rather than a std::array, as GCC ignores the
+    // attributes of __m128i used as a template argument (and warns)
+    const __m128i chunk0 =
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(block));
+    const __m128i chunk1 =
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 16));
+    const __m128i chunk2 =
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 32));
+    const __m128i chunk3 =
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 48));
+    // '[' (0x5b) and '{' (0x7b) only differ in bit 0x20, and so do
+    // ']' (0x5d) and '}' (0x7d)
+    const __m128i case_bit = _mm_set1_epi8(0x20);
+    auto match = [chunk0, chunk1, chunk2, chunk3](auto transform, char ch) {
+        const __m128i needle = _mm_set1_epi8(ch);
+        auto bits = [&transform, needle](__m128i chunk) {
+            return uint64_t(static_cast<uint32_t>(_mm_movemask_epi8(
+                    _mm_cmpeq_epi8(transform(chunk), needle))));
+        };
+        return bits(chunk0) | (bits(chunk1) << 16) | (bits(chunk2) << 32) |
+               (bits(chunk3) << 48);
+    };
+    auto identity = [](__m128i v) { return v; };
+    auto fold = [case_bit](__m128i v) { return _mm_or_si128(v, case_bit); };
+    return {.quote = match(identity, '"'),
+            .backslash = match(identity, '\\'),
+            .open = match(fold, '{'),
+            .close = match(fold, '}'),
+            .comma = match(identity, ',')};
+}
+#else
+SUBDOC_ALWAYS_INLINE BlockMasks classify(const char* block) {
+    BlockMasks masks{};
+    for (size_t ii = 0; ii < BlockSize; ++ii) {
+        const uint64_t bit = uint64_t(1) << ii;
+        switch (block[ii]) {
+        case '"':
+            masks.quote |= bit;
+            break;
+        case '\\':
+            masks.backslash |= bit;
+            break;
+        case '[':
+        case '{':
+            masks.open |= bit;
+            break;
+        case ']':
+        case '}':
+            masks.close |= bit;
+            break;
+        case ',':
+            masks.comma |= bit;
+            break;
+        default:
+            break;
+        }
+    }
+    return masks;
+}
+#endif
+
+/**
+ * Compute the mask of characters which are escaped by a preceding
+ * backslash.
+ *
+ * @param backslash The mask of backslashes in the block
+ * @param prev_escaped [in/out] Set if the first character in the block is
+ *                     escaped by the last character in the previous block,
+ *                     and updated to tell if the first character in the
+ *                     next block is escaped.
+ */
+uint64_t find_escaped(uint64_t backslash, bool& prev_escaped) {
+    uint64_t escaped = 0;
+    if (prev_escaped) {
+        // The first character is escaped (and if it is a backslash it
+        // can't escape the next character)
+        escaped = 1;
+        backslash &= ~uint64_t(1);
+        prev_escaped = false;
+    }
+    // Backslashes are rare in most documents so just walk them one by one
+    while (backslash) {
+        const auto idx = std::countr_zero(backslash);
+        if (idx == BlockSize - 1) {
+            prev_escaped = true;
+            break;
+        }
+        escaped |= uint64_t(1) << (idx + 1);
+        // The next character is escaped and can't start an escape sequence
+        backslash &= ~(uint64_t(3) << idx);
+    }
+    return escaped;
+}
+
+/**
+ * Compute a mask where bit N is set if there is an odd number of bits set
+ * in the input from bit 0 to N (inclusive). Applied to the mask of
+ * (unescaped) quotes this gives the mask of the characters inside strings.
+ */
+uint64_t prefix_xor(uint64_t bits) {
+    bits ^= bits << 1;
+    bits ^= bits << 2;
+    bits ^= bits << 4;
+    bits ^= bits << 8;
+    bits ^= bits << 16;
+    bits ^= bits << 32;
+    return bits;
+}
+
+/** Mask with the bits in the range [lo, hi) set (0 <= lo <= hi <= 64) */
+uint64_t range_mask(size_t lo, size_t hi) {
+    const uint64_t below_hi =
+            hi >= BlockSize ? ~uint64_t(0) : (uint64_t(1) << hi) - 1;
+    const uint64_t below_lo =
+            lo >= BlockSize ? ~uint64_t(0) : (uint64_t(1) << lo) - 1;
+    return below_hi & ~below_lo;
+}
+
+} // namespace
+
+ArrayScanResult scan_array(std::string_view buffer, std::string_view needle) {
+    using Status = ArrayScanResult::Status;
+    ArrayScanResult result;
+    if (buffer.empty() || buffer.front() != '[') {
+        return result;
+    }
+
+    const char* const begin = buffer.data();
+    const size_t size = buffer.size();
+
+    // Check for an empty array up front so that we know that every
+    // top-level comma separates two elements
+    {
+        size_t idx = 1;
+        while (idx < size && is_json_ws(begin[idx])) {
+            ++idx;
+        }
+        if (idx == size) {
+            return result;
+        }
+        if (begin[idx] == ']') {
+            result.status = Status::Success;
+            result.length = idx + 1;
+            return result;
+        }
+    }
+
+    // The depth includes the array itself (which is the first open
+    // bracket we'll find), so top-level commas are at depth 1
+    size_t depth = 0;
+    size_t num_commas = 0;
+    // Offset of the first character of the current top-level element
+    // (only maintained when searching for the needle)
+    size_t element_begin = 1;
+    // Carried over between blocks
+    bool prev_escaped = false;
+    uint64_t in_string_carry = 0;
+
+    // Process the top-level commas in the mask, return false if the
+    // scan should stop (with the result updated)
+    auto top_level_commas = [&](uint64_t commas, size_t offset) -> bool {
+        if (needle.empty()) {
+            num_commas += std::popcount(commas);
+            return true;
+        }
+        while (commas) {
+            const size_t pos = offset + std::countr_zero(commas);
+            commas &= commas - 1;
+            if (trim_json_ws({begin + element_begin, begin + pos}) == needle) {
+                result.status = Status::Found;
+                result.found_index = num_commas;
+                return false;
+            }
+            element_begin = pos + 1;
+            ++num_commas;
+        }
+        return true;
+    };
+
+    std::array<char, BlockSize> tail;
+    for (size_t offset = 0; offset < size; offset += BlockSize) {
+        const char* block = begin + offset;
+        if (size - offset < BlockSize) {
+            // Pad the last block with whitespace
+            tail.fill(' ');
+            std::memcpy(tail.data(), block, size - offset);
+            block = tail.data();
+        }
+
+        const auto masks = classify(block);
+        uint64_t quotes = masks.quote;
+        if (masks.backslash || prev_escaped) {
+            quotes &= ~find_escaped(masks.backslash, prev_escaped);
+        }
+        const uint64_t in_string = prefix_xor(quotes) ^ in_string_carry;
+        in_string_carry = uint64_t(int64_t(in_string) >> 63);
+
+        uint64_t brackets = (masks.open | masks.close) & ~in_string;
+        const uint64_t commas = masks.comma & ~in_string;
+
+        // Commas are only interesting at the top level, so walk the
+        // brackets and process the commas between them when we're at the
+        // top level
+        size_t prev = 0;
+        while (brackets) {
+            // The lowest remaining bracket, and its index in the block
+            const uint64_t bracket = brackets & (~brackets + 1);
+            const size_t idx = std::countr_zero(brackets);
+            brackets &= brackets - 1;
+            if (depth == 1 &&
+                !top_level_commas(commas & range_mask(prev, idx), offset)) {
+                return result;
+            }
+            prev = idx + 1;
+
+            if (masks.open & bracket) {
+                if (depth == 1 && !needle.empty()) {
+                    // Uniqueness can't be determined for non-primitives
+                    result.status = Status::NonPrimitive;
+                    return result;
+                }
+                ++depth;
+                continue;
+            }
+
+            if (depth == 0) {
+                // Close before the array started?
+                return result;
+            }
+            if (--depth == 0) {
+                const size_t pos = offset + idx;
+                if (begin[pos] != ']') {
+                    return result;
+                }
+                if (!needle.empty() && trim_json_ws({begin + element_begin,
+                                                     begin + pos}) == needle) {
+                    result.status = Status::Found;
+                    result.found_index = num_commas;
+                    return result;
+                }
+                result.status = Status::Success;
+                result.length = pos + 1;
+                result.num_elements = num_commas + 1;
+                return result;
+            }
+        }
+        if (depth == 1 &&
+            !top_level_commas(commas & range_mask(prev, BlockSize), offset)) {
+            return result;
+        }
+    }
+
+    // Ran off the end of the buffer
+    return result;
+}
+
+} // namespace Subdoc
