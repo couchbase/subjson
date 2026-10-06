@@ -2073,6 +2073,15 @@ TEST_F(OpTests, GetCountContainers) {
     EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET_COUNT, "a[0]"));
 }
 
+TEST_F(OpTests, ContainerScanGetCountTruncatedDocument) {
+    const std::string json = R"({"a":[1,2,3)";
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET_COUNT, "a"));
+    const std::string object = R"({"a":{"b":1,"c":2)";
+    op.set_doc(object);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET_COUNT, "a"));
+}
+
 TEST_F(OpTests, LastElementGet) {
     const std::string json =
             R"({"s":[1,"a\"],b"],"n":["x", -12 ],"l":[1,[2,"]",[3]]],)"

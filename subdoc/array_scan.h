@@ -40,14 +40,14 @@ struct ArrayScanResult {
     Status status = Status::Malformed;
 
     /**
-     * The length of the array including the opening and closing bracket.
-     * Only valid when status is Success.
+     * The length of the array (or object) including the opening and
+     * closing bracket (or brace). Only valid when status is Success.
      */
     size_t length = 0;
 
     /**
-     * The number of elements in the array. Only valid when status is
-     * Success.
+     * The number of elements in the array (or members in the object).
+     * Only valid when status is Success.
      */
     size_t num_elements = 0;
 
@@ -99,6 +99,22 @@ struct ArrayScanResult {
 ArrayScanResult scan_array(
         std::string_view buffer,
         std::string_view needle,
+        size_t max_depth = std::numeric_limits<size_t>::max());
+
+/**
+ * Locate the end of the JSON array or object starting at the beginning of
+ * the provided buffer and count its elements (or members), with the same
+ * restrictions as scan_array().
+ *
+ * @param buffer The buffer to scan. The first character must be the opening
+ *               bracket of the array or the opening brace of the object, and
+ *               the buffer may extend beyond its end.
+ * @param max_depth The maximum nesting depth (see scan_array())
+ * @return The result of the scan. For an object num_elements is the number
+ *         of members (key-value pairs).
+ */
+ArrayScanResult scan_container(
+        std::string_view buffer,
         size_t max_depth = std::numeric_limits<size_t>::max());
 
 /**

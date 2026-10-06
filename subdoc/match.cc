@@ -72,45 +72,53 @@ static size_t jsonsl_depth_limit(const jsonsl_t jsn,
 }
 
 /**
- * Locate the end of the matched array with scan_array() rather than
- * letting jsonsl parse all of the array's contents, then stop the parser.
- * Sets the same fields in the match as pop_callback() would have when
- * popping the array, and reports the same depth error as jsonsl would
- * have.
+ * Locate the end of the matched array (or object) with scan_array() (or
+ * scan_container()) rather than letting jsonsl parse all of its contents,
+ * then stop the parser. Sets the same fields in the match as
+ * pop_callback() would have when popping the container, and reports the
+ * same depth error as jsonsl would have.
  *
  * If Match::ensure_unique is set the array is searched for it, and if
  * Match::match_value is set the elements which aren't removed are
  * collected into Match::filtered_buf (see filter_array()).
  *
- * @param st The state of the matched array
- * @param at Pointer to the opening bracket of the matched array
+ * @param st The state of the matched container
+ * @param at Pointer to the opening bracket (or brace) of the matched
+ *           container
  */
-static void scan_matched_array(jsonsl_t jsn,
-                               ParseContext* ctx,
-                               const jsonsl_state_st* st,
-                               const jsonsl_char_t* at) {
+static void scan_matched_container(jsonsl_t jsn,
+                                   ParseContext* ctx,
+                                   const jsonsl_state_st* st,
+                                   const jsonsl_char_t* at) {
     Match* m = ctx->match;
     jsonsl_stop(jsn);
 
     const std::string_view array{at, static_cast<size_t>(ctx->buffer_end - at)};
     const size_t max_depth = jsonsl_depth_limit(jsn, st);
-    const auto result =
-            m->match_value.at
-                    ? filter_array(array,
-                                   {m->match_value.at, m->match_value.length},
-                                   m->remove_all_matches,
-                                   *m->filtered_buf,
-                                   max_depth)
-                    : scan_array(array,
-                                 {m->ensure_unique.at, m->ensure_unique.length},
-                                 max_depth);
+    const auto result = [m, at, array, max_depth]() {
+        if (*at == '{') {
+            return scan_container(array, max_depth);
+        }
+        if (m->match_value.at) {
+            return filter_array(array,
+                                {m->match_value.at, m->match_value.length},
+                                m->remove_all_matches,
+                                *m->filtered_buf,
+                                max_depth);
+        }
+        return scan_array(array,
+                          {m->ensure_unique.at, m->ensure_unique.length},
+                          max_depth);
+    }();
 
     switch (result.status) {
     case ArrayScanResult::Status::Success:
         m->loc_deepest.at = at;
         m->loc_deepest.length = result.length;
         m->immediate_parent_found = 1;
-        m->num_children = result.num_elements;
+        // jsonsl counts both the keys and the values in an object
+        m->num_children =
+                *at == '{' ? result.num_elements * 2 : result.num_elements;
         m->value_removed = result.num_removed != 0;
         return;
     case ArrayScanResult::Status::Found:
@@ -186,11 +194,11 @@ static void push_callback(jsonsl_t jsn,
                     jsonsl_stop(jsn);
                     return;
                 }
-                scan_matched_array(jsn, ctx, st, at);
-            } else if (m->skip_array_contents && !m->get_last &&
+                scan_matched_container(jsn, ctx, st, at);
+            } else if (m->skip_container_contents && !m->get_last &&
                        m->extra_options != Match::GET_FOLLOWING_SIBLINGS &&
-                       st->type == JSONSL_T_LIST) {
-                scan_matched_array(jsn, ctx, st, at);
+                       JSONSL_STATE_IS_CONTAINER(st)) {
+                scan_matched_container(jsn, ctx, st, at);
             } else if (m->match_value.at) {
                 if (st->type != JSONSL_T_LIST) {
                     // Can't remove-by-value from anything but an array!
@@ -198,7 +206,7 @@ static void push_callback(jsonsl_t jsn,
                     jsonsl_stop(jsn);
                     return;
                 }
-                scan_matched_array(jsn, ctx, st, at);
+                scan_matched_container(jsn, ctx, st, at);
             }
 
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {
@@ -435,7 +443,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     const Loc remove_value = match_value;
     const bool remove_all = remove_all_matches;
     std::string* const filtered = filtered_buf;
-    const bool skip_array = skip_array_contents;
+    const bool skip_container = skip_container_contents;
 
     while (cur_start < orig.size()) {
         size_t ii;
@@ -486,7 +494,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             match_value = remove_value;
             remove_all_matches = remove_all;
             filtered_buf = filtered;
-            skip_array_contents = skip_array;
+            skip_container_contents = skip_container;
         }
 
         rv = exec_match_simple(last_start, last_len, &tmp, jsn);

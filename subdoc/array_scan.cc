@@ -263,36 +263,45 @@ bool is_empty_container(const char* begin, size_t size, size_t pos) {
     return idx < size && (begin[idx] == ']' || begin[idx] == '}');
 }
 
+/** Check if the buffer starts with an array (rather than an object) */
+bool is_array(std::string_view buffer) {
+    return !buffer.empty() && buffer.front() == '[';
+}
+
 /**
- * Scan the array at the beginning of the buffer.
+ * Scan the array (or object) at the beginning of the buffer.
  *
- * @param buffer The buffer to scan (starting with the opening bracket)
+ * @param buffer The buffer to scan (starting with the opening bracket or
+ *               brace)
  * @param visitor If non-null, called with each top-level element (with
  *                surrounding whitespace removed) in order, and the scan
  *                stops with Status::Found when it returns false. When
  *                visiting elements the scan stops with Status::NonPrimitive
- *                if an element is an array or object.
+ *                if an element is an array or object (once the element has
+ *                been scanned). Must be null when scanning an object.
+ * @param max_depth The maximum nesting depth (see scan_array())
  */
 template <typename Visitor>
-ArrayScanResult scan_array_impl(std::string_view buffer,
-                                Visitor* visitor,
-                                size_t max_depth) {
+ArrayScanResult scan_container_impl(std::string_view buffer,
+                                    Visitor* visitor,
+                                    size_t max_depth) {
     using Status = ArrayScanResult::Status;
     ArrayScanResult result;
-    if (buffer.empty() || buffer.front() != '[') {
+    if (buffer.empty() || (buffer.front() != '[' && buffer.front() != '{')) {
         return result;
     }
     if (max_depth == 0) {
-        // Not even the array itself fits
+        // Not even the container itself fits
         result.status = Status::TooDeep;
         return result;
     }
+    const char close = buffer.front() == '[' ? ']' : '}';
 
     const char* const begin = buffer.data();
     const size_t size = buffer.size();
 
-    // Check for an empty array up front so that we know that every
-    // top-level comma separates two elements
+    // Check for an empty container up front so that we know that every
+    // top-level comma separates two elements (or members)
     {
         size_t idx = 1;
         while (idx < size && is_json_ws(begin[idx])) {
@@ -301,14 +310,14 @@ ArrayScanResult scan_array_impl(std::string_view buffer,
         if (idx == size) {
             return result;
         }
-        if (begin[idx] == ']') {
+        if (begin[idx] == close) {
             result.status = Status::Success;
             result.length = idx + 1;
             return result;
         }
     }
 
-    // The depth includes the array itself (which is the first open
+    // The depth includes the container itself (which is the first open
     // bracket we'll find), so top-level commas are at depth 1
     size_t depth = 0;
     size_t num_commas = 0;
@@ -417,7 +426,7 @@ ArrayScanResult scan_array_impl(std::string_view buffer,
             }
             if (--depth == 0) {
                 const size_t pos = offset + idx;
-                if (begin[pos] != ']') {
+                if (begin[pos] != close) {
                     return result;
                 }
                 if (visitor != nullptr && !visit(pos)) {
@@ -447,13 +456,20 @@ using NoVisitor = bool (*)(std::string_view);
 ArrayScanResult scan_array(std::string_view buffer,
                            std::string_view needle,
                            size_t max_depth) {
+    if (!is_array(buffer)) {
+        return {};
+    }
     if (needle.empty()) {
-        return scan_array_impl<NoVisitor>(buffer, nullptr, max_depth);
+        return scan_container_impl<NoVisitor>(buffer, nullptr, max_depth);
     }
     auto compare = [needle](std::string_view element) {
         return element != needle;
     };
-    return scan_array_impl(buffer, &compare, max_depth);
+    return scan_container_impl(buffer, &compare, max_depth);
+}
+
+ArrayScanResult scan_container(std::string_view buffer, size_t max_depth) {
+    return scan_container_impl<NoVisitor>(buffer, nullptr, max_depth);
 }
 
 ArrayScanResult filter_array(std::string_view buffer,
@@ -487,7 +503,10 @@ ArrayScanResult filter_array(std::string_view buffer,
         }
         return true;
     };
-    auto result = scan_array_impl(buffer, &filter, max_depth);
+    if (!is_array(buffer)) {
+        return {};
+    }
+    auto result = scan_container_impl(buffer, &filter, max_depth);
     if (result.status == ArrayScanResult::Status::Success) {
         flush();
         result.num_removed = num_removed;

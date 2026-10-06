@@ -187,7 +187,7 @@ TEST_F(MatchTests, testSkipContentsWithFollowingSiblings) {
 
     m.clear();
     m.extra_options = Match::GET_FOLLOWING_SIBLINGS;
-    m.skip_array_contents = true;
+    m.skip_container_contents = true;
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
     EXPECT_EQ(R"(["elem1","elem2","elem3"])", Util::match_match(m));

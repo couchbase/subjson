@@ -481,6 +481,9 @@ Error Operation::do_array_index_of() {
 Error
 Operation::do_container_size()
 {
+    // We only need the number of children; there is no need to tokenize
+    // all of them
+    m_match.skip_container_contents = true;
     Error rv = do_match_common(Match::GET_MATCH_ONLY);
     if (rv != Error::SUCCESS) {
         return rv;
@@ -573,7 +576,7 @@ Operation::do_list_append()
     }
     // We only need the location of the array's closing bracket; there is
     // no need to tokenize all of its elements
-    m_match.skip_array_contents = true;
+    m_match.skip_container_contents = true;
 
     rv = do_match_common(Match::GET_MATCH_ONLY);
     if (!rv.success()) {

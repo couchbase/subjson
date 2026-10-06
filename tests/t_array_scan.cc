@@ -194,39 +194,45 @@ void randomScanValue(std::mt19937& gen, std::string& out, int depth) {
 } // namespace
 
 /**
- * Verify that matching an array with skip_array_contents (using
+ * Verify that matching an array with skip_container_contents (using
  * scan_array()) gives the same result as letting jsonsl parse it.
  */
 TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
     std::mt19937 gen(0xc0ffee);
     auto* jsn = Match::jsn_alloc();
     Path path;
-    ASSERT_EQ(0, path.parse("arr"));
-    for (int iteration = 0; iteration < 2000; ++iteration) {
+    ASSERT_EQ(0, path.parse("container"));
+    for (int iteration = 0; iteration < 4000; ++iteration) {
+        // Every other document has an object rather than an array
+        const bool object = iteration % 2;
         std::string doc = R"({"before":)";
         randomScanValue(gen, doc, 0);
-        doc.append(R"(,"arr":[)");
+        doc.append(object ? R"(,"container":{)" : R"(,"container":[)");
         const int elements = int(gen() % 40);
         for (int ii = 0; ii < elements; ++ii) {
             if (ii) {
                 doc.push_back(',');
             }
+            if (object) {
+                doc.append("\"k" + std::to_string(ii) + "\":");
+            }
             randomScanValue(gen, doc, 1);
         }
-        doc.append(R"(],"after":)");
+        doc.append(object ? R"(},"after":)" : R"(],"after":)");
         randomScanValue(gen, doc, 0);
         doc.push_back('}');
 
         Match parsed;
         parsed.exec_match(doc, path, jsn);
         Match scanned;
-        scanned.skip_array_contents = true;
+        scanned.skip_container_contents = true;
         scanned.exec_match(doc, path, jsn);
 
         ASSERT_EQ(JSONSL_ERROR_SUCCESS, parsed.status) << doc;
         ASSERT_EQ(JSONSL_MATCH_COMPLETE, parsed.matchres) << doc;
         ASSERT_EQ(parsed.status, scanned.status) << doc;
         ASSERT_EQ(parsed.matchres, scanned.matchres) << doc;
+        ASSERT_EQ(parsed.type, scanned.type) << doc;
         ASSERT_EQ(parsed.loc_deepest.to_string(),
                   scanned.loc_deepest.to_string())
                 << doc;
@@ -235,6 +241,33 @@ TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
                 << doc;
     }
     Match::jsn_free(jsn);
+}
+
+TEST(ArrayScanTest, Objects) {
+    auto expectObject = [](std::string_view object, size_t members) {
+        const std::string doc = std::string(object) + R"(,"next":{"a":1}})";
+        const auto result = Subdoc::scan_container(doc);
+        ASSERT_EQ(ScanStatus::Success, result.status) << object;
+        EXPECT_EQ(object.size(), result.length) << object;
+        EXPECT_EQ(members, result.num_elements) << object;
+    };
+    expectObject("{}", 0);
+    expectObject("{ \n }", 0);
+    expectObject(R"({"a":1})", 1);
+    expectObject(R"({"a":1,"b":[1,2],"c":{"d":"}","e":","}})", 3);
+    expectObject(R"({"}":"{", "a\"b":"\\"})", 2);
+
+    // Arrays work as well
+    EXPECT_EQ(3, Subdoc::scan_container("[1,[2,3],4]").num_elements);
+
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::scan_container(R"({"a":1)").status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::scan_container(R"({"a":1])").status);
+    EXPECT_EQ(ScanStatus::Malformed, Subdoc::scan_container("1").status);
+    // Only arrays may be searched / filtered
+    EXPECT_EQ(ScanStatus::Malformed, scan_array(R"({"a":1})", "1").status);
+    EXPECT_EQ(ScanStatus::Malformed, scan_array(R"({"a":1})", {}).status);
 }
 
 namespace {
