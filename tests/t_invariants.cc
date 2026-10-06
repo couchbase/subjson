@@ -175,6 +175,8 @@ const std::vector<Request> mutations = {
         {Command::ARRAY_INSERT, "[1],2"},
         {Command::ARRAY_ADD_UNIQUE, "1"},
         {Command::ARRAY_ADD_UNIQUE_P, R"("s")"},
+        {Command::ARRAY_REMOVE_FIRST, "1"},
+        {Command::ARRAY_REMOVE_ALL, "null"},
         {Command::COUNTER, "1"},
         {Command::COUNTER_P, "-5"},
 };

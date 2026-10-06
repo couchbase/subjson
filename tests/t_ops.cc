@@ -1652,3 +1652,47 @@ TEST_F(OpTests, testNegativeIndexOnPrimitive) {
     EXPECT_EQ(Error::PATH_MISMATCH,
               runOp(Command::REPLACE, "a[-1][-1]", "null"));
 }
+
+TEST_F(OpTests, testArrayRemoveValueWithNegativeIndex) {
+    // The value must be removed when the path contains negative indexes
+    // as well
+    std::string json = R"({"a":[[0],[1,2,1]],"o":[{"b":[1,2]}]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_REMOVE_ALL, "a[-1]", "1"));
+    EXPECT_EQ(R"({"a":[[0],[2]],"o":[{"b":[1,2]}]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_REMOVE_FIRST, "a[-1]", "1"));
+    EXPECT_EQ(R"({"a":[[0],[2,1]],"o":[{"b":[1,2]}]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_REMOVE_FIRST, "o[-1].b", "2"));
+    EXPECT_EQ(R"({"a":[[0],[1,2,1]],"o":[{"b":[1]}]})", getNewDoc());
+    EXPECT_EQ(Error::VALUE_ENOENT,
+              runOp(Command::ARRAY_REMOVE_ALL, "a[-1]", "0"));
+    EXPECT_EQ(Error::VALUE_ENOENT,
+              runOp(Command::ARRAY_REMOVE_ALL, "o[-1].b", "3"));
+
+    // Arrays with non-primitives
+    std::string nested = R"({"a":[[1,[2]]]})";
+    op.set_doc(nested);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::ARRAY_REMOVE_ALL, "a[-1]", "1"));
+
+    // The last element isn't an array
+    std::string notarray = R"({"a":[1,{"b":1}]})";
+    op.set_doc(notarray);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::ARRAY_REMOVE_ALL, "a[-1]", "1"));
+    for (const auto* primitive : {"1", R"("s")", "true", "null", "1.5"}) {
+        std::string last = R"({"a":[[1],)" + std::string(primitive) + "]}";
+        op.set_doc(last);
+        EXPECT_EQ(Error::PATH_MISMATCH,
+                  runOp(Command::ARRAY_REMOVE_ALL, "a[-1]", "1"))
+                << last;
+    }
+
+    // Nested negative indexes
+    std::string deep = R"({"a":[[1],[[2],[3,4]]]})";
+    op.set_doc(deep);
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_REMOVE_ALL, "a[-1][-1]", "3"));
+    EXPECT_EQ(R"({"a":[[1],[[2],[4]]]})", getNewDoc());
+}

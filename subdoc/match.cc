@@ -510,6 +510,9 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     // final path component.
     const auto options = extra_options;
     const Loc unique = ensure_unique;
+    const Loc remove_value = match_value;
+    const bool remove_all = remove_all_matches;
+    std::string* const filtered = filtered_buf;
 
     while (cur_start < orig.size()) {
         size_t ii;
@@ -557,6 +560,9 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             // and including the final one); restore the caller's options
             extra_options = options;
             ensure_unique = unique;
+            match_value = remove_value;
+            remove_all_matches = remove_all;
+            filtered_buf = filtered;
         }
 
         rv = exec_match_simple(last_start, last_len, &tmp, jsn);
@@ -595,16 +601,16 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     }
 
     if (status == JSONSL_ERROR_SUCCESS && matchres == JSONSL_MATCH_COMPLETE &&
-        get_last && unique.at) {
+        get_last && (unique.at || remove_value.at)) {
         // The path ends with a negative index, so the final iteration
         // matched the array and transposed the match to its last element
         // (the options can't be applied in that iteration as they would
         // apply to the array rather than the element). Check the
-        // uniqueness within the element by matching it as the root of a
-        // document.
+        // uniqueness (or remove the value) within the element by matching
+        // it as the root of a document.
         if (type != JSONSL_T_LIST) {
-            // Uniqueness can only be checked within an array (and jsonsl
-            // doesn't support parsing a primitive as a document on its own)
+            // This can only be done within an array (and jsonsl doesn't
+            // support parsing a primitive as a document on its own)
             matchres = JSONSL_MATCH_TYPE_MISMATCH;
         } else {
             Path::Component root{};
@@ -612,6 +618,9 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             Path::CompInfo root_path(&root, 1);
             Match element;
             element.ensure_unique = unique;
+            element.match_value = remove_value;
+            element.remove_all_matches = remove_all;
+            element.filtered_buf = filtered;
             element.exec_match_simple(
                     loc_deepest.at, loc_deepest.length, &root_path, jsn);
             status = element.status;
@@ -620,6 +629,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             }
             unique_item_found = element.unique_item_found;
             unique_item_position = element.unique_item_position;
+            value_removed = element.value_removed;
         }
     }
 
