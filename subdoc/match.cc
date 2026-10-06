@@ -101,7 +101,9 @@ unique_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *st
             return; /* Length mismatch */
         }
 
-        rv = strncmp(ctx->get_unique() + 1, m->ensure_unique.at + 1, slen-2);
+        // Compare the entire token (including the quotes) as the value
+        // may be a non-string of the same length (e.g. 1234 vs "23")
+        rv = memcmp(ctx->get_unique(), m->ensure_unique.at, slen);
 
     } else if (st->type == JSONSL_T_SPECIAL) {
         if (m->ensure_unique.length != slen) {

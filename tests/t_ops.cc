@@ -453,6 +453,24 @@ TEST_F(OpTests, testUnique)
             "Mismatch with array containing non-primitive elements";
 }
 
+TEST_F(OpTests, testUniqueComparesWholeElement)
+{
+    // A non-string value with the same length as a string element in the
+    // array must not be considered equal to it just because the value
+    // without its first and last character matches the content of the
+    // string (1234 vs "23")
+    string json = R"({"a":["23"]})";
+    string doc;
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_ADD_UNIQUE, "a", "1234"));
+    getAssignNewDoc(doc);
+    EXPECT_EQ(R"({"a":["23",1234]})", doc);
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a", R"("23")"));
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a", "1234"));
+}
+
 TEST_F(OpTests, testUniqueToplevel)
 {
     string json("[]");
