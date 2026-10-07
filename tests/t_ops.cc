@@ -1265,6 +1265,33 @@ TEST_F(OpTests, testUtf8Path) {
     ASSERT_EQ("\"value\"", returnedMatch());
 }
 
+TEST_F(OpTests, testRemoveAfterNegativeIndex) {
+    // Removing an element requires information about its siblings to
+    // remove the right separating comma. That must also work when the
+    // path contains a negative index followed by more components.
+    std::string json = R"({"a":[{"b":1,"c":2,"d":3}],"x":[[1,2,3]]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].b"));
+    EXPECT_EQ(R"({"a":[{"c":2,"d":3}],"x":[[1,2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].c"));
+    EXPECT_EQ(R"({"a":[{"b":1,"d":3}],"x":[[1,2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].d"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2}],"x":[[1,2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x[-1][0]"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2,"d":3}],"x":[[2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x[-1][2]"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2,"d":3}],"x":[[1,2]]})", getNewDoc());
+
+    // The last element itself (which already worked)
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x[-1][-1]"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2,"d":3}],"x":[[1,2]]})", getNewDoc());
+
+    std::string single = R"({"a":[{"b":1}]})";
+    op.set_doc(single);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].b"));
+    EXPECT_EQ(R"({"a":[{}]})", getNewDoc());
+}
+
 TEST_F(OpTests, testUniqueWithNegativeIndex) {
     // The uniqueness must be checked when the path contains negative
     // indexes as well

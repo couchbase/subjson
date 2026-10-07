@@ -410,6 +410,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     // The options requested by the caller. They're reset by the clear()
     // of each iteration below, but must be applied when matching the
     // final path component.
+    const auto options = extra_options;
     const Loc unique = ensure_unique;
 
     while (cur_start < orig.size()) {
@@ -456,6 +457,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
         } else {
             // This iteration matches the remaining path components (up to
             // and including the final one); restore the caller's options
+            extra_options = options;
             ensure_unique = unique;
         }
 
