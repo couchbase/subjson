@@ -120,6 +120,17 @@ public:
         set_value(s, N - 1);
     }
     void set_result_buf(Result *res) { m_result = res; }
+    /**
+     * Set the document to operate on. The document must be valid JSON; it
+     * is only parsed as far as needed to locate the path, so operations on
+     * an invalid (e.g. truncated) document may succeed with a partial or
+     * incorrect result rather than failing with Error::DOC_NOTJSON.
+     * Validate the document first (e.g. with Subdoc::Validator) if it isn't
+     * known to be valid.
+     *
+     * The buffer is referenced (not copied), and must outlive the operation
+     * and its result.
+     */
     void set_doc(const char *s, size_t n) { m_doc.assign(s, n); }
     void set_doc(const std::string& s) { set_doc(s.c_str(), s.size()); }
     // Reject temporaries: see set_value(std::string&&) above.

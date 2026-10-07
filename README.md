@@ -29,3 +29,17 @@ parsed, where _n_ is the position in the file where the match itself ends.
 Performance may also depend on how deep and/or long the path is (since string
 comparison must be done occasionally on the relevant path components).
 
+## Input Requirements
+
+The document passed to the library (`Operation::set_doc()`) must be valid
+JSON. As described above the document is only parsed as far as needed to
+locate the path, so the library doesn't validate the entire document, and
+operations on an invalid (for instance truncated) document may fail with
+`Error::DOC_NOTJSON`, but they may also succeed with a partial or incorrect
+result. Callers must validate the document before passing it to the library
+if it isn't already known to be valid JSON (`Subdoc::Validator` may be used
+for that).
+
+The values passed with an operation (`Operation::set_value()`) are validated
+by the library.
+
