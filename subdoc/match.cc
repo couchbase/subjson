@@ -407,6 +407,11 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     const char *last_start = value;
     std::copy(orig.begin(), orig.end(), comp_s);
 
+    // The options requested by the caller. They're reset by the clear()
+    // of each iteration below, but must be applied when matching the
+    // final path component.
+    const Loc unique = ensure_unique;
+
     while (cur_start < orig.size()) {
         size_t ii;
         int rv, is_last_neg = 0;
@@ -448,6 +453,10 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
         // Transpose array's last element as the match itself
         if (is_last_neg) {
             get_last = 1;
+        } else {
+            // This iteration matches the remaining path components (up to
+            // and including the final one); restore the caller's options
+            ensure_unique = unique;
         }
 
         rv = exec_match_simple(last_start, last_len, &tmp, jsn);
@@ -472,6 +481,34 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
 
         /* Chomp off the current component */
         cur_start = ii + 1;
+    }
+
+    if (status == JSONSL_ERROR_SUCCESS && matchres == JSONSL_MATCH_COMPLETE &&
+        get_last && unique.at) {
+        // The path ends with a negative index, so the final iteration
+        // matched the array and transposed the match to its last element
+        // (the options can't be applied in that iteration as they would
+        // apply to the array rather than the element). Check the
+        // uniqueness within the element by matching it as the root of a
+        // document.
+        if (type != JSONSL_T_LIST) {
+            // Uniqueness can only be checked within an array (and jsonsl
+            // doesn't support parsing a primitive as a document on its own)
+            matchres = JSONSL_MATCH_TYPE_MISMATCH;
+        } else {
+            Path::Component root{};
+            root.ptype = JSONSL_PATH_ROOT;
+            Path::CompInfo root_path(&root, 1);
+            Match element;
+            element.ensure_unique = unique;
+            element.exec_match_simple(
+                    loc_deepest.at, loc_deepest.length, &root_path, jsn);
+            status = element.status;
+            if (element.matchres != JSONSL_MATCH_COMPLETE) {
+                matchres = element.matchres;
+            }
+            unique_item_found = element.unique_item_found;
+        }
     }
 
     // This is currently only used by GET_COUNT, in which an element is

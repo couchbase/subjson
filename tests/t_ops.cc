@@ -1264,3 +1264,50 @@ TEST_F(OpTests, testUtf8Path) {
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, path.c_str()));
     ASSERT_EQ("\"value\"", returnedMatch());
 }
+
+TEST_F(OpTests, testUniqueWithNegativeIndex) {
+    // The uniqueness must be checked when the path contains negative
+    // indexes as well
+    std::string json = R"({"a":[[0],[1,2]],"o":[{"b":[1,2]}]})";
+    std::string doc;
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "2"));
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "o[-1].b", "1"));
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE_P, "o[-1].b", "1"));
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "0"));
+    EXPECT_EQ(R"({"a":[[0],[1,2,0]],"o":[{"b":[1,2]}]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_ADD_UNIQUE, "o[-1].b", "3"));
+    EXPECT_EQ(R"({"a":[[0],[1,2]],"o":[{"b":[1,2,3]}]})", getNewDoc());
+
+    // Uniqueness can't be determined for arrays with non-primitives
+    std::string nested = R"({"a":[[1,[2]]]})";
+    op.set_doc(nested);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "3"));
+
+    // The last element isn't an array
+    std::string notarray = R"({"a":[1,{"b":1}]})";
+    op.set_doc(notarray);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "3"));
+    for (const auto* primitive : {"1", R"("s")", "true", "null", "1.5"}) {
+        std::string last = R"({"a":[[1],)" + std::string(primitive) + "]}";
+        op.set_doc(last);
+        EXPECT_EQ(Error::PATH_MISMATCH,
+                  runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "3"))
+                << last;
+    }
+
+    // Nested negative indexes
+    std::string deep = R"({"a":[[1],[[2],[3,4]]]})";
+    op.set_doc(deep);
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1][-1]", "4"));
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1][-1]", "1"));
+    EXPECT_EQ(R"({"a":[[1],[[2],[3,4,1]]]})", getNewDoc());
+}
