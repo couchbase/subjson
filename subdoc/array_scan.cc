@@ -27,6 +27,9 @@
 #if defined(__aarch64__) || defined(_M_ARM64)
 #include <arm_neon.h>
 #define SUBDOC_ARRAY_SCAN_NEON 1
+#elif defined(__AVX2__)
+#include <immintrin.h>
+#define SUBDOC_ARRAY_SCAN_AVX2 1
 #elif defined(__SSE2__) || defined(_M_X64)
 #include <emmintrin.h>
 #define SUBDOC_ARRAY_SCAN_SSE2 1
@@ -97,6 +100,31 @@ SUBDOC_ALWAYS_INLINE BlockMasks classify(const char* block) {
     };
     auto identity = [](uint8x16_t v) { return v; };
     auto fold = [case_bit](uint8x16_t v) { return vorrq_u8(v, case_bit); };
+    return {.quote = match(identity, '"'),
+            .backslash = match(identity, '\\'),
+            .open = match(fold, '{'),
+            .close = match(fold, '}'),
+            .comma = match(identity, ',')};
+}
+#elif defined(SUBDOC_ARRAY_SCAN_AVX2)
+SUBDOC_ALWAYS_INLINE BlockMasks classify(const char* block) {
+    const __m256i chunk0 =
+            _mm256_loadu_si256(reinterpret_cast<const __m256i*>(block));
+    const __m256i chunk1 =
+            _mm256_loadu_si256(reinterpret_cast<const __m256i*>(block + 32));
+    // '[' (0x5b) and '{' (0x7b) only differ in bit 0x20, and so do
+    // ']' (0x5d) and '}' (0x7d)
+    const __m256i case_bit = _mm256_set1_epi8(0x20);
+    auto match = [chunk0, chunk1](auto transform, char ch) {
+        const __m256i needle = _mm256_set1_epi8(ch);
+        const auto mask0 = static_cast<uint32_t>(_mm256_movemask_epi8(
+                _mm256_cmpeq_epi8(transform(chunk0), needle)));
+        const auto mask1 = static_cast<uint32_t>(_mm256_movemask_epi8(
+                _mm256_cmpeq_epi8(transform(chunk1), needle)));
+        return uint64_t(mask0) | (uint64_t(mask1) << 32);
+    };
+    auto identity = [](__m256i v) { return v; };
+    auto fold = [case_bit](__m256i v) { return _mm256_or_si256(v, case_bit); };
     return {.quote = match(identity, '"'),
             .backslash = match(identity, '\\'),
             .open = match(fold, '{'),
