@@ -537,6 +537,22 @@ struct jsonsl_st {
     int can_insert;
     unsigned int levels_max;
 
+    /**
+     * Number of bytes to skip forward during parsing. May only be set by
+     * a LIST or OBJECT PUSH callback, to skip over the contents of the
+     * container just pushed: it must be the offset from the opening
+     * bracket (or brace) to the matching closing bracket (or brace), which
+     * must be within the buffer passed to the current jsonsl_feed() call.
+     * The container is then popped without any further callbacks for it or
+     * its contents (and without validating them). A value which doesn't
+     * stay within the buffer is ignored (the container is parsed as
+     * normal).
+     *
+     * Placed after the fields accessed for every character (rather than
+     * among them) so that adding it doesn't change their offsets.
+     */
+    size_t skip_bytes;
+
 #ifndef JSONSL_NO_JPR
     size_t jpr_count;
     jsonsl_jpr_t *jprs;

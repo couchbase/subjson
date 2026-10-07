@@ -36,11 +36,13 @@ struct ParseContext : public HashKey {
     const char* buffer_end;
 
     /**
-     * Set to false when the buffer is fed to the parser in pieces, as
-     * scanning (for instance to an array index) requires the array to be
-     * contiguous in memory up to buffer_end.
+     * Whether the buffer is fed to the parser in one piece, contiguous in
+     * memory up to buffer_end. Set to false when it is fed in pieces, as
+     * the scanner (used to locate an array index, or to skip non-matching
+     * containers) can only scan contiguous memory and jsonsl can only skip
+     * within the buffer it is fed.
      */
-    bool allow_index_scan = true;
+    bool buffer_contiguous = true;
 };
 }
 
@@ -202,7 +204,7 @@ static void scan_matched_last_element(jsonsl_t jsn,
 static bool can_scan_to_index(const ParseContext* ctx,
                               const jsonsl_state_st* st) {
     const Match* m = ctx->match;
-    if (!ctx->allow_index_scan || st->type != JSONSL_T_LIST || m->get_last ||
+    if (!ctx->buffer_contiguous || st->type != JSONSL_T_LIST || m->get_last ||
         m->ensure_unique.at || m->match_value.at ||
         st->level + 1 != ctx->jpr->ncomponents) {
         return false;
@@ -355,6 +357,21 @@ static void push_callback(jsonsl_t jsn,
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {
             // Can't have a match on this tree. Ignore subsequent callbacks here.
             st->ignore_callback = 1;
+            if (ctx->buffer_contiguous && JSONSL_STATE_IS_CONTAINER(st)) {
+                // A container which exceeds jsonsl's depth limit isn't
+                // skipped, but parsed by jsonsl which reports the error
+                const auto result = scan_container(
+                        {at, static_cast<size_t>(ctx->buffer_end - at)},
+                        jsonsl_depth_limit(jsn, st));
+                if (result.status == ArrayScanResult::Status::Success) {
+                    jsn->skip_bytes = result.length - 1;
+                } else if (result.status ==
+                           ArrayScanResult::Status::Malformed) {
+                    m->status = JSONSL_ERROR_GENERIC;
+                    jsonsl_stop(jsn);
+                    return;
+                }
+            }
 
         } else if (st->mres == JSONSL_MATCH_POSSIBLE) {
             // Update our depth thus far
@@ -556,7 +573,7 @@ void Match::describe_scanned_element(jsonsl_t jsn) {
     element.skip_container_contents = true;
     ParseContext ctx(&element, &path, loc_deepest.at + loc_deepest.length);
     // The wrapping array isn't contiguous with the element in memory
-    ctx.allow_index_scan = false;
+    ctx.buffer_contiguous = false;
     prepare_parser(jsn, ctx);
     jsonsl_feed(jsn, "[", 1);
     if (!jsn->stopfl) {

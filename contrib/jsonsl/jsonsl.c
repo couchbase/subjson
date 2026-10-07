@@ -121,6 +121,7 @@ void jsonsl_reset(jsonsl_t jsn)
     jsn->pos = 0;
     jsn->level = 0;
     jsn->stopfl = 0;
+    jsn->skip_bytes = 0;
     jsn->in_escape = 0;
     jsn->expecting = 0;
 
@@ -620,6 +621,24 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 DO_CALLBACK(OBJECT, PUSH);
             } else {
                 DO_CALLBACK(LIST, PUSH);
+            }
+            if (jsn->skip_bytes) {
+                size_t skip = jsn->skip_bytes;
+                jsn->skip_bytes = 0;
+                /* The closing bracket must be within this buffer, otherwise
+                 * ignore the request and parse the container as normal */
+                if (skip < nbytes) {
+                    c += skip;
+                    jsn->pos += skip;
+                    nbytes -= skip;
+                    jsn->can_insert = 0;
+                    jsn->level--;
+                    jsn->expecting = ',';
+                    jsn->tok_last = 0;
+                    state = jsn->stack + jsn->level;
+                    state->pos_cur = jsn->pos;
+                    CONTINUE_NEXT_CHAR();
+                }
             }
             jsn->tok_last = 0;
             CONTINUE_NEXT_CHAR();
