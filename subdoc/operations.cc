@@ -18,6 +18,7 @@
 #include "validate.h"
 #include <errno.h>
 #include <inttypes.h>
+#include <algorithm>
 #include <charconv>
 #include <limits>
 #include <string>
@@ -729,6 +730,15 @@ Error
 Operation::validate(int mode, int depth)
 {
     if (!m_userval.empty()) {
+        // A value consisting of only whitespace doesn't contain any JSON
+        // value. It must be rejected explicitly as it would otherwise pass
+        // the validation of array values ("[ ]" is a valid, empty, array),
+        // and be inserted as an empty element (e.g. [1, ] or [ ,1]).
+        if (std::all_of(m_userval.at,
+                        m_userval.at + m_userval.length,
+                        is_json_ws)) {
+            return Error::VALUE_CANTINSERT;
+        }
         int rv = Validator::validate(m_userval, m_jsn, depth, mode);
         switch (rv) {
         case JSONSL_ERROR_SUCCESS:

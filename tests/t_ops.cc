@@ -1414,3 +1414,36 @@ TEST_F(OpTests, testDictValueMustBeSingleValue) {
     ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", "4,5"));
     EXPECT_EQ(R"({"k":1,"a":[1,2,3,4,5]})", getNewDoc());
 }
+
+TEST_F(OpTests, testWhitespaceOnlyValue) {
+    // A value consisting only of whitespace contains no JSON value, and
+    // must be rejected by all commands taking a value (it used to be
+    // accepted by the array commands, and was inserted as an empty element
+    // producing invalid JSON such as [1, ])
+    std::string json = R"({"k":1,"a":[1,2]})";
+    op.set_doc(json);
+    for (const auto* value : {" ", "\n", " \t\r\n "}) {
+        for (const auto& [command, path] :
+             std::vector<std::pair<Command, std::string>>{
+                     {Command::ARRAY_APPEND, "a"},
+                     {Command::ARRAY_APPEND_P, "a"},
+                     {Command::ARRAY_PREPEND, "a"},
+                     {Command::ARRAY_PREPEND_P, "a"},
+                     {Command::ARRAY_INSERT, "a[1]"},
+                     {Command::ARRAY_ADD_UNIQUE, "a"},
+                     {Command::ARRAY_ADD_UNIQUE_P, "a"},
+                     {Command::DICT_ADD, "new"},
+                     {Command::DICT_UPSERT, "k"},
+                     {Command::REPLACE, "k"},
+                     {Command::COUNTER, "k"}}) {
+            EXPECT_FALSE(runOp(command, path.c_str(), value).success())
+                    << "command:" << int(command) << " value:'" << value << "'";
+        }
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::ARRAY_APPEND, "a", value));
+    }
+
+    // Whitespace around a value is fine
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", " 3 "));
+    EXPECT_EQ(R"({"k":1,"a":[1,2, 3 ]})", getNewDoc());
+}
