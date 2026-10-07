@@ -478,6 +478,15 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             break;
         }
 
+        if (ii + 1 < orig.size() && type != JSONSL_T_LIST &&
+            type != JSONSL_T_OBJECT) {
+            // There are more path components, but the element located
+            // is a primitive so they can't exist (and the primitive can't
+            // be matched as a document on its own in the next iteration)
+            matchres = JSONSL_MATCH_TYPE_MISMATCH;
+            break;
+        }
+
         last_start = loc_deepest.at;
         last_len = loc_deepest.length;
 

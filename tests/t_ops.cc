@@ -1338,3 +1338,39 @@ TEST_F(OpTests, testUniqueWithNegativeIndex) {
               runOp(Command::ARRAY_ADD_UNIQUE, "a[-1][-1]", "1"));
     EXPECT_EQ(R"({"a":[[1],[[2],[3,4,1]]]})", getNewDoc());
 }
+
+TEST_F(OpTests, testNegativeIndexOnPrimitive) {
+    // A path continuing after a negative index which refers to a
+    // primitive can't exist, and must be rejected like the same path
+    // using the positive index (instead of matching an empty location
+    // or failing to parse the primitive)
+    for (const auto* last : {"false", "12", R"("s")", "null"}) {
+        std::string json = R"({"a":[[1],)" + std::string(last) + "]}";
+        op.set_doc(json);
+        for (const auto& [command, value] :
+             std::vector<std::pair<Command, std::string>>{
+                     {Command::GET, ""},
+                     {Command::REPLACE, "null"},
+                     {Command::REMOVE, ""},
+                     {Command::DICT_UPSERT, "1"},
+                     {Command::ARRAY_APPEND, "1"},
+                     {Command::ARRAY_PREPEND, "1"}}) {
+            for (const auto* suffix : {"[-1]", "[0]", ".k"}) {
+                const std::string negative = std::string("a[-1]") + suffix;
+                const std::string positive = std::string("a[1]") + suffix;
+                const char* val = value.empty() ? nullptr : value.c_str();
+                const auto expected = runOp(command, positive.c_str(), val);
+                EXPECT_EQ(Error::PATH_MISMATCH, expected)
+                        << json << " " << positive;
+                EXPECT_EQ(expected, runOp(command, negative.c_str(), val))
+                        << json << " " << negative;
+            }
+        }
+    }
+
+    // This used to insert the value in front of false
+    std::string json = R"({"a":[true,false]})";
+    op.set_doc(json);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::REPLACE, "a[-1][-1]", "null"));
+}
