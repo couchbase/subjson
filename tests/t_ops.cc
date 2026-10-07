@@ -641,10 +641,9 @@ TEST_F(OpTests, testValueValidation)
     rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", "1,2,3,4");
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    // FIXME: Should we allow this? Could be more performant, but might also
-    // be confusing!
+    // The value must be a single value (and not inject other keys)
     rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", "1,\"k2\":2");
-    ASSERT_TRUE(rv.success());
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // Dict key without a colon or value.
     rv = runOp(Command::DICT_ADD, "bad_dict", "{ \"foo\" }");
@@ -1373,4 +1372,45 @@ TEST_F(OpTests, testNegativeIndexOnPrimitive) {
     op.set_doc(json);
     EXPECT_EQ(Error::PATH_MISMATCH,
               runOp(Command::REPLACE, "a[-1][-1]", "null"));
+}
+
+TEST_F(OpTests, testDictValueMustBeSingleValue) {
+    // DICT_ADD, DICT_UPSERT and REPLACE store a single value; a value
+    // which is only valid as part of an object (as it contains more than
+    // one key-value pair) must be rejected rather than injecting keys into
+    // the object (or invalid JSON into an array)
+    std::string json = R"({"k":1,"a":[1,2,3]})";
+    op.set_doc(json);
+    for (const auto* value : {R"(1,"z":2)", R"("s","k":2)", R"({},"z":{})"}) {
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_ADD, "new", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_ADD_P, "x.y", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_UPSERT, "k", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_UPSERT_P, "x.y", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT, runOp(Command::REPLACE, "k", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::REPLACE, "a[0]", value))
+                << value;
+    }
+
+    // Single values of any kind (with surrounding whitespace) are fine
+    for (const auto* value :
+         {"1", R"("s")", "null", R"({"z":1,"y":2})", "[1,2]", " 2 "}) {
+        ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT, "k", value))
+                << value;
+        ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "a[0]", value))
+                << value;
+    }
+
+    // The array commands still accept multiple values
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", "4,5"));
+    EXPECT_EQ(R"({"k":1,"a":[1,2,3,4,5]})", getNewDoc());
 }

@@ -787,7 +787,12 @@ Operation::op_exec(const char *pth, size_t npth)
             return Error::VALUE_CANTINSERT;
         }
 
-        status = validate(Validator::PARENT_DICT, get_maxdepth(PATH_HAS_NEWKEY));
+        // The value replaces (or is stored under) a single entry, so it must
+        // be a single JSON value. Validating it as the value of a dictionary
+        // entry alone would accept for instance 1,"key":2 (which would add
+        // another key to an object, or produce invalid JSON in an array).
+        status = validate(Validator::PARENT_DICT | Validator::VALUE_SINGLE,
+                          get_maxdepth(PATH_HAS_NEWKEY));
         if (!status.success()) {
             return status;
         }
