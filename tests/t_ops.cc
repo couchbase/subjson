@@ -613,8 +613,7 @@ TEST_F(OpTests, testNumericLimits)
 
 TEST_F(OpTests, testValueValidation)
 {
-    string json = "{}";
-    string doc;
+    string doc = "{}";
     Error rv;
     op.set_doc(doc);
 
