@@ -165,6 +165,7 @@ private:
     // and also wraps the error code
     Error validate(int mode, int depth = -1);
     bool is_strictly_valid(int mode) const;
+    bool is_valid_key(const Path::Component& component) const;
 
     enum DepthMode {
         /// Last component of the path is the key for the new item

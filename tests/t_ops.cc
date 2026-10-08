@@ -1494,3 +1494,54 @@ TEST_F(OpTests, testValueMustBeStrictlyValidJson) {
     EXPECT_EQ("{\"k\":0,\"a\":[1,\"\\u00e9\",\"\xc3\xa9\",[1,2]]}",
               getNewDoc());
 }
+
+TEST_F(OpTests, testNewKeyMustBeValidJsonString) {
+    // A key added to the document is copied verbatim from the path, so it
+    // must be valid JSON string content
+    std::string json = R"({"o":{}})";
+    op.set_doc(json);
+    // The paths flagged with true have missing intermediate components
+    for (const auto& [path, missing_parent] :
+         std::vector<std::pair<const char*, bool>>{
+                 {"new\xff", false},
+                 {"new\xc3\x28", false},
+                 {"new\xc0\xaf", false}, // Overlong '/'
+                 {"new\xe0\x80\xaf", false}, // Overlong '/'
+                 {"new\xed\xa0\x80", false}, // Surrogate U+D800
+                 {"new\xf4\x90\x80\x80", false}, // U+110000
+                 {"new\xe2\x82", false}, // Truncated
+                 {"new\x1f", false},
+                 {"o.new\xff", false},
+                 {"o.`new\xff`", false},
+                 {"o.x.new\xff", true},
+                 {"new\xff.x", true}}) {
+        // The commands flagged with true create missing path components
+        for (const auto& [command, creates_parents] :
+             std::vector<std::pair<Command, bool>>{
+                     {Command::DICT_ADD, false},
+                     {Command::DICT_UPSERT, false},
+                     {Command::DICT_ADD_P, true},
+                     {Command::DICT_UPSERT_P, true},
+                     {Command::COUNTER_P, true},
+                     {Command::ARRAY_APPEND_P, true},
+                     {Command::ARRAY_PREPEND_P, true},
+                     {Command::ARRAY_ADD_UNIQUE_P, true}}) {
+            // A command which doesn't create the missing intermediate
+            // components fails with PATH_ENOENT before the key is checked
+            const auto expected = missing_parent && !creates_parents
+                                          ? Error::PATH_ENOENT
+                                          : Error::PATH_EINVAL;
+            EXPECT_EQ(expected, runOp(command, path, "1"))
+                    << "command: " << int(command) << " path: " << path;
+        }
+    }
+    EXPECT_EQ(Error::PATH_EINVAL, runOp(Command::COUNTER, "new\xff", "1"));
+
+    // Valid keys (including multi-byte UTF-8 and escapes) are fine
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::DICT_ADD_P, "o.\xc3\xa9.a\\tb", "1"));
+    EXPECT_EQ("{\"o\":{\"\xc3\xa9\":{\"a\\tb\":1}}}", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::DICT_ADD, "\xf4\x8f\xbf\xbf", "1")); // U+10FFFF
+    EXPECT_EQ("{\"o\":{},\"\xf4\x8f\xbf\xbf\":1}", getNewDoc());
+}

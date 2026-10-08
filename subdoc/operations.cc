@@ -212,7 +212,6 @@ Operation::do_store_dict()
         const Loc& parent_loc = m_match.loc_deepest;
 
         newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
-        /*TODO: The key might have a literal '"' in it, which has been escaped? */
         if (m_match.num_siblings) {
             newdoc_at(1) = loc_COMMA_QUOTE; /* ," */
         } else {
@@ -221,6 +220,9 @@ Operation::do_store_dict()
 
         /* Create the actual key: */
         auto& comp = m_path->back();
+        if (!is_valid_key(comp)) {
+            return Error::PATH_EINVAL;
+        }
         newdoc_at(2).at = comp.pstr;
         newdoc_at(2).length = comp.len;
 
@@ -256,6 +258,14 @@ Operation::do_mkdir_p(MkdirPMode mode)
     unsigned ii;
     const Loc& parent_loc = m_match.loc_deepest;
     newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
+
+    // All of the missing components are written to the document as keys
+    for (auto level = m_match.match_level; level < m_path->size(); level++) {
+        const auto& missing = m_path->get_component(level);
+        if (missing.ptype == JSONSL_PATH_STRING && !is_valid_key(missing)) {
+            return Error::PATH_EINVAL;
+        }
+    }
 
     /* doc_new LAYOUT:
      *
@@ -782,6 +792,21 @@ bool Operation::is_strictly_valid(int mode) const {
     // Otherwise the value must be a single JSON value, which is valid JSON
     // on its own (surrounding whitespace is permitted)
     return m_checker->validate(value);
+}
+
+/**
+ * Check that a path component may be written to the document as a
+ * dictionary key. The component is copied verbatim between the quotes of
+ * the key, so it must be valid JSON string content (for instance it can't
+ * contain an unescaped '"', control characters, invalid escape sequences or
+ * invalid UTF-8).
+ *
+ * @param component The path component to check
+ * @return true if the component is a valid key
+ */
+bool Operation::is_valid_key(const Path::Component& component) const {
+    return m_checker->validateChunks(
+            {"\"", std::string_view{component.pstr, component.len}, "\""});
 }
 
 int
