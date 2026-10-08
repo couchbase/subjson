@@ -19,6 +19,7 @@
 #include "subdoc/match.h"
 #include "subdoc/operations.h"
 #include "subdoc/validate.h"
+#include <JSON_checker.h>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <optional>
@@ -261,15 +262,16 @@ bool isPrimitive(const std::string& element) {
 
 /**
  * Every successful mutation must result in a valid JSON document; whatever
- * the document, path and value are.
+ * the document, path and value are. The documents are checked with a strict
+ * JSON validator, as jsonsl accepts some invalid JSON.
  */
 TEST(InvariantTest, MutationsProduceValidJson) {
     std::mt19937 gen(0x5eed);
-    auto* jsn = Match::jsn_alloc();
+    JSON_checker::Validator checker;
     size_t succeeded = 0;
     for (int iteration = 0; iteration < NumDocuments; ++iteration) {
         const auto doc = randomDocument(gen);
-        ASSERT_EQ(JSONSL_ERROR_SUCCESS, Validator::validate(doc, jsn)) << doc;
+        ASSERT_TRUE(checker.validate(doc)) << doc;
         for (const auto& path : paths) {
             for (const auto& request : mutations) {
                 const auto outcome =
@@ -278,8 +280,7 @@ TEST(InvariantTest, MutationsProduceValidJson) {
                     continue;
                 }
                 ++succeeded;
-                ASSERT_EQ(JSONSL_ERROR_SUCCESS,
-                          Validator::validate(outcome.newdoc, jsn))
+                ASSERT_TRUE(checker.validate(outcome.newdoc))
                         << "Command: " << int(request.command)
                         << " path: " << path << " value: " << request.value
                         << "\ndoc:    " << doc
@@ -287,7 +288,6 @@ TEST(InvariantTest, MutationsProduceValidJson) {
             }
         }
     }
-    Match::jsn_free(jsn);
     // Make sure the test actually exercised a decent number of mutations
     EXPECT_LT(NumDocuments * 50, succeeded);
 }
