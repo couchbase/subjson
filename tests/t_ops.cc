@@ -1447,3 +1447,50 @@ TEST_F(OpTests, testWhitespaceOnlyValue) {
     ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", " 3 "));
     EXPECT_EQ(R"({"k":1,"a":[1,2, 3 ]})", getNewDoc());
 }
+
+TEST_F(OpTests, testValueMustBeStrictlyValidJson) {
+    // jsonsl (used to validate the value) accepts some invalid JSON, which
+    // must not be inserted into the document
+    std::string json = R"({"k":0,"a":[1]})";
+    op.set_doc(json);
+    for (const auto* value : {"[1 2]",
+                              R"({"x":[1 2]})",
+                              R"("\u12")",
+                              "\"\xff\"",
+                              "\"\xc3\x28\"",
+                              R"(["\u12"])"}) {
+        for (const auto& [command, path] :
+             std::vector<std::pair<Command, std::string>>{
+                     {Command::DICT_ADD, "new"},
+                     {Command::DICT_UPSERT, "k"},
+                     {Command::REPLACE, "a[0]"},
+                     {Command::ARRAY_APPEND, "a"},
+                     {Command::ARRAY_PREPEND, "a"},
+                     {Command::ARRAY_INSERT, "a[0]"}}) {
+            EXPECT_EQ(Error::VALUE_CANTINSERT,
+                      runOp(command, path.c_str(), value))
+                    << "command: " << int(command) << " value: " << value;
+        }
+    }
+    // Multiple primitives without a separating comma, as a list of values
+    // for the array commands
+    for (const auto* value : {"1 2", "true false", R"("a" "b")"}) {
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::ARRAY_APPEND, "a", value))
+                << value;
+    }
+    // Primitives for the commands only accepting primitives
+    for (const auto* value : {R"("\u12")", "\"\xff\""}) {
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::ARRAY_ADD_UNIQUE, "a", value))
+                << value;
+    }
+
+    // Valid values (including multi-byte UTF-8 and \u escapes) are fine
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_APPEND,
+                    "a",
+                    "\"\\u00e9\",\"\xc3\xa9\",[1,2]"));
+    EXPECT_EQ("{\"k\":0,\"a\":[1,\"\\u00e9\",\"\xc3\xa9\",[1,2]]}",
+              getNewDoc());
+}

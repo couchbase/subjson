@@ -11,6 +11,7 @@ add_library(subjson STATIC
             subdoc/util.cc)
 target_include_directories(subjson PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(subjson PUBLIC platform)
+target_link_libraries(subjson PRIVATE JSON_checker)
 
 cb_add_test_executable(subjson-bench bench.cc contrib/cliopts/cliopts.c)
 target_link_libraries(subjson-bench subjson)

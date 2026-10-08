@@ -16,12 +16,14 @@
 #include "operations.h"
 #include "util.h"
 #include "validate.h"
+#include <JSON_checker.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <algorithm>
 #include <charconv>
 #include <limits>
 #include <string>
+#include <string_view>
 
 using Subdoc::Loc;
 using Subdoc::Error;
@@ -742,6 +744,12 @@ Operation::validate(int mode, int depth)
         int rv = Validator::validate(m_userval, m_jsn, depth, mode);
         switch (rv) {
         case JSONSL_ERROR_SUCCESS:
+            // jsonsl checks the depth and the shape of the value, but it
+            // doesn't detect all invalid JSON; verify the syntax strictly
+            // as well so that the value can't produce an invalid document
+            if (!is_strictly_valid(mode)) {
+                return Error::VALUE_CANTINSERT;
+            }
             return Error::SUCCESS;
         case JSONSL_ERROR_LEVELS_EXCEEDED:
             return Error::VALUE_ETOODEEP;
@@ -751,6 +759,29 @@ Operation::validate(int mode, int depth)
     } else {
         return Error::VALUE_EMPTY;
     }
+}
+
+/**
+ * Check that the user's value is valid JSON in the context it's inserted in
+ * with a strict JSON validator. jsonsl (used by Validator::validate())
+ * accepts some invalid JSON, such as primitives without a separating comma
+ * ([1 2]), \u escapes with fewer than four digits and invalid UTF-8, which
+ * would otherwise be inserted verbatim into the document.
+ *
+ * @param mode The Validator mode the value was validated with
+ * @return true if the value is valid
+ */
+bool Operation::is_strictly_valid(int mode) const {
+    const std::string_view value{m_userval.at, m_userval.length};
+    if ((mode & ~Validator::VALUE_PRIMITIVE) == Validator::PARENT_ARRAY) {
+        // The value may be a series of array elements (1,2), which is only
+        // valid JSON as the content of an array. Validate it in place
+        // (without copying it) as such.
+        return m_checker->validateChunks({"[", value, "]"});
+    }
+    // Otherwise the value must be a single JSON value, which is valid JSON
+    // on its own (surrounding whitespace is permitted)
+    return m_checker->validate(value);
 }
 
 int
@@ -867,11 +898,11 @@ Operation::op_exec(const char *pth, size_t npth)
 }
 
 Operation::Operation()
-: m_path(new Path()),
-  m_jsn(Match::jsn_alloc()),
-  m_optype(Command::GET),
-  m_result(NULL)
-{
+    : m_path(new Path()),
+      m_jsn(Match::jsn_alloc()),
+      m_checker(std::make_unique<JSON_checker::Validator>()),
+      m_optype(Command::GET),
+      m_result(nullptr) {
 }
 
 Operation::~Operation()
