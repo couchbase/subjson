@@ -20,6 +20,9 @@
 #include "subdoc/operations.h"
 #include "subdoc/validate.h"
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <optional>
+#include <ostream>
 #include <random>
 #include <string>
 #include <string_view>
@@ -115,7 +118,20 @@ struct Outcome {
     std::string newdoc;
     /** The match (for successful operations) */
     std::string match;
+
+    bool operator==(const Outcome& other) const {
+        return status == other.status && newdoc == other.newdoc &&
+               match == other.match;
+    }
 };
+
+std::ostream& operator<<(std::ostream& os, const Outcome& outcome) {
+    os << outcome.status.description();
+    if (outcome.status.success()) {
+        os << " newdoc: " << outcome.newdoc << " match: " << outcome.match;
+    }
+    return os;
+}
 
 Outcome execute(const std::string& doc,
                 uint8_t command,
@@ -179,10 +195,65 @@ const std::vector<Request> mutations = {
         {Command::COUNTER_P, "-5"},
 };
 
+/** Non-mutating commands */
+const std::vector<Request> lookups = {
+        {Command::GET, {}},
+        {Command::EXISTS, {}},
+        {Command::GET_COUNT, {}},
+};
+
 /** The number of random documents each test runs operations on */
 constexpr int NumDocuments = 2000;
 
-} // namespace
+/**
+ * Get the elements of the array at the given path (as their JSON text)
+ * by looking up each of them by index, or nullopt if the path isn't an
+ * array.
+ */
+std::optional<std::vector<std::string>> getElements(const std::string& doc,
+                                                    const std::string& path) {
+    const auto count = execute(doc, Command::GET_COUNT, path, {});
+    if (!count.status.success() ||
+        execute(doc, Command::GET, path, {}).match.front() != '[') {
+        return std::nullopt;
+    }
+    std::vector<std::string> elements;
+    for (size_t ii = 0; ii < std::stoul(count.match); ++ii) {
+        const auto element = execute(
+                doc, Command::GET, path + "[" + std::to_string(ii) + "]", {});
+        if (!element.status.success()) {
+            return std::nullopt;
+        }
+        elements.emplace_back(element.match);
+    }
+    return elements;
+}
+
+/**
+ * Replace each negative index ([-1]) in the path with the index of the
+ * last element of the array it refers to, or nullopt if that can't be
+ * determined (because the array is empty or doesn't exist)
+ */
+std::optional<std::string> resolveNegativeIndexes(const std::string& doc,
+                                                  std::string path) {
+    for (auto pos = path.find("[-1]"); pos != std::string::npos;
+         pos = path.find("[-1]")) {
+        const auto count =
+                execute(doc, Command::GET_COUNT, path.substr(0, pos), {});
+        if (!count.status.success() || count.match == "0") {
+            return std::nullopt;
+        }
+        path.replace(pos,
+                     4,
+                     "[" + std::to_string(std::stoul(count.match) - 1) + "]");
+    }
+    return path;
+}
+
+/** Is the element the JSON text of a primitive? */
+bool isPrimitive(const std::string& element) {
+    return element.front() != '[' && element.front() != '{';
+}
 
 /**
  * Every successful mutation must result in a valid JSON document; whatever
@@ -216,3 +287,114 @@ TEST(InvariantTest, MutationsProduceValidJson) {
     // Make sure the test actually exercised a decent number of mutations
     EXPECT_LT(NumDocuments * 50, succeeded);
 }
+
+/**
+ * A path with a negative index must behave exactly like the same path where
+ * the negative index is replaced by the index of the last element in the
+ * array.
+ */
+TEST(InvariantTest, NegativeIndexMatchesPositiveIndex) {
+    std::mt19937 gen(0x1dea);
+    auto requests = mutations;
+    requests.insert(requests.end(), lookups.begin(), lookups.end());
+    size_t compared = 0;
+    for (int iteration = 0; iteration < NumDocuments; ++iteration) {
+        const auto doc = randomDocument(gen);
+        for (const auto& path : paths) {
+            if (path.find("[-1]") == std::string::npos) {
+                continue;
+            }
+            const auto positive = resolveNegativeIndexes(doc, path);
+            if (!positive) {
+                continue;
+            }
+            for (const auto& request : requests) {
+                if (request.command == Command::ARRAY_INSERT &&
+                    path.ends_with("[-1]")) {
+                    // Inserting at a negative index is not supported
+                    continue;
+                }
+                ++compared;
+                ASSERT_EQ(
+                        execute(doc, request.command, *positive, request.value),
+                        execute(doc, request.command, path, request.value))
+                        << "Command: " << int(request.command)
+                        << " path: " << path << " (" << *positive
+                        << ") value: " << request.value << "\ndoc: " << doc;
+            }
+        }
+    }
+    EXPECT_LT(NumDocuments * 20, compared);
+}
+
+/**
+ * Pick values to search for in an array: each of its elements, and some
+ * values which are (most likely) not in it.
+ */
+std::vector<std::string> valuesToSearchFor(
+        const std::vector<std::string>& elements) {
+    std::vector<std::string> values = elements;
+    for (const auto* value :
+         {"1", "1234", R"("23")", R"("s")", "null", "1.5"}) {
+        values.emplace_back(value);
+    }
+    return values;
+}
+
+/** Array paths into the documents created by randomDocument() */
+const std::vector<std::string> arrayPaths = {
+        "a", "a[0]", "a[1]", "a[-1]", "a[-1][-1]", "o.k0", "o.k1", "o.k0[-1]"};
+
+/**
+ * ARRAY_ADD_UNIQUE must succeed if (and only if) the value isn't one of
+ * the elements in the array (compared as raw JSON text). The elements are
+ * inspected in order: it fails with DOC_EEXISTS as soon as the value is
+ * found, or with PATH_MISMATCH if an array or object is found before that
+ * (uniqueness can't be determined for non-primitives).
+ */
+TEST(InvariantTest, ArrayAddUniqueMatchesReference) {
+    std::mt19937 gen(0xadd);
+    size_t compared = 0;
+    for (int iteration = 0; iteration < NumDocuments; ++iteration) {
+        const auto doc = randomDocument(gen);
+        for (const auto& path : arrayPaths) {
+            const auto elements = getElements(doc, path);
+            if (!elements) {
+                continue;
+            }
+            for (const auto& value : valuesToSearchFor(*elements)) {
+                if (!isPrimitive(value)) {
+                    continue;
+                }
+                ++compared;
+                const auto outcome =
+                        execute(doc, Command::ARRAY_ADD_UNIQUE, path, value);
+                Error expected = Error::SUCCESS;
+                for (const auto& element : *elements) {
+                    if (!isPrimitive(element)) {
+                        expected = Error::PATH_MISMATCH;
+                        break;
+                    }
+                    if (element == value) {
+                        expected = Error::DOC_EEXISTS;
+                        break;
+                    }
+                }
+                ASSERT_EQ(expected, outcome.status)
+                        << "path: " << path << " value: " << value
+                        << "\ndoc: " << doc;
+                if (outcome.status.success()) {
+                    auto expectedElements = *elements;
+                    expectedElements.emplace_back(value);
+                    ASSERT_EQ(expectedElements,
+                              getElements(outcome.newdoc, path))
+                            << "path: " << path << " value: " << value
+                            << "\ndoc: " << doc;
+                }
+            }
+        }
+    }
+    EXPECT_LT(NumDocuments, compared);
+}
+
+} // namespace
