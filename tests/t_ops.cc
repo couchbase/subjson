@@ -429,6 +429,23 @@ TEST_F(OpTests, testUnique) {
             << "Mismatch with array containing non-primitive elements";
 }
 
+TEST_F(OpTests, testUniqueComparesWholeElement) {
+    // A non-string value with the same length as a string element in the
+    // array must not be considered equal to it just because the value
+    // without its first and last character matches the content of the
+    // string (1234 vs "23")
+    std::string json = R"({"a":["23"]})";
+    std::string doc;
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_ADD_UNIQUE, "a", "1234"));
+    getAssignNewDoc(doc);
+    EXPECT_EQ(R"({"a":["23",1234]})", doc);
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a", R"("23")"));
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a", "1234"));
+}
+
 TEST_F(OpTests, testUniqueToplevel) {
     std::string json("[]");
     std::string doc;
@@ -785,7 +802,9 @@ TEST_F(OpTests, MB57177) {
     // Verify that the counter may cover the entire range from min to max
     const auto min = std::to_string(std::numeric_limits<int64_t>::min());
     const auto max = std::to_string(std::numeric_limits<int64_t>::max());
-    std::string doc = R"({"min":0, "max":0})";
+    // The document must outlive the operation (set_doc() only keeps a
+    // pointer to it), so don't pass a temporary
+    const std::string doc = R"({"min":0, "max":0})";
     op.set_doc(doc);
     auto rv = runOp(Command::COUNTER, "min", min);
     ASSERT_TRUE(rv.success()) << rv.description();
@@ -1479,4 +1498,113 @@ TEST_F(OpTests, testUtf8Path) {
     // Try to retrieve the value
     ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, path));
     ASSERT_EQ(R"("value")", returnedMatch());
+}
+
+TEST_F(OpTests, testRemoveAfterNegativeIndex) {
+    // Removing an element requires information about its siblings to
+    // remove the right separating comma. That must also work when the
+    // path contains a negative index followed by more components.
+    std::string json = R"({"a":[{"b":1,"c":2,"d":3}],"x":[[1,2,3]]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].b"));
+    EXPECT_EQ(R"({"a":[{"c":2,"d":3}],"x":[[1,2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].c"));
+    EXPECT_EQ(R"({"a":[{"b":1,"d":3}],"x":[[1,2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].d"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2}],"x":[[1,2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x[-1][0]"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2,"d":3}],"x":[[2,3]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x[-1][2]"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2,"d":3}],"x":[[1,2]]})", getNewDoc());
+
+    // The last element itself (which already worked)
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x[-1][-1]"));
+    EXPECT_EQ(R"({"a":[{"b":1,"c":2,"d":3}],"x":[[1,2]]})", getNewDoc());
+
+    std::string single = R"({"a":[{"b":1}]})";
+    op.set_doc(single);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1].b"));
+    EXPECT_EQ(R"({"a":[{}]})", getNewDoc());
+}
+
+TEST_F(OpTests, testUniqueWithNegativeIndex) {
+    // The uniqueness must be checked when the path contains negative
+    // indexes as well
+    std::string json = R"({"a":[[0],[1,2]],"o":[{"b":[1,2]}]})";
+    std::string doc;
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "2"));
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "o[-1].b", "1"));
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE_P, "o[-1].b", "1"));
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "0"));
+    EXPECT_EQ(R"({"a":[[0],[1,2,0]],"o":[{"b":[1,2]}]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_ADD_UNIQUE, "o[-1].b", "3"));
+    EXPECT_EQ(R"({"a":[[0],[1,2]],"o":[{"b":[1,2,3]}]})", getNewDoc());
+
+    // Uniqueness can't be determined for arrays with non-primitives
+    std::string nested = R"({"a":[[1,[2]]]})";
+    op.set_doc(nested);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "3"));
+
+    // The last element isn't an array
+    std::string notarray = R"({"a":[1,{"b":1}]})";
+    op.set_doc(notarray);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "3"));
+    for (const auto* primitive : {"1", R"("s")", "true", "null", "1.5"}) {
+        std::string last = R"({"a":[[1],)" + std::string(primitive) + "]}";
+        op.set_doc(last);
+        EXPECT_EQ(Error::PATH_MISMATCH,
+                  runOp(Command::ARRAY_ADD_UNIQUE, "a[-1]", "3"))
+                << last;
+    }
+
+    // Nested negative indexes
+    std::string deep = R"({"a":[[1],[[2],[3,4]]]})";
+    op.set_doc(deep);
+    EXPECT_EQ(Error::DOC_EEXISTS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1][-1]", "4"));
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_ADD_UNIQUE, "a[-1][-1]", "1"));
+    EXPECT_EQ(R"({"a":[[1],[[2],[3,4,1]]]})", getNewDoc());
+}
+
+TEST_F(OpTests, testNegativeIndexOnPrimitive) {
+    // A path continuing after a negative index which refers to a
+    // primitive can't exist, and must be rejected like the same path
+    // using the positive index (instead of matching an empty location
+    // or failing to parse the primitive)
+    for (const auto* last : {"false", "12", R"("s")", "null"}) {
+        std::string json = R"({"a":[[1],)" + std::string(last) + "]}";
+        op.set_doc(json);
+        for (const auto& [command, value] :
+             std::vector<std::pair<Command, std::string>>{
+                     {Command::GET, ""},
+                     {Command::REPLACE, "null"},
+                     {Command::REMOVE, ""},
+                     {Command::DICT_UPSERT, "1"},
+                     {Command::ARRAY_APPEND, "1"},
+                     {Command::ARRAY_PREPEND, "1"}}) {
+            for (const auto* suffix : {"[-1]", "[0]", ".k"}) {
+                const std::string negative = std::string("a[-1]") + suffix;
+                const std::string positive = std::string("a[1]") + suffix;
+                const auto expected = runOp(command, positive, value);
+                EXPECT_EQ(Error::PATH_MISMATCH, expected)
+                        << json << " " << positive;
+                EXPECT_EQ(expected, runOp(command, negative, value))
+                        << json << " " << negative;
+            }
+        }
+    }
+
+    // This used to insert the value in front of false
+    std::string json = R"({"a":[true,false]})";
+    op.set_doc(json);
+    EXPECT_EQ(Error::PATH_MISMATCH,
+              runOp(Command::REPLACE, "a[-1][-1]", "null"));
 }
