@@ -174,7 +174,10 @@ static void remove_value_callback(jsonsl_t jsn,
     if (st->type == JSONSL_T_STRING) {
         slen++;
         if (m->match_value.length >= 2 && slen == m->match_value.length) {
-            rv = strncmp(ctx->get_child_begin() + 1, m->match_value.at + 1, slen-2);
+            // Compare the entire token (including the quotes) as the
+            // value may be a non-string of the same length (e.g. 1234
+            // vs "23")
+            rv = memcmp(ctx->get_child_begin(), m->match_value.at, slen);
             matches = (rv == 0);
         }
     } else if (st->type == JSONSL_T_SPECIAL) {

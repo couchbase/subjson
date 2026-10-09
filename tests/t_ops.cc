@@ -573,6 +573,31 @@ TEST_F(OpTests, testArrayRemoveAll) {
     ASSERT_EQ(Error::PATH_MISMATCH, rv);
 }
 
+TEST_F(OpTests, testArrayRemoveComparesWholeElement) {
+    // A non-string value with the same length as a string element in the
+    // array must not be considered equal to it just because the value
+    // without its first and last character matches the content of the
+    // string (1234 vs "23")
+    std::string json = R"(["23",1234,"23"])";
+    op.set_doc(json);
+    ASSERT_ERROK(runOp(Command::ARRAY_REMOVE_FIRST, "", "1234"));
+    EXPECT_EQ(R"(["23","23"])", getNewDoc());
+
+    op.set_doc(json);
+    ASSERT_ERROK(runOp(Command::ARRAY_REMOVE_ALL, "", "1234"));
+    EXPECT_EQ(R"(["23","23"])", getNewDoc());
+
+    op.set_doc(json);
+    ASSERT_ERREQ(runOp(Command::ARRAY_REMOVE_ALL, "", R"("23")"),
+                 Error::SUCCESS);
+    EXPECT_EQ("[1234]", getNewDoc());
+
+    std::string onlyString = R"(["23"])";
+    op.set_doc(onlyString);
+    ASSERT_ERREQ(runOp(Command::ARRAY_REMOVE_FIRST, "", "1234"),
+                 Error::VALUE_ENOENT);
+}
+
 TEST_F(OpTests, testArrayRemoveAllManyMatches) {
     // Result::m_newdoc has a fixed 8-slot capacity, but
     // do_array_remove_value() never needs more than 3 of those slots
@@ -634,6 +659,13 @@ TEST_F(OpTests, testArrayIndexOf) {
     ASSERT_EQ("2", returnedMatch());
     ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", R"("1")"));
     ASSERT_EQ("0", returnedMatch());
+
+    // A non-string value with the same length as a string element must
+    // not match it (1234 vs "23")
+    std::string sameLength = R"(["23",1234])";
+    op.set_doc(sameLength);
+    ASSERT_ERROK(runOp(Command::ARRAY_INDEX_OF, "", "1234"));
+    ASSERT_EQ("1", returnedMatch());
 
     // Non-numeric/non-string primitives (bool/null) compare correctly.
     std::string special = "[true,false,null]";
