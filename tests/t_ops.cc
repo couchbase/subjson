@@ -1604,6 +1604,18 @@ TEST_F(OpTests, testUniqueWithNegativeIndex) {
     ASSERT_EQ(Error::SUCCESS,
               runOp(Command::ARRAY_ADD_UNIQUE, "a[-1][-1]", "1"));
     EXPECT_EQ(R"({"a":[[1],[[2],[3,4,1]]]})", getNewDoc());
+
+    // ARRAY_INDEX_OF uses the same search
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INDEX_OF, "a[-1][-1]", "4"));
+    EXPECT_EQ("1", returnedMatch());
+    std::string lists = R"({"a":[[0],[7,8,9]],"o":[{"b":[5,6]}]})";
+    op.set_doc(lists);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INDEX_OF, "a[-1]", "9"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INDEX_OF, "o[-1].b", "6"));
+    EXPECT_EQ("1", returnedMatch());
+    EXPECT_EQ(Error::VALUE_ENOENT,
+              runOp(Command::ARRAY_INDEX_OF, "a[-1]", "0"));
 }
 
 TEST_F(OpTests, testNegativeIndexOnPrimitive) {

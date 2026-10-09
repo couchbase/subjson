@@ -619,6 +619,7 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
                 matchres = element.matchres;
             }
             unique_item_found = element.unique_item_found;
+            unique_item_position = element.unique_item_position;
         }
     }
 
