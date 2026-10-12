@@ -16,6 +16,11 @@
 #include "match.h"
 
 #include <array>
+#include <memory>
+
+namespace JSON_checker {
+class Validator;
+}
 
 namespace Subdoc {
 
@@ -114,6 +119,12 @@ private:
     /* cached JSON parser */
     jsonsl_t m_jsn;
 
+    /**
+     * Strict JSON validator used (in addition to jsonsl) to validate the
+     * user's value, as jsonsl accepts some invalid JSON
+     */
+    std::unique_ptr<JSON_checker::Validator> m_checker;
+
     Match m_match;
 
     /* opcode */
@@ -150,6 +161,8 @@ private:
     // passing of arguments we already have (for example, the new object)
     // and also wraps the error code
     Error validate(int mode, int depth = -1);
+    bool is_strictly_valid(int mode) const;
+    bool is_valid_key(const Path::Component& component) const;
 
     enum DepthMode {
         /// Last component of the path is the key for the new item
