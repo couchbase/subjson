@@ -11,11 +11,14 @@
 #include "operations.h"
 #include "util.h"
 #include "validate.h"
+#include <JSON_checker.h>
 #include <gsl/gsl-lite.hpp>
+#include <algorithm>
 #include <charconv>
 #include <cinttypes>
 #include <limits>
 #include <string>
+#include <string_view>
 
 using Subdoc::Loc;
 using Subdoc::Error;
@@ -199,7 +202,6 @@ Operation::do_store_dict()
         const Loc& parent_loc = m_match.loc_deepest;
 
         newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
-        /*TODO: The key might have a literal '"' in it, which has been escaped? */
         if (m_match.num_siblings) {
             newdoc_at(1) = loc_COMMA_QUOTE; /* ," */
         } else {
@@ -208,6 +210,9 @@ Operation::do_store_dict()
 
         /* Create the actual key: */
         auto& comp = m_path->back();
+        if (!is_valid_key(comp)) {
+            return Error::PATH_EINVAL;
+        }
         newdoc_at(2).at = comp.pstr;
         newdoc_at(2).length = comp.len;
 
@@ -240,6 +245,14 @@ Operation::do_store_dict()
 Error Operation::do_mkdir_p(MkdirPMode mode) {
     const Loc& parent_loc = m_match.loc_deepest;
     newdoc_at(0).end_at_end(m_doc, parent_loc, Loc::NO_OVERLAP);
+
+    // All of the missing components are written to the document as keys
+    for (auto level = m_match.match_level; level < m_path->size(); level++) {
+        const auto& missing = m_path->get_component(level);
+        if (missing.ptype == JSONSL_PATH_STRING && !is_valid_key(missing)) {
+            return Error::PATH_EINVAL;
+        }
+    }
 
     /* doc_new LAYOUT:
      *
@@ -796,9 +809,24 @@ Operation::do_arith_op()
 
 Error Operation::validate(int mode, size_t depth) const {
     if (!m_userval.empty()) {
+        // A value consisting of only whitespace doesn't contain any JSON
+        // value. It must be rejected explicitly as it would otherwise pass
+        // the validation of array values ("[ ]" is a valid, empty, array),
+        // and be inserted as an empty element (e.g. [1, ] or [ ,1]).
+        if (std::all_of(m_userval.at,
+                        m_userval.at + m_userval.length,
+                        is_json_ws)) {
+            return Error::VALUE_CANTINSERT;
+        }
         int rv = Validator::validate(m_userval, m_jsn, depth, mode);
         switch (rv) {
         case JSONSL_ERROR_SUCCESS:
+            // jsonsl checks the depth and the shape of the value, but it
+            // doesn't detect all invalid JSON; verify the syntax strictly
+            // as well so that the value can't produce an invalid document
+            if (!is_strictly_valid(mode)) {
+                return Error::VALUE_CANTINSERT;
+            }
             return Error::SUCCESS;
         case JSONSL_ERROR_LEVELS_EXCEEDED:
             return Error::VALUE_ETOODEEP;
@@ -807,6 +835,44 @@ Error Operation::validate(int mode, size_t depth) const {
         }
     }
     return Error::VALUE_EMPTY;
+}
+
+/**
+ * Check that the user's value is valid JSON in the context it's inserted in
+ * with a strict JSON validator. jsonsl (used by Validator::validate())
+ * accepts some invalid JSON, such as primitives without a separating comma
+ * ([1 2]), \u escapes with fewer than four digits and invalid UTF-8, which
+ * would otherwise be inserted verbatim into the document.
+ *
+ * @param mode The Validator mode the value was validated with
+ * @return true if the value is valid
+ */
+bool Operation::is_strictly_valid(int mode) const {
+    const std::string_view value{m_userval.at, m_userval.length};
+    if ((mode & ~Validator::VALUE_PRIMITIVE) == Validator::PARENT_ARRAY) {
+        // The value may be a series of array elements (1,2), which is only
+        // valid JSON as the content of an array. Validate it in place
+        // (without copying it) as such.
+        return m_checker->validateChunks({"[", value, "]"});
+    }
+    // Otherwise the value must be a single JSON value, which is valid JSON
+    // on its own (surrounding whitespace is permitted)
+    return m_checker->validate(value);
+}
+
+/**
+ * Check that a path component may be written to the document as a
+ * dictionary key. The component is copied verbatim between the quotes of
+ * the key, so it must be valid JSON string content (for instance it can't
+ * contain an unescaped '"', control characters, invalid escape sequences or
+ * invalid UTF-8).
+ *
+ * @param component The path component to check
+ * @return true if the component is a valid key
+ */
+bool Operation::is_valid_key(const Path::Component& component) const {
+    return m_checker->validateChunks(
+            {"\"", std::string_view{component.pstr, component.len}, "\""});
 }
 
 size_t Operation::get_maxdepth(DepthMode mode) const {
@@ -851,7 +917,12 @@ Operation::op_exec(const char *pth, size_t npth)
             return Error::VALUE_CANTINSERT;
         }
 
-        status = validate(Validator::PARENT_DICT, get_maxdepth(PATH_HAS_NEWKEY));
+        // The value replaces (or is stored under) a single entry, so it must
+        // be a single JSON value. Validating it as the value of a dictionary
+        // entry alone would accept for instance 1,"key":2 (which would add
+        // another key to an object, or produce invalid JSON in an array).
+        status = validate(Validator::PARENT_DICT | Validator::VALUE_SINGLE,
+                          get_maxdepth(PATH_HAS_NEWKEY));
         if (!status.success()) {
             return status;
         }
@@ -943,6 +1014,7 @@ Operation::op_exec(const char *pth, size_t npth)
 Operation::Operation()
     : m_path(new Path()),
       m_jsn(Match::jsn_alloc()),
+      m_checker(std::make_unique<JSON_checker::Validator>()),
       m_optype(Command::GET),
       m_result(nullptr) {
 }

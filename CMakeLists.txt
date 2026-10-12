@@ -20,6 +20,7 @@ add_library(subjson STATIC
             subdoc/util.cc)
 target_include_directories(subjson PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(subjson PUBLIC platform gsl::gsl-lite)
+target_link_libraries(subjson PRIVATE JSON_checker)
 add_sanitizers(subjson)
 
 enable_testing()
