@@ -607,10 +607,9 @@ TEST_F(OpTests, testValueValidation) {
     rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", "1,2,3,4");
     ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
-    // FIXME: Should we allow this? Could be more performant, but might also
-    // be confusing!
+    // The value must be a single value (and not inject other keys)
     rv = runOp(Command::DICT_ADD_P, "foo.bar.baz", R"(1,"k2":2)");
-    ASSERT_TRUE(rv.success());
+    ASSERT_EQ(Error::VALUE_CANTINSERT, rv);
 
     // Dict key without a colon or value.
     rv = runOp(Command::DICT_ADD, "bad_dict", R"({ "foo" })");
@@ -1331,4 +1330,175 @@ TEST_F(OpTests, testNegativeIndexOnPrimitive) {
     op.set_doc(json);
     EXPECT_EQ(Error::PATH_MISMATCH,
               runOp(Command::REPLACE, "a[-1][-1]", "null"));
+}
+
+TEST_F(OpTests, testDictValueMustBeSingleValue) {
+    // DICT_ADD, DICT_UPSERT and REPLACE store a single value; a value
+    // which is only valid as part of an object (as it contains more than
+    // one key-value pair) must be rejected rather than injecting keys into
+    // the object (or invalid JSON into an array)
+    std::string json = R"({"k":1,"a":[1,2,3]})";
+    op.set_doc(json);
+    for (const auto* value : {R"(1,"z":2)", R"("s","k":2)", R"({},"z":{})"}) {
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_ADD, "new", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_ADD_P, "x.y", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_UPSERT, "k", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::DICT_UPSERT_P, "x.y", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT, runOp(Command::REPLACE, "k", value))
+                << value;
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::REPLACE, "a[0]", value))
+                << value;
+    }
+
+    // Single values of any kind (with surrounding whitespace) are fine
+    for (const auto* value :
+         {"1", R"("s")", "null", R"({"z":1,"y":2})", "[1,2]", " 2 "}) {
+        ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT, "k", value))
+                << value;
+        ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "a[0]", value))
+                << value;
+    }
+
+    // The array commands still accept multiple values
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", "4,5"));
+    EXPECT_EQ(R"({"k":1,"a":[1,2,3,4,5]})", getNewDoc());
+}
+
+TEST_F(OpTests, testWhitespaceOnlyValue) {
+    // A value consisting only of whitespace contains no JSON value, and
+    // must be rejected by all commands taking a value (it used to be
+    // accepted by the array commands, and was inserted as an empty element
+    // producing invalid JSON such as [1, ])
+    std::string json = R"({"k":1,"a":[1,2]})";
+    op.set_doc(json);
+    for (const auto* value : {" ", "\n", " \t\r\n "}) {
+        for (const auto& [command, path] :
+             std::vector<std::pair<Command, std::string>>{
+                     {Command::ARRAY_APPEND, "a"},
+                     {Command::ARRAY_APPEND_P, "a"},
+                     {Command::ARRAY_PREPEND, "a"},
+                     {Command::ARRAY_PREPEND_P, "a"},
+                     {Command::ARRAY_INSERT, "a[1]"},
+                     {Command::ARRAY_ADD_UNIQUE, "a"},
+                     {Command::ARRAY_ADD_UNIQUE_P, "a"},
+                     {Command::DICT_ADD, "new"},
+                     {Command::DICT_UPSERT, "k"},
+                     {Command::REPLACE, "k"},
+                     {Command::COUNTER, "k"}}) {
+            EXPECT_FALSE(runOp(command, path, value).success())
+                    << "command:" << int(command) << " value:'" << value << "'";
+        }
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::ARRAY_APPEND, "a", value));
+    }
+
+    // Whitespace around a value is fine
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "a", " 3 "));
+    EXPECT_EQ(R"({"k":1,"a":[1,2, 3 ]})", getNewDoc());
+}
+
+TEST_F(OpTests, testValueMustBeStrictlyValidJson) {
+    // jsonsl (used to validate the value) accepts some invalid JSON, which
+    // must not be inserted into the document
+    std::string json = R"({"k":0,"a":[1]})";
+    op.set_doc(json);
+    for (const auto* value : {"[1 2]",
+                              R"({"x":[1 2]})",
+                              R"("\u12")",
+                              "\"\xff\"",
+                              "\"\xc3\x28\"",
+                              R"(["\u12"])"}) {
+        for (const auto& [command, path] :
+             std::vector<std::pair<Command, std::string>>{
+                     {Command::DICT_ADD, "new"},
+                     {Command::DICT_UPSERT, "k"},
+                     {Command::REPLACE, "a[0]"},
+                     {Command::ARRAY_APPEND, "a"},
+                     {Command::ARRAY_PREPEND, "a"},
+                     {Command::ARRAY_INSERT, "a[0]"}}) {
+            EXPECT_EQ(Error::VALUE_CANTINSERT, runOp(command, path, value))
+                    << "command: " << int(command) << " value: " << value;
+        }
+    }
+    // Multiple primitives without a separating comma, as a list of values
+    // for the array commands
+    for (const auto* value : {"1 2", "true false", R"("a" "b")"}) {
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::ARRAY_APPEND, "a", value))
+                << value;
+    }
+    // Primitives for the commands only accepting primitives
+    for (const auto* value : {R"("\u12")", "\"\xff\""}) {
+        EXPECT_EQ(Error::VALUE_CANTINSERT,
+                  runOp(Command::ARRAY_ADD_UNIQUE, "a", value))
+                << value;
+    }
+
+    // Valid values (including multi-byte UTF-8 and \u escapes) are fine
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_APPEND,
+                    "a",
+                    "\"\\u00e9\",\"\xc3\xa9\",[1,2]"));
+    EXPECT_EQ("{\"k\":0,\"a\":[1,\"\\u00e9\",\"\xc3\xa9\",[1,2]]}",
+              getNewDoc());
+}
+
+TEST_F(OpTests, testNewKeyMustBeValidJsonString) {
+    // A key added to the document is copied verbatim from the path, so it
+    // must be valid JSON string content
+    std::string json = R"({"o":{}})";
+    op.set_doc(json);
+    // The paths flagged with true have missing intermediate components
+    for (const auto& [path, missing_parent] :
+         std::vector<std::pair<const char*, bool>>{
+                 {"new\xff", false},
+                 {"new\xc3\x28", false},
+                 {"new\xc0\xaf", false}, // Overlong '/'
+                 {"new\xe0\x80\xaf", false}, // Overlong '/'
+                 {"new\xed\xa0\x80", false}, // Surrogate U+D800
+                 {"new\xf4\x90\x80\x80", false}, // U+110000
+                 {"new\xe2\x82", false}, // Truncated
+                 {"new\x1f", false},
+                 {"o.new\xff", false},
+                 {"o.`new\xff`", false},
+                 {"o.x.new\xff", true},
+                 {"new\xff.x", true}}) {
+        // The commands flagged with true create missing path components
+        for (const auto& [command, creates_parents] :
+             std::vector<std::pair<Command, bool>>{
+                     {Command::DICT_ADD, false},
+                     {Command::DICT_UPSERT, false},
+                     {Command::DICT_ADD_P, true},
+                     {Command::DICT_UPSERT_P, true},
+                     {Command::COUNTER_P, true},
+                     {Command::ARRAY_APPEND_P, true},
+                     {Command::ARRAY_PREPEND_P, true},
+                     {Command::ARRAY_ADD_UNIQUE_P, true}}) {
+            // A command which doesn't create the missing intermediate
+            // components fails with PATH_ENOENT before the key is checked
+            const auto expected = missing_parent && !creates_parents
+                                          ? Error::PATH_ENOENT
+                                          : Error::PATH_EINVAL;
+            EXPECT_EQ(expected, runOp(command, path, "1"))
+                    << "command: " << int(command) << " path: " << path;
+        }
+    }
+    EXPECT_EQ(Error::PATH_EINVAL, runOp(Command::COUNTER, "new\xff", "1"));
+
+    // Valid keys (including multi-byte UTF-8 and escapes) are fine
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::DICT_ADD_P, "o.\xc3\xa9.a\\tb", "1"));
+    EXPECT_EQ("{\"o\":{\"\xc3\xa9\":{\"a\\tb\":1}}}", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::DICT_ADD, "\xf4\x8f\xbf\xbf", "1")); // U+10FFFF
+    EXPECT_EQ("{\"o\":{},\"\xf4\x8f\xbf\xbf\":1}", getNewDoc());
 }
