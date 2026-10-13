@@ -202,6 +202,8 @@ const std::vector<Request> lookups = {
         {Command::GET, {}},
         {Command::EXISTS, {}},
         {Command::GET_COUNT, {}},
+        {Command::ARRAY_INDEX_OF, "1"},
+        {Command::ARRAY_INDEX_OF, R"("s")"},
 };
 
 /** The number of random documents each test runs operations on */
@@ -392,6 +394,115 @@ TEST(InvariantTest, ArrayAddUniqueMatchesReference) {
                               getElements(outcome.newdoc, path))
                             << "path: " << path << " value: " << value
                             << "\ndoc: " << doc;
+                }
+            }
+        }
+    }
+    EXPECT_LT(NumDocuments, compared);
+}
+
+/**
+ * ARRAY_INDEX_OF must return the index of the first element equal to the
+ * value (compared as raw JSON text), inspecting the elements in order like
+ * ARRAY_ADD_UNIQUE: it fails with PATH_MISMATCH if an array or object is
+ * found before the value, and with VALUE_ENOENT if the value isn't found.
+ */
+TEST(InvariantTest, ArrayIndexOfMatchesReference) {
+    std::mt19937 gen(0x1de);
+    size_t compared = 0;
+    for (int iteration = 0; iteration < NumDocuments; ++iteration) {
+        const auto doc = randomDocument(gen);
+        for (const auto& path : arrayPaths) {
+            const auto elements = getElements(doc, path);
+            if (!elements) {
+                continue;
+            }
+            for (const auto& value : valuesToSearchFor(*elements)) {
+                if (!isPrimitive(value)) {
+                    continue;
+                }
+                ++compared;
+                Error expected = Error::VALUE_ENOENT;
+                std::string index;
+                for (size_t ii = 0; ii < elements->size(); ++ii) {
+                    if (!isPrimitive((*elements)[ii])) {
+                        expected = Error::PATH_MISMATCH;
+                        break;
+                    }
+                    if ((*elements)[ii] == value) {
+                        expected = Error::SUCCESS;
+                        index = std::to_string(ii);
+                        break;
+                    }
+                }
+                const auto outcome =
+                        execute(doc, Command::ARRAY_INDEX_OF, path, value);
+                ASSERT_EQ(expected, outcome.status)
+                        << "path: " << path << " value: " << value
+                        << "\ndoc: " << doc;
+                if (outcome.status.success()) {
+                    ASSERT_EQ(index, outcome.match)
+                            << "path: " << path << " value: " << value
+                            << "\ndoc: " << doc;
+                }
+            }
+        }
+    }
+    EXPECT_LT(NumDocuments, compared);
+}
+
+/**
+ * ARRAY_REMOVE_FIRST / ARRAY_REMOVE_ALL must remove the first / all
+ * elements equal to the value (compared as raw JSON text), and fail if
+ * there are none or if the array contains a non-primitive.
+ */
+TEST(InvariantTest, ArrayRemoveValueMatchesReference) {
+    std::mt19937 gen(0xdead);
+    size_t compared = 0;
+    for (int iteration = 0; iteration < NumDocuments; ++iteration) {
+        const auto doc = randomDocument(gen);
+        for (const auto& path : arrayPaths) {
+            const auto elements = getElements(doc, path);
+            if (!elements) {
+                continue;
+            }
+            const bool primitives = std::ranges::all_of(*elements, isPrimitive);
+            for (const auto& value : valuesToSearchFor(*elements)) {
+                if (!isPrimitive(value)) {
+                    continue;
+                }
+                for (const bool all : {false, true}) {
+                    ++compared;
+                    std::vector<std::string> expectedElements;
+                    bool removed = false;
+                    for (const auto& element : *elements) {
+                        if (element == value && (all || !removed)) {
+                            removed = true;
+                        } else {
+                            expectedElements.emplace_back(element);
+                        }
+                    }
+                    Error expected = Error::SUCCESS;
+                    if (!primitives) {
+                        expected = Error::PATH_MISMATCH;
+                    } else if (!removed) {
+                        expected = Error::VALUE_ENOENT;
+                    }
+                    const auto outcome =
+                            execute(doc,
+                                    all ? Command::ARRAY_REMOVE_ALL
+                                        : Command::ARRAY_REMOVE_FIRST,
+                                    path,
+                                    value);
+                    ASSERT_EQ(expected, outcome.status)
+                            << "path: " << path << " value: " << value
+                            << " all: " << all << "\ndoc: " << doc;
+                    if (outcome.status.success()) {
+                        ASSERT_EQ(expectedElements,
+                                  getElements(outcome.newdoc, path))
+                                << "path: " << path << " value: " << value
+                                << " all: " << all << "\ndoc: " << doc;
+                    }
                 }
             }
         }

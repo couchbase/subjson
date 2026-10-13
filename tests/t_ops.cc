@@ -1754,6 +1754,8 @@ TEST_F(OpTests, testWhitespaceOnlyValue) {
                      {Command::ARRAY_INSERT, "a[1]"},
                      {Command::ARRAY_ADD_UNIQUE, "a"},
                      {Command::ARRAY_ADD_UNIQUE_P, "a"},
+                     {Command::ARRAY_REMOVE_FIRST, "a"},
+                     {Command::ARRAY_REMOVE_ALL, "a"},
                      {Command::DICT_ADD, "new"},
                      {Command::DICT_UPSERT, "k"},
                      {Command::REPLACE, "k"},
