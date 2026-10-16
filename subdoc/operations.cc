@@ -34,6 +34,24 @@ static Loc loc_COMMA_QUOTE(",\"", 2);
 static Loc loc_QUOTE_COLON("\":", 2);
 
 /**
+ * Get the value without any whitespace around it. The elements in an
+ * array are compared without the whitespace around them, so the same must
+ * be done for the value they're compared with (the validation of the
+ * value accepts whitespace around it).
+ */
+static Loc trim_json_ws(const Loc& value) {
+    const char* begin = value.at;
+    const char* end = value.at + value.length;
+    while (begin != end && is_json_ws(*begin)) {
+        ++begin;
+    }
+    while (end != begin && is_json_ws(*(end - 1))) {
+        --end;
+    }
+    return {begin, static_cast<size_t>(end - begin)};
+}
+
+/**
  * Performs common matching using the currently designated path. Note that
  * unlike do_get(), a missing match is not an error. This is the reason do_get()
  * and do_match_common() are separate functions, as do_get() (i.e. a simple get
@@ -391,7 +409,7 @@ Operation::do_list_prepend()
 Error
 Operation::do_array_remove_value(bool removeAll)
 {
-    m_match.match_value = m_userval;
+    m_match.match_value = trim_json_ws(m_userval);
     m_match.remove_all_matches = removeAll;
     // remove_value_callback() relies on filtered_buf starting out empty
     // to decide when to emit a separating comma.
@@ -440,7 +458,7 @@ Operation::do_array_remove_value(bool removeAll)
  * element.
  */
 Error Operation::do_array_index_of() {
-    m_match.ensure_unique = m_userval;
+    m_match.ensure_unique = trim_json_ws(m_userval);
 
     Error rv = do_match_common(Match::GET_MATCH_ONLY);
     if (!rv.success()) {
@@ -558,7 +576,7 @@ Operation::do_list_append()
     // Find the match itself, no magic needed!
     bool is_unique = m_optype.base() == Command::ARRAY_ADD_UNIQUE;
     if (is_unique) {
-        m_match.ensure_unique = m_userval;
+        m_match.ensure_unique = trim_json_ws(m_userval);
     }
 
     rv = do_match_common(Match::GET_MATCH_ONLY);

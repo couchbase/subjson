@@ -446,6 +446,20 @@ TEST_F(OpTests, testUniqueComparesWholeElement) {
               runOp(Command::ARRAY_ADD_UNIQUE, "a", "1234"));
 }
 
+TEST_F(OpTests, testArraySearchIgnoresWhitespaceAroundValue) {
+    // Whitespace around the value is accepted by the validation, so it
+    // must not affect the comparison with the elements in the array
+    const std::string json = R"({"a":[1,2]})";
+    op.set_doc(json);
+    EXPECT_EQ(Error::DOC_EEXISTS, runOp(Command::ARRAY_ADD_UNIQUE, "a", " 1 "));
+    EXPECT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INDEX_OF, "a", " 2"));
+    EXPECT_EQ("1", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_REMOVE_FIRST, "a", "1 "));
+    EXPECT_EQ(R"({"a":[2]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_REMOVE_ALL, "a", "\t2\n"));
+    EXPECT_EQ(R"({"a":[1]})", getNewDoc());
+}
+
 TEST_F(OpTests, testUniqueToplevel) {
     std::string json("[]");
     std::string doc;
