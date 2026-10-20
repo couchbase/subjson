@@ -558,6 +558,19 @@ struct jsonsl_st {
      */
     size_t skip_bytes;
 
+    /**
+     * May be set together with skip_bytes in a LIST or OBJECT PUSH
+     * callback, to skip over the first skip_members elements (or members)
+     * of the container just pushed rather than the whole container:
+     * skip_bytes must then be the offset from the opening bracket (or
+     * brace) to the comma following the last skipped element, or to the
+     * closing bracket (or brace) if all elements are skipped. Parsing
+     * continues at that character as if the skipped elements had been
+     * parsed (without any callbacks for them, and without validating
+     * them).
+     */
+    size_t skip_members;
+
 #ifndef JSONSL_NO_JPR
     size_t jpr_count;
     jsonsl_jpr_t *jprs;

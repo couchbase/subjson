@@ -290,6 +290,16 @@ size_t find_unescaped_quote(const char* begin,
     return std::string_view::npos;
 }
 
+/** Placeholder visitor type used when elements aren't visited */
+using NoVisitor = bool (*)(std::string_view);
+
+/**
+ * When visiting the members of an object, the size of a member value
+ * (array or object) beyond which the rest of it is scanned without
+ * visiting (rescanning the beginning of it) as that is faster.
+ */
+constexpr size_t LargeValue = 512;
+
 /** Value for scan_container_impl()'s target when not locating an element */
 constexpr size_t NoTarget = std::numeric_limits<size_t>::max();
 
@@ -310,6 +320,11 @@ bool is_array(std::string_view buffer) {
     return !buffer.empty() && buffer.front() == '[';
 }
 
+/** Check if the buffer starts with an object (rather than an array) */
+bool is_object(std::string_view buffer) {
+    return !buffer.empty() && buffer.front() == '{';
+}
+
 /**
  * Scan the array (or object) at the beginning of the buffer.
  *
@@ -320,13 +335,20 @@ bool is_array(std::string_view buffer) {
  *                stops with Status::Found when it returns false. When
  *                visiting elements the scan stops with Status::NonPrimitive
  *                if an element is an array or object (once the element has
- *                been scanned). Must be null when scanning an object.
+ *                been scanned). See VisitMembers for objects.
  * @param target If not NoTarget (and visitor is null), the index of the
  *               element to locate; the scan stops with Status::Found once
  *               the element is located.
  * @param max_depth The maximum nesting depth (see scan_array())
+ * @tparam VisitMembers Set to scan an object, calling the visitor at the
+ *                      beginning of each member (before its value is
+ *                      scanned) with the rest of the buffer from the
+ *                      member's key. When it returns false the scan stops
+ *                      with Status::Found, found_index and element_offset
+ *                      referring to the member (element_length is not
+ *                      set).
  */
-template <typename Visitor>
+template <typename Visitor, bool VisitMembers = false>
 ArrayScanResult scan_container_impl(
         std::string_view buffer,
         Visitor* visitor,
@@ -362,6 +384,11 @@ ArrayScanResult scan_container_impl(
             result.length = idx + 1;
             return result;
         }
+        if (VisitMembers && !(*visitor)({begin + idx, size - idx})) {
+            result.status = Status::Found;
+            result.element_offset = idx;
+            return result;
+        }
     }
 
     // The depth includes the container itself (which is the first open
@@ -379,10 +406,30 @@ ArrayScanResult scan_container_impl(
     // Carried over between blocks
     bool prev_escaped = false;
     uint64_t in_string_carry = 0;
+    // Offset of the value (array or object) of the current member (only
+    // maintained when visiting members)
+    size_t value_begin = 0;
 
     // Visit the element ending at pos, return false if the scan should
     // stop (with the result updated)
     auto visit = [&](size_t pos) -> bool {
+        if constexpr (VisitMembers) {
+            // Visit the member following the comma (if any)
+            if (begin[pos] != ',') {
+                return true;
+            }
+            size_t start = pos + 1;
+            while (start < size && is_json_ws(begin[start])) {
+                ++start;
+            }
+            if (!(*visitor)({begin + start, size - start})) {
+                result.status = Status::Found;
+                result.found_index = num_commas + 1;
+                result.element_offset = start;
+                return false;
+            }
+            return true;
+        }
         if (non_primitive) {
             result.status = Status::NonPrimitive;
             return false;
@@ -492,7 +539,12 @@ ArrayScanResult scan_container_impl(
             prev = idx + 1;
 
             if (masks.open & bracket) {
-                if (depth == 1 && visitor != nullptr) {
+                if constexpr (VisitMembers) {
+                    if (depth == 1) {
+                        // The value of a member
+                        value_begin = offset + idx;
+                    }
+                } else if (depth == 1 && visitor != nullptr) {
                     // Elements can't be compared with non-primitives. This
                     // is reported when the element is visited (once it has
                     // been scanned), so that a depth error in it takes
@@ -543,15 +595,31 @@ ArrayScanResult scan_container_impl(
             !top_level_commas(commas & range_mask(prev, BlockSize), offset)) {
             return result;
         }
+        if constexpr (VisitMembers) {
+            if (depth > 1 && next - value_begin > LargeValue) {
+                // The value of the current member is large; the rest of
+                // it is scanned faster without visiting anything
+                const auto value = scan_container_impl<NoVisitor>(
+                        {begin + value_begin, size - value_begin},
+                        nullptr,
+                        NoTarget,
+                        max_depth - 1);
+                if (value.status != Status::Success) {
+                    result.status = value.status;
+                    return result;
+                }
+                next = value_begin + value.length;
+                depth = 1;
+                in_string_carry = 0;
+                prev_escaped = false;
+            }
+        }
         offset = next;
     }
 
     // Ran off the end of the buffer
     return result;
 }
-
-/** Placeholder visitor type used when elements aren't visited */
-using NoVisitor = bool (*)(std::string_view);
 
 } // namespace
 
@@ -582,6 +650,54 @@ ArrayScanResult find_array_element(std::string_view buffer,
 
 ArrayScanResult scan_container(std::string_view buffer, size_t max_depth) {
     return scan_container_impl<NoVisitor>(buffer, nullptr, NoTarget, max_depth);
+}
+
+ArrayScanResult find_object_member(std::string_view buffer,
+                                   std::string_view key,
+                                   size_t max_depth) {
+    if (!is_object(buffer)) {
+        return {};
+    }
+    bool escaped = false;
+    // Return false (to stop the scan) if the member (beginning with its
+    // key) has the requested key or a key with an escape sequence which
+    // may be equal to it
+    auto visitor = [key, &escaped](std::string_view member) {
+        if (member.size() < 2 || member.front() != '"') {
+            return true;
+        }
+        const auto raw = member.substr(1);
+        if (raw.size() <= key.size()) {
+            // Truncated; let the scan report it
+            return true;
+        }
+        if (!key.empty() && raw.front() != key.front() && raw.front() != '\\') {
+            // Most keys differ in the first character
+            return true;
+        }
+        // The unescaped key is equal to the raw key up to the first
+        // backslash, so it can only be equal to the requested key if the
+        // raw key is, or if there is a backslash where they differ (or
+        // before; it is cheaper to look for one in the whole prefix)
+        if (std::memcmp(raw.data(), key.data(), key.size()) == 0) {
+            if (raw[key.size()] == '"') {
+                return false;
+            }
+            if (raw[key.size()] != '\\') {
+                return true;
+            }
+        } else if (std::memchr(raw.data(), '\\', key.size()) == nullptr) {
+            return true;
+        }
+        escaped = true;
+        return false;
+    };
+    auto result = scan_container_impl<decltype(visitor), true>(
+            buffer, &visitor, NoTarget, max_depth);
+    if (escaped) {
+        result.status = ArrayScanResult::Status::Escaped;
+    }
+    return result;
 }
 
 size_t find_string_end(std::string_view buffer) {

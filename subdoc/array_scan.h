@@ -37,7 +37,13 @@ struct ArrayScanResult {
          */
         TooDeep,
         /** The array is not terminated within the buffer, or is malformed */
-        Malformed
+        Malformed,
+        /**
+         * A key with an escape sequence (which may be equal to the
+         * requested key) was found before the requested key (only
+         * reported by find_object_member())
+         */
+        Escaped
     };
 
     Status status = Status::Malformed;
@@ -55,8 +61,9 @@ struct ArrayScanResult {
     size_t num_elements = 0;
 
     /**
-     * The (zero-based) index of the element equal to the needle. Only
-     * valid when status is Found.
+     * The (zero-based) index of the element equal to the needle (or the
+     * member with the requested key, or with an escaped key for
+     * find_object_member()). Only valid when status is Found (or Escaped).
      */
     size_t found_index = 0;
 
@@ -74,6 +81,9 @@ struct ArrayScanResult {
      *   status is Success and num_elements is non-zero)
      * - find_array_element(): the requested element (only valid when status
      *   is Found)
+     * - find_object_member(): the beginning (the key) of the member with
+     *   the requested key, or with an escaped key (only valid when status
+     *   is Found or Escaped; element_length is not set)
      */
     size_t element_offset = 0;
     size_t element_length = 0;
@@ -189,6 +199,29 @@ ArrayScanResult filter_array(
         bool remove_all,
         std::string& survivors,
         size_t max_depth = std::numeric_limits<size_t>::max());
+
+/**
+ * Locate the member with the given key in the JSON object starting at the
+ * beginning of the provided buffer, with the same restrictions as
+ * scan_array(). The keys in the object are compared byte-wise with the
+ * requested (unescaped) key, so the scan stops at the first key with an
+ * escape sequence which may be equal to it (Status::Escaped), leaving the
+ * comparison to the caller.
+ *
+ * @param buffer The buffer to scan. The first character must be the opening
+ *               brace of the object, and the buffer may extend beyond its
+ *               end.
+ * @param key The (unescaped) key to look for
+ * @param max_depth The maximum nesting depth (see scan_array());
+ *                  Status::TooDeep is returned if it is exceeded
+ * @return The result of the scan. Status::Found (or Status::Escaped) with
+ *         found_index and element_offset referring to the member, or
+ *         Status::Success (see length and num_elements) if the object
+ *         doesn't have a member with the key.
+ */
+ArrayScanResult find_object_member(std::string_view buffer,
+                                   std::string_view key,
+                                   size_t max_depth);
 
 /**
  * Locate the end of the JSON string starting at the beginning of the

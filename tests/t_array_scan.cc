@@ -613,6 +613,153 @@ TEST(ArrayScanTest, FindStringEndBlockBoundaries) {
     }
 }
 
+TEST(ArrayScanTest, FindObjectMember) {
+    using Subdoc::find_object_member;
+    constexpr size_t depth = 100;
+    const std::string obj =
+            R"({"a":1, "ab" : [1,{"a":2}], "abc":"x,}\"y","":null,"a":3})";
+    const std::string doc = obj + R"(,"next":1})";
+
+    auto result = find_object_member(doc, "a", depth);
+    ASSERT_EQ(ScanStatus::Found, result.status);
+    EXPECT_EQ(0, result.found_index);
+    EXPECT_EQ(1, result.element_offset);
+
+    result = find_object_member(doc, "ab", depth);
+    ASSERT_EQ(ScanStatus::Found, result.status);
+    EXPECT_EQ(1, result.found_index);
+    EXPECT_EQ(obj.find(R"("ab")"), result.element_offset);
+
+    result = find_object_member(doc, "abc", depth);
+    ASSERT_EQ(ScanStatus::Found, result.status);
+    EXPECT_EQ(2, result.found_index);
+    EXPECT_EQ(obj.find(R"("abc")"), result.element_offset);
+
+    result = find_object_member(doc, "", depth);
+    ASSERT_EQ(ScanStatus::Found, result.status);
+    EXPECT_EQ(3, result.found_index);
+
+    // Not found; the end of the object is located
+    for (const std::string key : {"b", "abcd", "next", "k"}) {
+        result = find_object_member(doc, key, depth);
+        ASSERT_EQ(ScanStatus::Success, result.status) << key;
+        EXPECT_EQ(obj.size(), result.length) << key;
+        EXPECT_EQ(5, result.num_elements) << key;
+    }
+
+    // Empty object
+    result = find_object_member("{ }", "a", depth);
+    ASSERT_EQ(ScanStatus::Success, result.status);
+    EXPECT_EQ(3, result.length);
+    EXPECT_EQ(0, result.num_elements);
+
+    // A key with an escape sequence before the requested key, which may
+    // or may not be equal to it (it is equal to the first one)
+    for (const std::string key : {"ab", "a"}) {
+        result =
+                find_object_member(R"({"x":1,"a\u0062":2,"ab":3})", key, depth);
+        ASSERT_EQ(ScanStatus::Escaped, result.status) << key;
+        EXPECT_EQ(1, result.found_index) << key;
+        EXPECT_EQ(7, result.element_offset) << key;
+    }
+    // ... but not if it differs before the escape sequence
+    result = find_object_member(R"({"x":1,"q\u0062":2,"ab":3})", "ab", depth);
+    ASSERT_EQ(ScanStatus::Found, result.status);
+    EXPECT_EQ(2, result.found_index);
+
+    // Not an object, malformed and too deep
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member("[1]", "a", depth).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member(R"({"a":[1,"b":2})", "b", depth).status);
+    EXPECT_EQ(ScanStatus::TooDeep,
+              find_object_member(R"({"a":[[1]],"b":2})", "b", 2).status);
+    // A container at the maximum depth must be empty
+    EXPECT_EQ(ScanStatus::TooDeep,
+              find_object_member(R"({"a":[[1]],"b":2})", "b", 3).status);
+    EXPECT_EQ(ScanStatus::Found,
+              find_object_member(R"({"a":[[]],"b":2})", "b", 3).status);
+    EXPECT_EQ(ScanStatus::Found,
+              find_object_member(R"({"a":[[1]],"b":2})", "b", 4).status);
+}
+
+// Values larger than the size where the rest of them is scanned without
+// visiting the members
+TEST(ArrayScanTest, FindObjectMemberLargeValues) {
+    using Subdoc::find_object_member;
+    std::string large = "[";
+    for (int ii = 0; ii < 200; ++ii) {
+        large += (ii ? "," : "") + std::string(R"({"a":"x,\"y]"})");
+    }
+    large += "]";
+    for (size_t prefix = 0; prefix < 70; ++prefix) {
+        const std::string obj = "{\"" + std::string(prefix, 'p') +
+                                "\":" + large + R"(,"b":)" + large +
+                                R"(,"c":1})";
+        auto result = find_object_member(obj, "c", 100);
+        ASSERT_EQ(ScanStatus::Found, result.status) << prefix;
+        EXPECT_EQ(2, result.found_index) << prefix;
+        EXPECT_EQ(obj.rfind(R"("c")"), result.element_offset) << prefix;
+        result = find_object_member(obj, "missing", 100);
+        ASSERT_EQ(ScanStatus::Success, result.status) << prefix;
+        EXPECT_EQ(obj.size(), result.length) << prefix;
+        EXPECT_EQ(3, result.num_elements) << prefix;
+        // The limit applies within the large values as well
+        EXPECT_EQ(ScanStatus::TooDeep, find_object_member(obj, "c", 2).status)
+                << prefix;
+    }
+}
+
+TEST(ArrayScanTest, FindObjectMemberRandom) {
+    std::mt19937 gen(1234);
+    for (int ii = 0; ii < 5000; ++ii) {
+        // The keys as written in the document
+        std::vector<std::string> keys;
+        std::string obj = "{";
+        const auto members = gen() % 8;
+        for (size_t jj = 0; jj < members; ++jj) {
+            if (jj) {
+                obj += gen() % 2 ? "," : " ,\n";
+            }
+            std::string key = "k" + std::to_string(gen() % 5);
+            if (gen() % 8 == 0) {
+                key = "k\\u003" + std::to_string(gen() % 5);
+            }
+            keys.push_back(key);
+            obj += "\"" + key + "\"" + (gen() % 2 ? ":" : " : ");
+            randomScanValue(gen, obj, 1);
+        }
+        obj += "}";
+        const std::string key = "k" + std::to_string(gen() % 6);
+
+        // The first member with the key, unless a key with an escape
+        // sequence comes before it
+        auto expected = ScanStatus::Success;
+        size_t index = 0;
+        for (size_t jj = 0; jj < keys.size(); ++jj) {
+            if (keys[jj] == key) {
+                expected = ScanStatus::Found;
+                index = jj;
+                break;
+            }
+            if (keys[jj].find('\\') != std::string::npos) {
+                expected = ScanStatus::Escaped;
+                index = jj;
+                break;
+            }
+        }
+        const auto result = Subdoc::find_object_member(obj + ",1]", key, 100);
+        ASSERT_EQ(expected, result.status) << obj << " key: " << key;
+        if (expected == ScanStatus::Success) {
+            EXPECT_EQ(obj.size(), result.length) << obj;
+            EXPECT_EQ(keys.size(), result.num_elements) << obj;
+        } else {
+            EXPECT_EQ(index, result.found_index) << obj << " key: " << key;
+            EXPECT_EQ('"', obj[result.element_offset]) << obj;
+        }
+    }
+}
+
 TEST(ArrayScanTest, LongStrings) {
     // Strings spanning several blocks, with the escapes and the closing
     // quote at every position around the block boundaries

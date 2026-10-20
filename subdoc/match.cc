@@ -143,6 +143,7 @@ static void scan_matched_container(jsonsl_t jsn,
         m->matchres = JSONSL_MATCH_TYPE_MISMATCH;
         return;
     case ArrayScanResult::Status::Malformed:
+    case ArrayScanResult::Status::Escaped:
         m->status = JSONSL_ERROR_GENERIC;
         return;
     case ArrayScanResult::Status::TooDeep:
@@ -270,6 +271,7 @@ static void scan_matched_index(jsonsl_t jsn,
         return;
     case ArrayScanResult::Status::NonPrimitive:
     case ArrayScanResult::Status::Malformed:
+    case ArrayScanResult::Status::Escaped:
         m->status = JSONSL_ERROR_GENERIC;
         return;
     case ArrayScanResult::Status::TooDeep:
@@ -347,6 +349,57 @@ static void skip_string(jsonsl_t jsn,
             find_string_end({at, static_cast<size_t>(ctx->buffer_end - at)});
     if (end != std::string_view::npos) {
         jsn->skip_bytes = end;
+    }
+}
+
+/**
+ * Skip the members of the object (which was just pushed, and is part of
+ * the path) preceding the member with the key of the next path component,
+ * with find_object_member() rather than letting jsonsl parse them. jsonsl
+ * continues at the comma preceding that member (or at the closing brace if
+ * there is no such member) as if it had parsed the members before it.
+ *
+ * If the scan finds a key with an escape sequence first, the members
+ * before it are skipped and jsonsl compares the keys from there.
+ *
+ * @param st The state of the object
+ * @param at Pointer to the opening brace of the object
+ */
+static void skip_to_member(jsonsl_t jsn,
+                           ParseContext* ctx,
+                           const jsonsl_state_st* st,
+                           const jsonsl_char_t* at) {
+    const auto& component = ctx->jpr->components[st->level];
+    const auto result =
+            find_object_member({at, static_cast<size_t>(ctx->buffer_end - at)},
+                               {component.pstr, component.len},
+                               jsonsl_depth_limit(jsn, st));
+    switch (result.status) {
+    case ArrayScanResult::Status::Found:
+    case ArrayScanResult::Status::Escaped:
+        if (result.found_index != 0) {
+            // The comma preceding the member
+            size_t comma = result.element_offset - 1;
+            while (is_json_ws(at[comma])) {
+                --comma;
+            }
+            jsn->skip_bytes = comma;
+            jsn->skip_members = result.found_index;
+        }
+        return;
+    case ArrayScanResult::Status::Success:
+        if (result.num_elements != 0) {
+            // Continue at the closing brace
+            jsn->skip_bytes = result.length - 1;
+            jsn->skip_members = result.num_elements;
+        }
+        return;
+    case ArrayScanResult::Status::Malformed:
+    case ArrayScanResult::Status::NonPrimitive:
+    case ArrayScanResult::Status::TooDeep:
+        // Let jsonsl parse the object (and report any errors, for instance
+        // in a truncated document, as it would have without the scan)
+        return;
     }
 }
 
@@ -457,6 +510,8 @@ static void push_callback(jsonsl_t jsn,
             m->loc_deepest.at = at;
             if (can_scan_to_index(ctx, st)) {
                 scan_matched_index(jsn, ctx, st, at);
+            } else if (ctx->buffer_contiguous && st->type == JSONSL_T_OBJECT) {
+                skip_to_member(jsn, ctx, st, at);
             }
         } else if (st->mres == JSONSL_MATCH_TYPE_MISMATCH) {
             st->ignore_callback = 1;

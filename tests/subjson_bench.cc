@@ -115,9 +115,17 @@ std::string makeStringDocument(size_t bytes) {
 
 /**
  * Build a document with a small header, an object "obj" of (at least) the
- * requested size in bytes and a trailing member.
+ * requested size in bytes and a trailing member. The keys in the object are
+ * "key-number-<N>".
+ *
+ * @param bytes The approximate size of the object
+ * @param objectValues If set the values in the object are small objects,
+ *                     otherwise a mix of short strings and numbers
+ * @param lastKey If non-null, set to the last key in the object
  */
-std::string makeObjectDocument(size_t bytes) {
+std::string makeObjectDocument(size_t bytes,
+                               bool objectValues = false,
+                               std::string* lastKey = nullptr) {
     std::string doc = R"({"type":"bench","meta":{"owner":"me","v":1},"obj":{)";
     const auto start = doc.size();
     size_t idx = 0;
@@ -125,11 +133,18 @@ std::string makeObjectDocument(size_t bytes) {
         if (idx) {
             doc.push_back(',');
         }
-        doc.append(R"("key-number-)" + std::to_string(idx) + R"(":)");
-        if (idx % 2) {
+        const auto key = "key-number-" + std::to_string(idx);
+        doc.append("\"" + key + "\":");
+        if (objectValues) {
+            doc.append(R"({"id":)" + std::to_string(idx) +
+                       R"(,"name":"user","tags":["a","b"]})");
+        } else if (idx % 2) {
             doc.append(std::to_string(idx * 7919));
         } else {
             doc.append(R"("value-number-)" + std::to_string(idx) + "\"");
+        }
+        if (lastKey) {
+            *lastKey = key;
         }
         ++idx;
     }
@@ -369,6 +384,19 @@ void DictUpsertNewKey(benchmark::State& state) {
     runOp(state, doc, Command::DICT_UPSERT, "obj.newkey", "1");
 }
 
+/** The values in the object are small objects */
+void DictAddNewKeyObjectValues(benchmark::State& state) {
+    const auto doc = makeObjectDocument(state.range(0), true);
+    runOp(state, doc, Command::DICT_ADD, "obj.newkey", "1");
+}
+
+/** An existing key at the end of the object */
+void DictUpsertLastKey(benchmark::State& state) {
+    std::string lastKey;
+    const auto doc = makeObjectDocument(state.range(0), false, &lastKey);
+    runOp(state, doc, Command::DICT_UPSERT, "obj." + lastKey, "1");
+}
+
 /** Reference: an existing key at the beginning of the object */
 void DictUpsertFirstKey(benchmark::State& state) {
     const auto doc = makeObjectDocument(state.range(0));
@@ -406,6 +434,8 @@ SUBJSON_BENCHMARK(GetObject);
 SUBJSON_BENCHMARK(RemoveObject);
 SUBJSON_BENCHMARK(DictAddNewKey);
 SUBJSON_BENCHMARK(DictUpsertNewKey);
+SUBJSON_BENCHMARK(DictAddNewKeyObjectValues);
+SUBJSON_BENCHMARK(DictUpsertLastKey);
 SUBJSON_BENCHMARK(DictUpsertFirstKey);
 
 BENCHMARK_MAIN();

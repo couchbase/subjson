@@ -122,6 +122,7 @@ void jsonsl_reset(jsonsl_t jsn)
     jsn->level = 0;
     jsn->stopfl = 0;
     jsn->skip_bytes = 0;
+    jsn->skip_members = 0;
     jsn->in_escape = 0;
     jsn->expecting = 0;
 
@@ -640,9 +641,24 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             }
             if (jsn->skip_bytes) {
                 size_t skip = jsn->skip_bytes;
+                size_t members = jsn->skip_members;
                 jsn->skip_bytes = 0;
+                jsn->skip_members = 0;
                 /* The closing bracket must be within this buffer, otherwise
                  * ignore the request and parse the container as normal */
+                if (skip < nbytes && members) {
+                    /* Continue at the comma (or closing bracket) following
+                     * the skipped elements, as if they had been parsed */
+                    c += skip - 1;
+                    jsn->pos += skip - 1;
+                    nbytes -= skip - 1;
+                    state->nelem = state->type == JSONSL_T_OBJECT ? members * 2
+                                                                  : members;
+                    jsn->can_insert = 0;
+                    jsn->expecting = ',';
+                    jsn->tok_last = 0;
+                    CONTINUE_NEXT_CHAR();
+                }
                 if (skip < nbytes) {
                     c += skip;
                     jsn->pos += skip;
