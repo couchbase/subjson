@@ -234,6 +234,20 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
     state->ignore_callback = jsn->stack[jsn->level-1].ignore_callback; \
     state->pos_begin = jsn->pos;
 
+/* Skip to the closing quote of the string just pushed, if requested by
+ * the PUSH callback (see jsonsl_st::skip_bytes). The closing quote is
+ * processed as normal (popping the string). */
+#define SKIP_STRING_CONTENTS           \
+    if (jsn->skip_bytes) {             \
+        size_t skip = jsn->skip_bytes; \
+        jsn->skip_bytes = 0;           \
+        if (skip < nbytes) {           \
+            c += skip - 1;             \
+            jsn->pos += skip - 1;      \
+            nbytes -= skip - 1;        \
+        }                              \
+    }
+
 #define STACK_POP_NOPOS \
     state->pos_cur = jsn->pos; \
     state = jsn->stack + (--jsn->level);
@@ -514,6 +528,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     STACK_PUSH;
                     state->type = JSONSL_T_STRING;
                     DO_CALLBACK(STRING, PUSH);
+                    SKIP_STRING_CONTENTS;
 
                 } else {
                     /* hash key */
@@ -536,6 +551,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 jsn->expecting = ',';
                 jsn->tok_last = 0;
                 DO_CALLBACK(STRING, PUSH);
+                SKIP_STRING_CONTENTS;
                 CONTINUE_NEXT_CHAR();
 
             case JSONSL_T_SPECIAL:

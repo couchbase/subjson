@@ -2430,6 +2430,15 @@ TEST_F(OpTests, LongStrings) {
               getNewDoc());
 }
 
+// The contents of the skipped strings aren't validated (the document is
+// required to be valid JSON)
+TEST_F(OpTests, SkipStringsInvalidDocument) {
+    const std::string control = "{\"s\":\"a\tb\",\"t\":1}";
+    op.set_doc(control);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "t"));
+    EXPECT_EQ("1", returnedMatch());
+}
+
 // The members of the objects in the path, after large values and with
 // escaped and duplicate keys
 TEST_F(OpTests, ObjectMemberInPath) {

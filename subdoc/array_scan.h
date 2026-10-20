@@ -190,4 +190,17 @@ ArrayScanResult filter_array(
         std::string& survivors,
         size_t max_depth = std::numeric_limits<size_t>::max());
 
+/**
+ * Locate the end of the JSON string starting at the beginning of the
+ * provided buffer. Like scan_array() this does not validate the contents
+ * of the string; it only looks for the first quote which isn't escaped.
+ *
+ * @param buffer The buffer to scan. The first character must be the opening
+ *               quote of the string, and the buffer may extend beyond the
+ *               end of the string.
+ * @return The offset of the closing quote, or std::string_view::npos if
+ *         the string isn't terminated within the buffer
+ */
+size_t find_string_end(std::string_view buffer);
+
 } // namespace Subdoc

@@ -532,6 +532,35 @@ ArrayScanResult scan_container(std::string_view buffer, size_t max_depth) {
     return scan_container_impl<NoVisitor>(buffer, nullptr, NoTarget, max_depth);
 }
 
+size_t find_string_end(std::string_view buffer) {
+    if (buffer.empty() || buffer.front() != '"') {
+        return std::string_view::npos;
+    }
+    const char* const begin = buffer.data() + 1;
+    const size_t size = buffer.size() - 1;
+    bool prev_escaped = false;
+    std::array<char, BlockSize> tail;
+    for (size_t offset = 0; offset < size; offset += BlockSize) {
+        const char* block = begin + offset;
+        if (size - offset < BlockSize) {
+            // Pad the last block with whitespace
+            tail.fill(' ');
+            std::memcpy(tail.data(), block, size - offset);
+            block = tail.data();
+        }
+        const auto masks = classify(block);
+        uint64_t quotes = masks.quote;
+        if (masks.backslash || prev_escaped) {
+            quotes &= ~find_escaped(masks.backslash, prev_escaped);
+        }
+        if (quotes) {
+            // Offset from the opening quote
+            return 1 + offset + std::countr_zero(quotes);
+        }
+    }
+    return std::string_view::npos;
+}
+
 ArrayScanResult filter_array(std::string_view buffer,
                              std::string_view needle,
                              bool remove_all,

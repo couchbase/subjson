@@ -332,6 +332,24 @@ static std::optional<ArrayScanResult> skip_container(jsonsl_t jsn,
     return {};
 }
 
+/**
+ * Skip the contents of the string (which was just pushed) with
+ * find_string_end() rather than letting jsonsl parse them. jsonsl continues
+ * at the closing quote, which pops the string as usual. An unterminated
+ * string is left for jsonsl to report.
+ *
+ * @param at Pointer to the opening quote of the string
+ */
+static void skip_string(jsonsl_t jsn,
+                        const ParseContext* ctx,
+                        const jsonsl_char_t* at) {
+    const auto end =
+            find_string_end({at, static_cast<size_t>(ctx->buffer_end - at)});
+    if (end != std::string_view::npos) {
+        jsn->skip_bytes = end;
+    }
+}
+
 static void push_callback(jsonsl_t jsn,
                           jsonsl_action_t action,
                           jsonsl_state_st* st,
@@ -419,6 +437,9 @@ static void push_callback(jsonsl_t jsn,
                                               : result->num_elements;
                     end_of_match(jsn, m);
                 }
+            } else if (ctx->buffer_contiguous && st->type == JSONSL_T_STRING) {
+                // Only the end of the matched string is needed
+                skip_string(jsn, ctx, at);
             }
 
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {
@@ -426,6 +447,8 @@ static void push_callback(jsonsl_t jsn,
             st->ignore_callback = 1;
             if (ctx->buffer_contiguous && JSONSL_STATE_IS_CONTAINER(st)) {
                 skip_container(jsn, ctx, st, at);
+            } else if (ctx->buffer_contiguous && st->type == JSONSL_T_STRING) {
+                skip_string(jsn, ctx, at);
             }
 
         } else if (st->mres == JSONSL_MATCH_POSSIBLE) {

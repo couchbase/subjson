@@ -548,6 +548,11 @@ struct jsonsl_st {
      * stay within the buffer is ignored (the container is parsed as
      * normal).
      *
+     * May also be set in a STRING PUSH callback (not for hash keys), to
+     * the offset from the opening quote to the closing quote. Parsing
+     * continues at the closing quote, which pops the string as normal
+     * (with its POP callback), without validating the contents.
+     *
      * Placed after the fields accessed for every character (rather than
      * among them) so that adding it doesn't change their offsets.
      */

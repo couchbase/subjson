@@ -548,6 +548,71 @@ TEST(ArrayScanTest, FindElementRandom) {
     }
 }
 
+TEST(ArrayScanTest, FindStringEnd) {
+    using Subdoc::find_string_end;
+    constexpr auto npos = std::string_view::npos;
+    EXPECT_EQ(1, find_string_end("\"\""));
+    EXPECT_EQ(4, find_string_end("\"abc\",\"next\""));
+    // Escaped quotes and backslashes
+    EXPECT_EQ(5, find_string_end("\"a\\\"b\",\"c\""));
+    EXPECT_EQ(3, find_string_end("\"\\\\\",\"c\""));
+    EXPECT_EQ(8, find_string_end("\"\\\\\\\"x\\\\\"]"));
+    // Structural characters in the string
+    EXPECT_EQ(10, find_string_end("\"[{,:]} ab\"}"));
+    // Unterminated
+    EXPECT_EQ(npos, find_string_end("\"abc"));
+    EXPECT_EQ(npos, find_string_end("\"abc\\\""));
+    EXPECT_EQ(npos, find_string_end(""));
+    EXPECT_EQ(npos, find_string_end("abc\""));
+}
+
+namespace {
+
+/** Reference implementation of find_string_end() */
+size_t referenceStringEnd(std::string_view buffer) {
+    for (size_t idx = 1; idx < buffer.size(); ++idx) {
+        if (buffer[idx] == '\\') {
+            ++idx;
+        } else if (buffer[idx] == '"') {
+            return idx;
+        }
+    }
+    return std::string_view::npos;
+}
+
+} // namespace
+
+TEST(ArrayScanTest, FindStringEndRandom) {
+    std::mt19937 gen(4711);
+    // Mostly plain characters, so that strings of all lengths are generated
+    const std::string alphabet = R"(aaaaaaaaaaaaaaaaaaaaaaa \\"[]{},:)";
+    for (int ii = 0; ii < 20000; ++ii) {
+        std::string buffer = "\"";
+        const auto length = gen() % 300;
+        for (size_t jj = 0; jj < length; ++jj) {
+            buffer.push_back(alphabet[gen() % alphabet.size()]);
+        }
+        EXPECT_EQ(referenceStringEnd(buffer), Subdoc::find_string_end(buffer))
+                << buffer;
+    }
+}
+
+TEST(ArrayScanTest, FindStringEndBlockBoundaries) {
+    // Put the escapes and the closing quote at every position around the
+    // 64 byte block boundaries
+    for (size_t length = 0; length < 200; ++length) {
+        for (const std::string tail : {"", R"(\\)", R"(\")", R"(\\\")"}) {
+            const std::string buffer =
+                    "\"" + std::string(length, 'x') + tail + R"(","next")";
+            EXPECT_EQ(referenceStringEnd(buffer),
+                      Subdoc::find_string_end(buffer))
+                    << buffer;
+            EXPECT_EQ(length + tail.size() + 1, Subdoc::find_string_end(buffer))
+                    << buffer;
+        }
+    }
+}
+
 // The depth is limited as by a parser which needs a level for every value:
 // containers at the maximum depth must be empty
 TEST(ArrayScanTest, DepthLimit) {
