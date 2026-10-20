@@ -613,6 +613,21 @@ TEST(ArrayScanTest, FindStringEndBlockBoundaries) {
     }
 }
 
+TEST(ArrayScanTest, LongStrings) {
+    // Strings spanning several blocks, with the escapes and the closing
+    // quote at every position around the block boundaries
+    for (size_t length = 60; length < 200; ++length) {
+        for (const std::string tail : {"", R"(\\)", R"(\")", R"(\\\")"}) {
+            const std::string str =
+                    "\"" + std::string(length, 'x') + tail + "\"";
+            expectArray("[" + str + "," + str + "]", 2);
+            expectArray("[[" + str + "],{\"k\":" + str + "}]", 2);
+        }
+    }
+    const std::string unterminated = "[\"" + std::string(300, 'x');
+    EXPECT_EQ(ScanStatus::Malformed, scan_array(unterminated, {}).status);
+}
+
 // The depth is limited as by a parser which needs a level for every value:
 // containers at the maximum depth must be empty
 TEST(ArrayScanTest, DepthLimit) {

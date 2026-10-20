@@ -252,6 +252,44 @@ uint64_t range_mask(size_t lo, size_t hi) {
     return below_hi & ~below_lo;
 }
 
+/**
+ * Locate the first unescaped quote at or after the block at the given
+ * offset. Only the quotes and backslashes are looked at, which makes this
+ * faster than processing the blocks in scan_container_impl() when skipping
+ * the contents of a (long) string.
+ *
+ * @param begin The beginning of the buffer
+ * @param size The size of the buffer
+ * @param offset The offset of the first block to look at
+ * @param prev_escaped Set if the first character in that block is escaped
+ * @return The offset of the quote, or std::string_view::npos if there is
+ *         no unescaped quote in the rest of the buffer
+ */
+size_t find_unescaped_quote(const char* begin,
+                            size_t size,
+                            size_t offset,
+                            bool prev_escaped) {
+    std::array<char, BlockSize> tail;
+    for (; offset < size; offset += BlockSize) {
+        const char* block = begin + offset;
+        if (size - offset < BlockSize) {
+            // Pad the last block with whitespace
+            tail.fill(' ');
+            std::memcpy(tail.data(), block, size - offset);
+            block = tail.data();
+        }
+        const auto masks = classify(block);
+        uint64_t quotes = masks.quote;
+        if (masks.backslash || prev_escaped) {
+            quotes &= ~find_escaped(masks.backslash, prev_escaped);
+        }
+        if (quotes) {
+            return offset + std::countr_zero(quotes);
+        }
+    }
+    return std::string_view::npos;
+}
+
 /** Value for scan_container_impl()'s target when not locating an element */
 constexpr size_t NoTarget = std::numeric_limits<size_t>::max();
 
@@ -405,7 +443,10 @@ ArrayScanResult scan_container_impl(
     };
 
     std::array<char, BlockSize> tail;
-    for (size_t offset = 0; offset < size; offset += BlockSize) {
+    size_t offset = 0;
+    while (offset < size) {
+        // The offset of the next block to process
+        size_t next = offset + BlockSize;
         const char* block = begin + offset;
         if (size - offset < BlockSize) {
             // Pad the last block with whitespace
@@ -418,6 +459,16 @@ ArrayScanResult scan_container_impl(
         uint64_t quotes = masks.quote;
         if (masks.backslash || prev_escaped) {
             quotes &= ~find_escaped(masks.backslash, prev_escaped);
+        }
+        if (quotes == 0 && in_string_carry) {
+            // The whole block is inside a (long) string; continue at the
+            // quote ending it (which isn't escaped)
+            offset = find_unescaped_quote(begin, size, next, prev_escaped);
+            if (offset == std::string_view::npos) {
+                break;
+            }
+            prev_escaped = false;
+            continue;
         }
         const uint64_t in_string = prefix_xor(quotes) ^ in_string_carry;
         in_string_carry = uint64_t(int64_t(in_string) >> 63);
@@ -492,6 +543,7 @@ ArrayScanResult scan_container_impl(
             !top_level_commas(commas & range_mask(prev, BlockSize), offset)) {
             return result;
         }
+        offset = next;
     }
 
     // Ran off the end of the buffer
@@ -536,29 +588,10 @@ size_t find_string_end(std::string_view buffer) {
     if (buffer.empty() || buffer.front() != '"') {
         return std::string_view::npos;
     }
-    const char* const begin = buffer.data() + 1;
-    const size_t size = buffer.size() - 1;
-    bool prev_escaped = false;
-    std::array<char, BlockSize> tail;
-    for (size_t offset = 0; offset < size; offset += BlockSize) {
-        const char* block = begin + offset;
-        if (size - offset < BlockSize) {
-            // Pad the last block with whitespace
-            tail.fill(' ');
-            std::memcpy(tail.data(), block, size - offset);
-            block = tail.data();
-        }
-        const auto masks = classify(block);
-        uint64_t quotes = masks.quote;
-        if (masks.backslash || prev_escaped) {
-            quotes &= ~find_escaped(masks.backslash, prev_escaped);
-        }
-        if (quotes) {
-            // Offset from the opening quote
-            return 1 + offset + std::countr_zero(quotes);
-        }
-    }
-    return std::string_view::npos;
+    const auto quote = find_unescaped_quote(
+            buffer.data() + 1, buffer.size() - 1, 0, false);
+    // The offset from the opening quote
+    return quote == std::string_view::npos ? quote : quote + 1;
 }
 
 ArrayScanResult filter_array(std::string_view buffer,
