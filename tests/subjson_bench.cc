@@ -98,6 +98,22 @@ Document makeDocument(size_t bytes, Elements elements) {
 }
 
 /**
+ * Build a document with a small header, a string "text" of (at least) the
+ * requested size in bytes (text with an occasional escape sequence) and a
+ * trailing member.
+ */
+std::string makeStringDocument(size_t bytes) {
+    std::string doc = R"({"type":"bench","meta":{"owner":"me","v":1},"text":")";
+    const auto start = doc.size();
+    while (doc.size() - start < bytes) {
+        doc.append(
+                R"(Lorem ipsum dolor sit amet, \"consectetur\" adipiscing. )");
+    }
+    doc.append(R"(","tail":true})");
+    return doc;
+}
+
+/**
  * Build a document with a small header, an object "obj" of (at least) the
  * requested size in bytes and a trailing member.
  */
@@ -303,6 +319,42 @@ void CounterAfterArray(benchmark::State& state) {
     runArrayOp(state, Elements::Primitives, Command::COUNTER, "count", "1");
 }
 
+/** A member located after a long string */
+void GetAfterLongString(benchmark::State& state) {
+    const auto doc = makeStringDocument(state.range(0));
+    runOp(state, doc, Command::GET, "tail", {});
+}
+
+// ---------------------------------------------------------------------------
+// Operations on a large array or object as a whole
+// ---------------------------------------------------------------------------
+
+void GetArray(benchmark::State& state) {
+    runArrayOp(state, Elements::Primitives, Command::GET, "arr", {});
+}
+
+void ExistsArray(benchmark::State& state) {
+    runArrayOp(state, Elements::Primitives, Command::EXISTS, "arr", {});
+}
+
+void ReplaceArray(benchmark::State& state) {
+    runArrayOp(state, Elements::Primitives, Command::REPLACE, "arr", "0");
+}
+
+void RemoveArray(benchmark::State& state) {
+    runArrayOp(state, Elements::Primitives, Command::REMOVE, "arr", {});
+}
+
+void GetObject(benchmark::State& state) {
+    const auto doc = makeObjectDocument(state.range(0));
+    runOp(state, doc, Command::GET, "obj", {});
+}
+
+void RemoveObject(benchmark::State& state) {
+    const auto doc = makeObjectDocument(state.range(0));
+    runOp(state, doc, Command::REMOVE, "obj", {});
+}
+
 // ---------------------------------------------------------------------------
 // Operations on a large object
 // ---------------------------------------------------------------------------
@@ -345,6 +397,13 @@ SUBJSON_BENCHMARK(ArrayRemoveLast);
 SUBJSON_BENCHMARK(GetAfterArrayOfPrimitives);
 SUBJSON_BENCHMARK(GetAfterArrayOfObjects);
 SUBJSON_BENCHMARK(CounterAfterArray);
+SUBJSON_BENCHMARK(GetAfterLongString);
+SUBJSON_BENCHMARK(GetArray);
+SUBJSON_BENCHMARK(ExistsArray);
+SUBJSON_BENCHMARK(ReplaceArray);
+SUBJSON_BENCHMARK(RemoveArray);
+SUBJSON_BENCHMARK(GetObject);
+SUBJSON_BENCHMARK(RemoveObject);
 SUBJSON_BENCHMARK(DictAddNewKey);
 SUBJSON_BENCHMARK(DictUpsertNewKey);
 SUBJSON_BENCHMARK(DictUpsertFirstKey);
