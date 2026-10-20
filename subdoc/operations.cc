@@ -1024,7 +1024,9 @@ Operation::op_exec(const char *pth, size_t npth)
 Operation::Operation()
     : m_path(new Path()),
       m_jsn(Match::jsn_alloc()),
-      m_checker(std::make_unique<JSON_checker::Validator>()),
+      // The vectorized implementation is as strict as the scalar one, and
+      // a lot faster for values with long strings
+      m_checker(std::make_unique<JSON_checker::Validator>(true)),
       m_optype(Command::GET),
       m_result(nullptr) {
 }

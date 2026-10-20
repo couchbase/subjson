@@ -407,6 +407,16 @@ void DictUpsertLastKey(benchmark::State& state) {
     runOp(state, doc, Command::DICT_UPSERT, "obj." + lastKey, "1");
 }
 
+/** The value (a long string) must be validated */
+void DictUpsertLargeValue(benchmark::State& state) {
+    std::string value = "\"";
+    while (value.size() < size_t(state.range(0))) {
+        value.append("Lorem ipsum dolor sit amet, consectetur adipiscing. ");
+    }
+    value.push_back('"');
+    runOp(state, R"({"a":1,"b":2})", Command::DICT_UPSERT, "a", value);
+}
+
 /** Reference: an existing key at the beginning of the object */
 void DictUpsertFirstKey(benchmark::State& state) {
     const auto doc = makeObjectDocument(state.range(0));
@@ -448,5 +458,6 @@ SUBJSON_BENCHMARK(DictUpsertNewKey);
 SUBJSON_BENCHMARK(DictAddNewKeyObjectValues);
 SUBJSON_BENCHMARK(DictUpsertLastKey);
 SUBJSON_BENCHMARK(DictUpsertFirstKey);
+SUBJSON_BENCHMARK(DictUpsertLargeValue);
 
 BENCHMARK_MAIN();
