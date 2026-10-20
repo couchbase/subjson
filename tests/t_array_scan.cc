@@ -799,3 +799,14 @@ TEST(ArrayScanTest, DepthLimit) {
     // ... but not over a match found before it
     EXPECT_EQ(ScanStatus::Found, scan_array("[3,[[2]]]", "3", 2).status);
 }
+
+TEST(ArrayScanTest, FindElementDepthLimit) {
+    using Subdoc::find_array_element;
+    const std::string array = R"([[[1]],{"a":[2]},3])";
+    // The first element needs a depth of 4 (its innermost array isn't
+    // empty)
+    EXPECT_EQ(ScanStatus::TooDeep, find_array_element(array, 2, 3).status);
+    const auto result = find_array_element(array, 2, 4);
+    ASSERT_EQ(ScanStatus::Found, result.status);
+    EXPECT_EQ(array.rfind('3'), result.element_offset);
+}

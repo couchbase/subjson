@@ -403,6 +403,58 @@ static void skip_to_member(jsonsl_t jsn,
     }
 }
 
+/**
+ * Skip the elements of the array (which was just pushed, and is part of
+ * the path) preceding the element with the index of the next path
+ * component, with find_array_element() rather than letting jsonsl parse
+ * them. jsonsl continues at the comma preceding that element (or at the
+ * closing bracket if the array doesn't have that many elements) as if it
+ * had parsed the elements before it.
+ *
+ * @param st The state of the array
+ * @param at Pointer to the opening bracket of the array
+ */
+static void skip_to_element(jsonsl_t jsn,
+                            ParseContext* ctx,
+                            const jsonsl_state_st* st,
+                            const jsonsl_char_t* at) {
+    const auto& component = ctx->jpr->components[st->level];
+    if (component.ptype != JSONSL_PATH_NUMERIC || component.is_neg ||
+        component.idx == 0) {
+        return;
+    }
+    const auto result =
+            find_array_element({at, static_cast<size_t>(ctx->buffer_end - at)},
+                               component.idx,
+                               jsonsl_depth_limit(jsn, st));
+    switch (result.status) {
+    case ArrayScanResult::Status::Found: {
+        // The comma preceding the element
+        size_t comma = result.element_offset - 1;
+        while (is_json_ws(at[comma])) {
+            --comma;
+        }
+        jsn->skip_bytes = comma;
+        jsn->skip_members = component.idx;
+        return;
+    }
+    case ArrayScanResult::Status::Success:
+        if (result.num_elements != 0) {
+            // Continue at the closing bracket
+            jsn->skip_bytes = result.length - 1;
+            jsn->skip_members = result.num_elements;
+        }
+        return;
+    case ArrayScanResult::Status::NonPrimitive:
+    case ArrayScanResult::Status::Malformed:
+    case ArrayScanResult::Status::TooDeep:
+    case ArrayScanResult::Status::Escaped:
+        // Let jsonsl parse the array (and report any errors as it would
+        // have without the scan)
+        return;
+    }
+}
+
 static void push_callback(jsonsl_t jsn,
                           jsonsl_action_t action,
                           jsonsl_state_st* st,
@@ -512,6 +564,8 @@ static void push_callback(jsonsl_t jsn,
                 scan_matched_index(jsn, ctx, st, at);
             } else if (ctx->buffer_contiguous && st->type == JSONSL_T_OBJECT) {
                 skip_to_member(jsn, ctx, st, at);
+            } else if (ctx->buffer_contiguous && st->type == JSONSL_T_LIST) {
+                skip_to_element(jsn, ctx, st, at);
             }
         } else if (st->mres == JSONSL_MATCH_TYPE_MISMATCH) {
             st->ignore_callback = 1;

@@ -330,6 +330,16 @@ void GetAfterArrayOfObjects(benchmark::State& state) {
     runArrayOp(state, Elements::Objects, Command::GET, "tail", {});
 }
 
+/** A member of the last element in an array of objects */
+void ArrayGetFieldOfLast(benchmark::State& state) {
+    const auto doc = makeDocument(state.range(0), Elements::Objects);
+    runOp(state,
+          doc.json,
+          Command::GET,
+          "arr[" + std::to_string(doc.num_elements - 1) + "].id",
+          {});
+}
+
 void CounterAfterArray(benchmark::State& state) {
     runArrayOp(state, Elements::Primitives, Command::COUNTER, "count", "1");
 }
@@ -424,6 +434,7 @@ SUBJSON_BENCHMARK(ArrayReplaceLast);
 SUBJSON_BENCHMARK(ArrayRemoveLast);
 SUBJSON_BENCHMARK(GetAfterArrayOfPrimitives);
 SUBJSON_BENCHMARK(GetAfterArrayOfObjects);
+SUBJSON_BENCHMARK(ArrayGetFieldOfLast);
 SUBJSON_BENCHMARK(CounterAfterArray);
 SUBJSON_BENCHMARK(GetAfterLongString);
 SUBJSON_BENCHMARK(GetArray);
