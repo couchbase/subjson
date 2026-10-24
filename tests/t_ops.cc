@@ -460,6 +460,40 @@ TEST_F(OpTests, testArraySearchIgnoresWhitespaceAroundValue) {
     EXPECT_EQ(R"({"a":[1]})", getNewDoc());
 }
 
+// The scanner used by append, add unique and index of reports the same
+// depth errors as jsonsl (which needs a level for every value)
+TEST_F(OpTests, AppendUniqueDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string json = R"({"a":[1,)" + std::string(depth, '[') +
+                                     inner + std::string(depth, ']') + "]}";
+            op.set_doc(json);
+            // The levels used by the root object, "a", the arrays and the
+            // innermost value
+            const size_t levels = 2 + depth + (inner.empty() ? 0 : 1);
+            const bool tooDeep = levels >= Limits::PARSER_DEPTH;
+            const auto message =
+                    "depth: " + std::to_string(depth) + " inner: " + inner;
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::SUCCESS,
+                      runOp(Command::ARRAY_APPEND, "a", "2"))
+                    << message;
+            // The array has a non-primitive element
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::PATH_MISMATCH,
+                      runOp(Command::ARRAY_ADD_UNIQUE, "a", "2"))
+                    << message;
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::PATH_MISMATCH,
+                      runOp(Command::ARRAY_INDEX_OF, "a", "2"))
+                    << message;
+            // A match before the deep element is found first
+            EXPECT_EQ(Error::DOC_EEXISTS,
+                      runOp(Command::ARRAY_ADD_UNIQUE, "a", "1"))
+                    << message;
+        }
+    }
+}
+
 TEST_F(OpTests, testUniqueToplevel) {
     std::string json("[]");
     std::string doc;

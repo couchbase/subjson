@@ -143,22 +143,37 @@ static void remove_value_callback(jsonsl_t jsn,
 }
 
 /**
+ * The maximum nesting depth of the container (which was just pushed) for
+ * the scanner, which is the same as jsonsl's: jsonsl needs a stack level
+ * for every value, so containers may be nested until the last level, and
+ * a container at the last level must be empty (see scan_array()).
+ */
+static size_t jsonsl_depth_limit(const jsonsl_t jsn,
+                                 const jsonsl_state_st* st) {
+    return st->level < jsn->levels_max ? jsn->levels_max - st->level : 0;
+}
+
+/**
  * Locate the end of the matched array (and search for Match::ensure_unique
  * if set) with scan_array() rather than letting jsonsl parse all of the
  * array's contents, then stop the parser. Sets the same fields in the
- * match as pop_callback() would have when popping the array.
+ * match as pop_callback() would have when popping the array, and reports
+ * the same depth error as jsonsl would have.
  *
+ * @param st The state of the matched array
  * @param at Pointer to the opening bracket of the matched array
  */
 static void scan_matched_array(jsonsl_t jsn,
                                ParseContext* ctx,
+                               const jsonsl_state_st* st,
                                const jsonsl_char_t* at) {
     Match* m = ctx->match;
     jsonsl_stop(jsn);
 
     const auto result =
             scan_array({at, static_cast<size_t>(ctx->buffer_end - at)},
-                       {m->ensure_unique.at, m->ensure_unique.length});
+                       {m->ensure_unique.at, m->ensure_unique.length},
+                       jsonsl_depth_limit(jsn, st));
 
     switch (result.status) {
     case ArrayScanResult::Status::Success:
@@ -176,6 +191,9 @@ static void scan_matched_array(jsonsl_t jsn,
         return;
     case ArrayScanResult::Status::Malformed:
         m->status = JSONSL_ERROR_GENERIC;
+        return;
+    case ArrayScanResult::Status::TooDeep:
+        m->status = JSONSL_ERROR_LEVELS_EXCEEDED;
         return;
     }
 }
@@ -237,11 +255,11 @@ static void push_callback(jsonsl_t jsn,
                     jsonsl_stop(jsn);
                     return;
                 }
-                scan_matched_array(jsn, ctx, at);
+                scan_matched_array(jsn, ctx, st, at);
             } else if (m->skip_array_contents && !m->get_last &&
                        m->extra_options != Match::GET_FOLLOWING_SIBLINGS &&
                        st->type == JSONSL_T_LIST) {
-                scan_matched_array(jsn, ctx, at);
+                scan_matched_array(jsn, ctx, st, at);
             } else if (m->match_value.at) {
                 if (st->type != JSONSL_T_LIST) {
                     // Can't remove-by-value from anything but an array!

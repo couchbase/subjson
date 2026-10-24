@@ -251,12 +251,31 @@ uint64_t range_mask(size_t lo, size_t hi) {
     return below_hi & ~below_lo;
 }
 
+/**
+ * Check if the container whose opening bracket (or brace) is at the given
+ * offset is empty
+ */
+bool is_empty_container(const char* begin, size_t size, size_t pos) {
+    size_t idx = pos + 1;
+    while (idx < size && is_json_ws(begin[idx])) {
+        ++idx;
+    }
+    return idx < size && (begin[idx] == ']' || begin[idx] == '}');
+}
+
 } // namespace
 
-ArrayScanResult scan_array(std::string_view buffer, std::string_view needle) {
+ArrayScanResult scan_array(std::string_view buffer,
+                           std::string_view needle,
+                           size_t max_depth) {
     using Status = ArrayScanResult::Status;
     ArrayScanResult result;
     if (buffer.empty() || buffer.front() != '[') {
+        return result;
+    }
+    if (max_depth == 0) {
+        // Not even the array itself fits
+        result.status = Status::TooDeep;
         return result;
     }
 
@@ -287,6 +306,9 @@ ArrayScanResult scan_array(std::string_view buffer, std::string_view needle) {
     // Offset of the first character of the current top-level element
     // (only maintained when searching for the needle)
     size_t element_begin = 1;
+    // Set when the current top-level element is an array or object (only
+    // when searching for the needle)
+    bool non_primitive = false;
     // Carried over between blocks
     bool prev_escaped = false;
     uint64_t in_string_carry = 0;
@@ -301,6 +323,10 @@ ArrayScanResult scan_array(std::string_view buffer, std::string_view needle) {
         while (commas) {
             const size_t pos = offset + std::countr_zero(commas);
             commas &= commas - 1;
+            if (non_primitive) {
+                result.status = Status::NonPrimitive;
+                return false;
+            }
             if (trim_json_ws({begin + element_begin, begin + pos}) == needle) {
                 result.status = Status::Found;
                 result.found_index = num_commas;
@@ -350,11 +376,20 @@ ArrayScanResult scan_array(std::string_view buffer, std::string_view needle) {
 
             if (masks.open & bracket) {
                 if (depth == 1 && !needle.empty()) {
-                    // Uniqueness can't be determined for non-primitives
-                    result.status = Status::NonPrimitive;
-                    return result;
+                    // Uniqueness can't be determined for non-primitives.
+                    // This is reported when the element is compared (once
+                    // it has been scanned), so that a depth error in it
+                    // takes precedence.
+                    non_primitive = true;
                 }
                 ++depth;
+                if (depth == max_depth) [[unlikely]] {
+                    // A container at the maximum depth must be empty
+                    if (!is_empty_container(begin, size, offset + idx)) {
+                        result.status = Status::TooDeep;
+                        return result;
+                    }
+                }
                 continue;
             }
 
@@ -365,6 +400,10 @@ ArrayScanResult scan_array(std::string_view buffer, std::string_view needle) {
             if (--depth == 0) {
                 const size_t pos = offset + idx;
                 if (begin[pos] != ']') {
+                    return result;
+                }
+                if (non_primitive) {
+                    result.status = Status::NonPrimitive;
                     return result;
                 }
                 if (!needle.empty() && trim_json_ws({begin + element_begin,

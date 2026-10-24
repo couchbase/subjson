@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
 #include <string_view>
 
 namespace Subdoc {
@@ -27,6 +28,10 @@ struct ArrayScanResult {
          * needle was found (only reported when searching for a needle)
          */
         NonPrimitive,
+        /**
+         * The nesting depth exceeds the maximum depth (see scan_array())
+         */
+        TooDeep,
         /** The array is not terminated within the buffer, or is malformed */
         Malformed
     };
@@ -65,6 +70,12 @@ struct ArrayScanResult {
  * buffer (for instance due to an unterminated string or array)
  * Status::Malformed is returned.
  *
+ * The nesting depth is limited in the same way as by a parser which needs
+ * a level for every value (such as jsonsl): the array itself has depth 1,
+ * the containers in it may be nested to a depth of at most max_depth, and
+ * a container at max_depth must be empty (as its values would need
+ * another level). Status::TooDeep is returned if the array exceeds it.
+ *
  * @param buffer The buffer to scan. The first character must be the opening
  *               bracket of the array, and the buffer may extend beyond the
  *               end of the array.
@@ -72,9 +83,15 @@ struct ArrayScanResult {
  *               compared (byte-wise, ignoring surrounding whitespace in the
  *               document) with the needle, and the scan stops as soon as a
  *               match is found (Status::Found) or a non-primitive element is
- *               found (Status::NonPrimitive).
+ *               found (Status::NonPrimitive, reported once the element has
+ *               been scanned so that a depth error inside it takes
+ *               precedence, as with a parser).
+ * @param max_depth The maximum nesting depth (see above)
  * @return The result of the scan
  */
-ArrayScanResult scan_array(std::string_view buffer, std::string_view needle);
+ArrayScanResult scan_array(
+        std::string_view buffer,
+        std::string_view needle,
+        size_t max_depth = std::numeric_limits<size_t>::max());
 
 } // namespace Subdoc

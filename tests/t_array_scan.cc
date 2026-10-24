@@ -234,3 +234,28 @@ TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
     }
     Match::jsn_free(jsn);
 }
+
+// The depth is limited as by a parser which needs a level for every value:
+// containers at the maximum depth must be empty
+TEST(ArrayScanTest, DepthLimit) {
+    EXPECT_EQ(ScanStatus::Success, scan_array("[[[]]]", {}, 3).status);
+    EXPECT_EQ(ScanStatus::Success, scan_array("[[[ ]],[{}]]", {}, 3).status);
+    EXPECT_EQ(ScanStatus::TooDeep, scan_array("[[[]]]", {}, 2).status);
+    EXPECT_EQ(ScanStatus::TooDeep, scan_array("[[[1]]]", {}, 3).status);
+    EXPECT_EQ(ScanStatus::TooDeep, scan_array(R"([[{"a":1}]])", {}, 3).status);
+    EXPECT_EQ(ScanStatus::Success, scan_array("[[[1]]]", {}, 4).status);
+    EXPECT_EQ(ScanStatus::TooDeep, scan_array("[1]", {}, 1).status);
+    EXPECT_EQ(ScanStatus::Success, scan_array("[]", {}, 1).status);
+    EXPECT_EQ(ScanStatus::TooDeep, scan_array("[]", {}, 0).status);
+    // Brackets in strings don't count
+    EXPECT_EQ(ScanStatus::Success,
+              scan_array(R"(["[[[[",["{{"]])", {}, 3).status);
+
+    // A non-primitive element is reported once it has been scanned, so a
+    // depth error in it takes precedence (as with a parser)
+    EXPECT_EQ(ScanStatus::NonPrimitive,
+              scan_array("[1,[[2]],3]", "3", 4).status);
+    EXPECT_EQ(ScanStatus::TooDeep, scan_array("[1,[[2]],3]", "3", 3).status);
+    // ... but not over a match found before it
+    EXPECT_EQ(ScanStatus::Found, scan_array("[3,[[2]]]", "3", 2).status);
+}
