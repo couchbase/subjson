@@ -460,8 +460,9 @@ TEST_F(OpTests, testArraySearchIgnoresWhitespaceAroundValue) {
     EXPECT_EQ(R"({"a":[1]})", getNewDoc());
 }
 
-// The scanner used by append, add unique and index of reports the same
-// depth errors as jsonsl (which needs a level for every value)
+// The scanner used by append, add unique, index of and remove by value
+// reports the same depth errors as jsonsl (which needs a level for every
+// value)
 TEST_F(OpTests, AppendUniqueDepthLimit) {
     for (size_t depth = Limits::PARSER_DEPTH - 6;
          depth <= Limits::PARSER_DEPTH + 2;
@@ -489,6 +490,13 @@ TEST_F(OpTests, AppendUniqueDepthLimit) {
             // A match before the deep element is found first
             EXPECT_EQ(Error::DOC_EEXISTS,
                       runOp(Command::ARRAY_ADD_UNIQUE, "a", "1"))
+                    << message;
+            // Remove by value scans the whole array
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::PATH_MISMATCH,
+                      runOp(Command::ARRAY_REMOVE_FIRST, "a", "1"))
+                    << message;
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::PATH_MISMATCH,
+                      runOp(Command::ARRAY_REMOVE_ALL, "a", "1"))
                     << message;
         }
     }
@@ -1464,6 +1472,66 @@ TEST_F(OpTests, testGetCount) {
     ASSERT_EQ("2", returnedMatch());
 }
 
+// GET_COUNT through a path with a negative index
+TEST_F(OpTests, testGetCountNegativeIndex) {
+    const std::string json =
+            R"({"a":[1,{"o":{"x":1,"y":[2,3]},"p":[1,2,3]}],"b":true})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a[-1].o"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a[-1].p"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a[-1].o.y"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a[-1]"));
+    EXPECT_EQ("2", returnedMatch());
+    // Not a container
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET_COUNT, "b"));
+}
+
+// GET_COUNT (and ARRAY_APPEND on an object, which is located the same
+// way) reports the same depth errors as jsonsl
+TEST_F(OpTests, testGetCountDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string deep =
+                    std::string(depth, '[') + inner + std::string(depth, ']');
+            const std::string json =
+                    R"({"a":[1,)" + deep + R"(],"o":{"x":)" + deep + "}}";
+            op.set_doc(json);
+            // The levels used by the root object, "a" (or "o"), the arrays
+            // and the innermost value
+            const size_t levels = 2 + depth + (inner.empty() ? 0 : 1);
+            const bool tooDeep = levels >= Limits::PARSER_DEPTH;
+            const auto message =
+                    "depth: " + std::to_string(depth) + " inner: " + inner;
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::SUCCESS,
+                      runOp(Command::GET_COUNT, "a"))
+                    << message;
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::SUCCESS,
+                      runOp(Command::GET_COUNT, "o"))
+                    << message;
+            // An object can't be appended to
+            EXPECT_EQ(tooDeep ? Error::DOC_ETOODEEP : Error::PATH_MISMATCH,
+                      runOp(Command::ARRAY_APPEND, "o", "1"))
+                    << message;
+        }
+    }
+}
+
+// ARRAY_APPEND on an object fails without modifying the document
+TEST_F(OpTests, testArrayAppendOnObject) {
+    const std::string json = R"({"o":{"x":[1,2],"y":{"z":3}},"b":1})";
+    op.set_doc(json);
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_APPEND, "o", "1"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_APPEND, "o.y", "1"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_ADD_UNIQUE, "o", "1"));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "o.x", "3"));
+    EXPECT_EQ(R"({"o":{"x":[1,2,3],"y":{"z":3}},"b":1})", getNewDoc());
+}
+
 // Some commands require paths with specific endings. For example, DICT_UPSERT
 // requires its last element MUST NOT be an array element, while ARRAY_INSERT
 // requires its last element MUST be an array element. Some commands
@@ -1965,4 +2033,516 @@ TEST_F(OpTests, ArrayScanAppendToTruncatedDocument) {
     op.set_doc(json);
     EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_APPEND, "a", "4"));
     EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_ADD_UNIQUE, "a", "4"));
+}
+
+TEST_F(OpTests, RemoveValueNestedPath) {
+    const std::string json = R"({"a":{"b":[[1],["x",2,"x"]]},"c":0})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS,
+              runOp(Command::ARRAY_REMOVE_ALL, "a.b[1]", R"("x")"));
+    EXPECT_EQ(R"({"a":{"b":[[1],[2]]},"c":0})", getNewDoc());
+}
+
+// GET_COUNT of arrays and objects
+TEST_F(OpTests, GetCountContainers) {
+    const std::string json =
+            R"({"a":[1,"],",{"x":[1,2]},[3,4]],"o":{"k1":"},","k2":[1],)"
+            R"("k3":{"a":1,"b":2}},"e":[],"eo":{}})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a"));
+    EXPECT_EQ("4", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "o"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "o.k3"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a[2].x"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "e"));
+    EXPECT_EQ("0", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "eo"));
+    EXPECT_EQ("0", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, ""));
+    EXPECT_EQ("4", returnedMatch());
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET_COUNT, "a[0]"));
+}
+
+TEST_F(OpTests, LastElementGet) {
+    const std::string json =
+            R"({"s":[1,"a\"],b"],"n":["x", -12 ],"l":[1,[2,"]",[3]]],)"
+            R"("o":[1,{"a":[1,2],"b":"}"}],"e":[],"t":1})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "s[-1]"));
+    EXPECT_EQ("\"a\\\"],b\"", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "n[-1]"));
+    EXPECT_EQ("-12", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "l[-1]"));
+    EXPECT_EQ(R"([2,"]",[3]])", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "l[-1][-1]"));
+    EXPECT_EQ("[3]", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "l[-1][-1][-1]"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "o[-1].b"));
+    EXPECT_EQ(R"("}")", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "o[-1]"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "l[-1]"));
+    EXPECT_EQ("3", returnedMatch());
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "e[-1]"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "t[-1]"));
+}
+
+TEST_F(OpTests, LastElementMutations) {
+    const std::string json = R"({"a":[1,2, 5 ],"f":[1.5],"l":[[],[1]]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::COUNTER, "a[-1]", "1"));
+    EXPECT_EQ(R"({"a":[1,2, 6 ],"f":[1.5],"l":[[],[1]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "a[-1]", "true"));
+    EXPECT_EQ(R"({"a":[1,2, true ],"f":[1.5],"l":[[],[1]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[-1]"));
+    EXPECT_EQ(R"({"a":[1,2 ],"f":[1.5],"l":[[],[1]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "f[-1]"));
+    EXPECT_EQ(R"({"a":[1,2, 5 ],"f":[],"l":[[],[1]]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "l[-1]", "2"));
+    EXPECT_EQ(R"({"a":[1,2, 5 ],"f":[1.5],"l":[[],[1,2]]})", getNewDoc());
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::COUNTER, "f[-1]", "1"));
+}
+
+// Operations on the last element of an array report the depth errors of
+// the array, whether the deep element is the last one or before it
+TEST_F(OpTests, LastElementDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string deep =
+                    std::string(depth, '[') + inner + std::string(depth, ']');
+            // The levels used by the root object, "a", the arrays and the
+            // innermost value
+            const size_t levels = 2 + depth + (inner.empty() ? 0 : 1);
+            const bool tooDeep = levels >= Limits::PARSER_DEPTH;
+            for (const auto& json :
+                 {R"({"a":[1,)" + deep + "]}", R"({"a":[)" + deep + ",1]}"}) {
+                op.set_doc(json);
+                const auto message =
+                        "depth: " + std::to_string(depth) + " json: " + json;
+                const auto expected =
+                        tooDeep ? Error::DOC_ETOODEEP : Error::SUCCESS;
+                EXPECT_EQ(expected, runOp(Command::GET, "a[-1]")) << message;
+                EXPECT_EQ(expected, runOp(Command::REPLACE, "a[-1]", "0"))
+                        << message;
+                EXPECT_EQ(expected, runOp(Command::REMOVE, "a[-1]")) << message;
+            }
+        }
+    }
+}
+
+TEST_F(OpTests, ArrayIndexGet) {
+    const std::string json =
+            R"({"a":[1, "b\"],", [2,[3]] ,{"x":"]"},null],"t":true})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[0]"));
+    EXPECT_EQ("1", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[1]"));
+    EXPECT_EQ("\"b\\\"],\"", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[2]"));
+    EXPECT_EQ("[2,[3]]", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[2][1][0]"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[3].x"));
+    EXPECT_EQ(R"("]")", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[4]"));
+    EXPECT_EQ("null", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "a[2]"));
+    EXPECT_EQ("2", returnedMatch());
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "a[5]"));
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "a[5].x"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "t[0]"));
+}
+
+TEST_F(OpTests, ArrayIndexMutations) {
+    const std::string json = R"({"a":[1,2,3],"b":0})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INSERT, "a[2]", "9"));
+    EXPECT_EQ(R"({"a":[1,2,9,3],"b":0})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INSERT, "a[3]", "9"));
+    EXPECT_EQ(R"({"a":[1,2,3,9],"b":0})", getNewDoc());
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::ARRAY_INSERT, "a[4]", "9"));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[0]"));
+    EXPECT_EQ(R"({"a":[2,3],"b":0})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[1]"));
+    EXPECT_EQ(R"({"a":[1,3],"b":0})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[2]"));
+    EXPECT_EQ(R"({"a":[1,2],"b":0})", getNewDoc());
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::REMOVE, "a[3]"));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "a[1]", "true"));
+    EXPECT_EQ(R"({"a":[1,true,3],"b":0})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::COUNTER, "a[2]", "5"));
+    EXPECT_EQ(R"({"a":[1,2,8],"b":0})", getNewDoc());
+
+    const std::string single = R"({"a":[1]})";
+    op.set_doc(single);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[0]"));
+    EXPECT_EQ(R"({"a":[]})", getNewDoc());
+    const std::string empty = R"({"a":[]})";
+    op.set_doc(empty);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_INSERT, "a[0]", "1"));
+    EXPECT_EQ(R"({"a":[1]})", getNewDoc());
+}
+
+// An array index reports the depth errors of the elements up to (and
+// including) the element with the index, but not of the elements after it
+TEST_F(OpTests, ArrayIndexDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string deep =
+                    std::string(depth, '[') + inner + std::string(depth, ']');
+            // The levels used by the root object, "a", the arrays and the
+            // innermost value
+            const size_t levels = 2 + depth + (inner.empty() ? 0 : 1);
+            const bool tooDeep = levels >= Limits::PARSER_DEPTH;
+            // The deep element before, at and after index 1
+            for (const auto& [json, parsed] :
+                 std::vector<std::pair<std::string, bool>>{
+                         {R"({"a":[)" + deep + ",1,2]}", true},
+                         {R"({"a":[0,)" + deep + ",2]}", true},
+                         {R"({"a":[0,1,)" + deep + "]}", false}}) {
+                op.set_doc(json);
+                const auto message =
+                        "depth: " + std::to_string(depth) + " json: " + json;
+                const auto expected = tooDeep && parsed ? Error::DOC_ETOODEEP
+                                                        : Error::SUCCESS;
+                EXPECT_EQ(expected, runOp(Command::GET, "a[1]")) << message;
+                EXPECT_EQ(expected, runOp(Command::REPLACE, "a[1]", "0"))
+                        << message;
+                EXPECT_EQ(expected, runOp(Command::REMOVE, "a[1]")) << message;
+                EXPECT_EQ(expected, runOp(Command::ARRAY_INSERT, "a[1]", "9"))
+                        << message;
+            }
+        }
+    }
+}
+
+// Operations on members located after arrays and objects
+TEST_F(OpTests, MemberAfterContainers) {
+    const std::string json =
+            R"({"unrelated":[1,2,{"k":"v"}],"target":42,"other":{"a":1}})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "target"));
+    EXPECT_EQ("42", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "target", "99"));
+    EXPECT_EQ(R"({"unrelated":[1,2,{"k":"v"}],"target":99,"other":{"a":1}})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "target"));
+    EXPECT_EQ(R"({"unrelated":[1,2,{"k":"v"}],"other":{"a":1}})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::COUNTER, "target", "10"));
+    EXPECT_EQ(R"({"unrelated":[1,2,{"k":"v"}],"target":52,"other":{"a":1}})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "other.a"));
+    EXPECT_EQ("1", returnedMatch());
+
+    // Mismatched brackets inside unrelated
+    const std::string mismatched =
+            R"({"unrelated":[1,2,{"k":"v"},"target":42})";
+    op.set_doc(mismatched);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET, "target"));
+}
+
+TEST_F(OpTests, MemberAfterContainersNested) {
+    const std::string json =
+            R"({"x":{"big":[[1],{"a":[2]}],"y":{"z":[3,{"q":[4]}]},"w":5},)"
+            R"("x2":[[6],{"k":[7]},{"k":"v"}]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "x.w"));
+    EXPECT_EQ("5", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "x.y.z[1].q[0]"));
+    EXPECT_EQ("4", returnedMatch());
+    // Elements before the index
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "x2[2].k"));
+    EXPECT_EQ(R"("v")", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "x2"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "x.y"));
+    EXPECT_EQ(R"({"x":{"big":[[1],{"a":[2]}],"w":5},)"
+              R"("x2":[[6],{"k":[7]},{"k":"v"}]})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_ADD, "x.new", "true"));
+    EXPECT_EQ(R"({"x":{"big":[[1],{"a":[2]}],"y":{"z":[3,{"q":[4]}]},)"
+              R"("w":5,"new":true},"x2":[[6],{"k":[7]},{"k":"v"}]})",
+              getNewDoc());
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "x.missing"));
+}
+
+/**
+ * An array before the member in the path reports exactly the same depth
+ * errors as when the array itself is accessed. A stack level is needed for
+ * every value (including the primitives in the innermost container), so
+ * test nesting around the limit with different innermost values, using a
+ * GET of the array itself as the reference.
+ */
+TEST_F(OpTests, MemberAfterContainerDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string json = R"({"skip":)" + std::string(depth, '[') +
+                                     inner + std::string(depth, ']') +
+                                     R"(,"b":1})";
+            op.set_doc(json);
+            const auto expected = runOp(Command::GET, "skip");
+            EXPECT_EQ(expected, runOp(Command::GET, "b"))
+                    << "depth: " << depth << " inner: " << inner;
+        }
+    }
+}
+
+// Operations on a whole array or object, in different positions in the
+// document and with whitespace
+TEST_F(OpTests, WholeContainer) {
+    const std::string json =
+            R"({"a":[1,{"b":[2,3]}],"o":{ "x" : [ 1 , 2 ] , "y":{}},"z":[]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a"));
+    EXPECT_EQ(R"([1,{"b":[2,3]}])", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "o.x"));
+    EXPECT_EQ("[ 1 , 2 ]", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::EXISTS, "o.x"));
+    EXPECT_EQ("[ 1 , 2 ]", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[1]"));
+    EXPECT_EQ(R"({"b":[2,3]})", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "o"));
+    EXPECT_EQ("2", returnedMatch());
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "a", "0"));
+    EXPECT_EQ(R"({"a":0,"o":{ "x" : [ 1 , 2 ] , "y":{}},"z":[]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT, "o.x", "1"));
+    EXPECT_EQ(R"({"a":[1,{"b":[2,3]}],"o":{ "x" : 1 , "y":{}},"z":[]})",
+              getNewDoc());
+
+    // Remove has to locate the sibling following the container (if any)
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a"));
+    EXPECT_EQ(R"({"o":{ "x" : [ 1 , 2 ] , "y":{}},"z":[]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "o.x"));
+    EXPECT_EQ(R"({"a":[1,{"b":[2,3]}],"o":{  "y":{}},"z":[]})", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "o.y"));
+    EXPECT_EQ(R"({"a":[1,{"b":[2,3]}],"o":{ "x" : [ 1 , 2 ] },"z":[]})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "z"));
+    EXPECT_EQ(R"({"a":[1,{"b":[2,3]}],"o":{ "x" : [ 1 , 2 ] , "y":{}}})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "a[1]"));
+    EXPECT_EQ(R"({"a":[1],"o":{ "x" : [ 1 , 2 ] , "y":{}},"z":[]})",
+              getNewDoc());
+}
+
+// Operations on members located after long strings, and on long strings
+TEST_F(OpTests, LongStrings) {
+    // Escapes and structural characters around the 64 byte block boundaries
+    const std::string text =
+            std::string(70, 'x') + R"(\"]}\\)" + std::string(70, 'y');
+    const std::string str = "\"" + text + "\"";
+    const std::string json =
+            R"({"s":)" + str + R"(,"t":1,"a":[)" + str + R"(,2],"k\u0065y":3})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "t"));
+    EXPECT_EQ("1", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[1]"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "key"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "s"));
+    EXPECT_EQ(str, returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a[0]"));
+    EXPECT_EQ(str, returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "s"));
+    EXPECT_EQ("{\"t\":1,\"a\":[" + str + ",2],\"k\\u0065y\":3}", getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "s", "1"));
+    EXPECT_EQ("{\"s\":1,\"t\":1,\"a\":[" + str + ",2],\"k\\u0065y\":3}",
+              getNewDoc());
+}
+
+// The members of the objects in the path, after large values and with
+// escaped and duplicate keys
+TEST_F(OpTests, ObjectMemberInPath) {
+    // A large value (more than 512 bytes)
+    std::string big = "[";
+    for (int ii = 0; ii < 40; ++ii) {
+        big += (ii ? "," : "") + std::string(R"({"k":"x,}y"})");
+    }
+    big += "]";
+    // With an escaped key and duplicate keys
+    const std::string tail = R"("k\u0065y":3,"dup":1,"dup":2,"last":true})";
+    const std::string json =
+            R"({"a":1, "big":)" + big + R"(,"o":{"x":1,"y":{"z":2}},)" + tail;
+    const std::string head = R"({"a":1, "big":)" + big + ",";
+    op.set_doc(json);
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a"));
+    EXPECT_EQ("1", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "last"));
+    EXPECT_EQ("true", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "o.y.z"));
+    EXPECT_EQ("2", returnedMatch());
+    // The key in the document is escaped
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "key"));
+    EXPECT_EQ("3", returnedMatch());
+    // The first of the duplicates
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "dup"));
+    EXPECT_EQ("1", returnedMatch());
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "missing"));
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "o.missing"));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "o"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, ""));
+    EXPECT_EQ("7", returnedMatch());
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_ADD, "o.new", "1"));
+    EXPECT_EQ(head + R"("o":{"x":1,"y":{"z":2},"new":1},)" + tail, getNewDoc());
+    EXPECT_EQ(Error::DOC_EEXISTS, runOp(Command::DICT_ADD, "last", "1"));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_UPSERT, "last", "false"));
+    EXPECT_EQ(head + R"("o":{"x":1,"y":{"z":2}},"k\u0065y":3,"dup":1,)"
+                     R"("dup":2,"last":false})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_ADD_P, "o.q.r", "1"));
+    EXPECT_EQ(head + R"("o":{"x":1,"y":{"z":2},"q":{"r":1}},)" + tail,
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::COUNTER, "o.y.z", "5"));
+    EXPECT_EQ(head + R"("o":{"x":1,"y":{"z":7}},)" + tail, getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "big", "0"));
+    EXPECT_EQ(R"({"a":1, "big":0,"o":{"x":1,"y":{"z":2}},)" + tail,
+              getNewDoc());
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "o.x"));
+    EXPECT_EQ(head + R"("o":{"y":{"z":2}},)" + tail, getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "dup"));
+    EXPECT_EQ(head + R"("o":{"x":1,"y":{"z":2}},"k\u0065y":3,"dup":2,)"
+                     R"("last":true})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "last"));
+    EXPECT_EQ(head + R"("o":{"x":1,"y":{"z":2}},"k\u0065y":3,"dup":1,)"
+                     R"("dup":2})",
+              getNewDoc());
+}
+
+// The members before the one with the key report the same depth errors as
+// when the member itself is accessed
+TEST_F(OpTests, ObjectMemberInPathDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string json = R"({"m":)" + std::string(depth, '[') +
+                                     inner + std::string(depth, ']') +
+                                     R"(,"b":1})";
+            op.set_doc(json);
+            // The levels used by the root object, the arrays and the
+            // innermost value
+            const size_t levels = 1 + depth + (inner.empty() ? 0 : 1);
+            const auto expected = levels < Limits::PARSER_DEPTH
+                                          ? Error::SUCCESS
+                                          : Error::DOC_ETOODEEP;
+            for (auto command : {Command::GET, Command::REMOVE}) {
+                EXPECT_EQ(expected, runOp(command, "b"))
+                        << "depth: " << depth << " inner: " << inner
+                        << " command: " << int(command);
+            }
+        }
+    }
+}
+
+// Array indexes which aren't the last component of the path
+TEST_F(OpTests, ArrayIndexInPath) {
+    const std::string json =
+            R"({"arr":[1, true,null ,"s",[2],{"k":1},{"k":2},  {"k":3} ],)"
+            R"("n":[[1,2],[3,[4,5]]]})";
+    op.set_doc(json);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "arr[5].k"));
+    EXPECT_EQ("1", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "arr[7].k"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "arr[4][0]"));
+    EXPECT_EQ("2", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "n[1][1][0]"));
+    EXPECT_EQ("4", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "arr[-1].k"));
+    EXPECT_EQ("3", returnedMatch());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "n[-1][0]"));
+    EXPECT_EQ("3", returnedMatch());
+    // The array doesn't have that many elements
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "arr[8].k"));
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::GET, "arr[9].k"));
+    EXPECT_EQ(Error::PATH_ENOENT, runOp(Command::DICT_ADD_P, "arr[9].k", "1"));
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::GET, "arr[1].k"));
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET_COUNT, "n[1][1]"));
+    EXPECT_EQ("2", returnedMatch());
+
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REMOVE, "arr[6].k"));
+    EXPECT_EQ(R"({"arr":[1, true,null ,"s",[2],{"k":1},{},  {"k":3} ],)"
+              R"("n":[[1,2],[3,[4,5]]]})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::DICT_ADD, "arr[7].new", "1"));
+    EXPECT_EQ(R"({"arr":[1, true,null ,"s",[2],{"k":1},{"k":2},  )"
+              R"({"k":3,"new":1} ],"n":[[1,2],[3,[4,5]]]})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::REPLACE, "n[1][1][1]", "0"));
+    EXPECT_EQ(R"({"arr":[1, true,null ,"s",[2],{"k":1},{"k":2},  {"k":3} ],)"
+              R"("n":[[1,2],[3,[4,0]]]})",
+              getNewDoc());
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "n[1][1]", "6"));
+    EXPECT_EQ(R"({"arr":[1, true,null ,"s",[2],{"k":1},{"k":2},  {"k":3} ],)"
+              R"("n":[[1,2],[3,[4,5,6]]]})",
+              getNewDoc());
+}
+
+// The elements before the one with the index report the same depth
+// errors as when the element itself is accessed
+TEST_F(OpTests, ArrayIndexInPathDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string json = R"({"a":[)" + std::string(depth, '[') +
+                                     inner + std::string(depth, ']') +
+                                     R"(,{"b":1}]})";
+            op.set_doc(json);
+            // The levels used by the root object, "a", the arrays and the
+            // innermost value
+            const size_t levels = 2 + depth + (inner.empty() ? 0 : 1);
+            const auto expected = levels < Limits::PARSER_DEPTH
+                                          ? Error::SUCCESS
+                                          : Error::DOC_ETOODEEP;
+            for (auto command : {Command::GET, Command::REMOVE}) {
+                EXPECT_EQ(expected, runOp(command, "a[1].b"))
+                        << "depth: " << depth << " inner: " << inner
+                        << " command: " << int(command);
+            }
+        }
+    }
+}
+
+// Operations on a whole array report the depth errors of its contents
+TEST_F(OpTests, WholeContainerDepthLimit) {
+    for (size_t depth = Limits::PARSER_DEPTH - 6;
+         depth <= Limits::PARSER_DEPTH + 2;
+         ++depth) {
+        for (const std::string inner : {"", "1", R"("s")", "[]", "{}"}) {
+            const std::string json = R"({"m":)" + std::string(depth, '[') +
+                                     inner + std::string(depth, ']') +
+                                     R"(,"b":1})";
+            op.set_doc(json);
+            // The levels used by the root object, the arrays and the
+            // innermost value
+            const size_t levels = 1 + depth + (inner.empty() ? 0 : 1);
+            const auto expected = levels < Limits::PARSER_DEPTH
+                                          ? Error::SUCCESS
+                                          : Error::DOC_ETOODEEP;
+            for (auto command :
+                 {Command::GET, Command::EXISTS, Command::REMOVE}) {
+                EXPECT_EQ(expected, runOp(command, "m"))
+                        << "depth: " << depth << " inner: " << inner
+                        << " command: " << int(command);
+            }
+        }
+    }
 }
