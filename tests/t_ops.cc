@@ -2389,6 +2389,21 @@ TEST_F(OpTests, WholeContainer) {
               getNewDoc());
 }
 
+// The contents of a matched container aren't validated (the document is
+// required to be valid JSON), but its end must be found
+TEST_F(OpTests, SkipMatchedContainerInvalidDocument) {
+    const std::string invalid = R"({"a":[1,,2],"b":1})";
+    op.set_doc(invalid);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::GET, "a"));
+    EXPECT_EQ("[1,,2]", returnedMatch());
+    const std::string mismatched = R"({"a":[1,2,"b":1})";
+    op.set_doc(mismatched);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET, "a"));
+    const std::string truncated = R"({"a":[1,2)";
+    op.set_doc(truncated);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::GET, "a"));
+}
+
 // Operations on members located after long strings, and on long strings
 TEST_F(OpTests, LongStrings) {
     // Escapes and structural characters around the 64 byte block boundaries

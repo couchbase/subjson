@@ -19,6 +19,7 @@
 #include "util.h"
 #include "validate.h"
 #include <algorithm>
+#include <optional>
 
 using namespace Subdoc;
 
@@ -54,6 +55,10 @@ static void pop_callback(jsonsl_t jsn,
                          jsonsl_action_t,
                          jsonsl_state_st*,
                          const jsonsl_char_t*);
+static void next_sibling_push_callback(jsonsl_t jsn,
+                                       jsonsl_action_t,
+                                       jsonsl_state_st*,
+                                       const jsonsl_char_t*);
 
 static ParseContext* get_ctx(const jsonsl_t jsn) {
     return static_cast<ParseContext*>(jsn->data);
@@ -276,6 +281,57 @@ static void scan_matched_index(jsonsl_t jsn,
 /* Make code a bit more readable */
 #define M_POSSIBLE JSONSL_MATCH_POSSIBLE
 
+/**
+ * The end of the matched element has been located; stop the parser, or
+ * let it continue to the following sibling for
+ * Match::GET_FOLLOWING_SIBLINGS.
+ */
+static void end_of_match(jsonsl_t jsn, const Match* m) {
+    // Maybe we need another round to check for siblings?
+    if (m->extra_options == Match::GET_FOLLOWING_SIBLINGS) {
+        jsn->action_callback_POP = nullptr;
+        jsn->action_callback_PUSH = nullptr;
+
+        // We only care for this on push, but in the off chance where
+        // this is the final element in the parent *anyway*, the parsing
+        // itself should just stop.
+        jsn->action_callback = next_sibling_push_callback;
+    } else {
+        jsonsl_stop(jsn);
+    }
+}
+
+/**
+ * Skip the container (which was just pushed) with scan_container() rather
+ * than letting jsonsl parse its contents. jsonsl continues after the
+ * closing bracket (or brace) of the container, without calling the POP
+ * callback for it. A container which exceeds jsonsl's depth limit isn't
+ * skipped, but parsed by jsonsl which reports the error.
+ *
+ * @param st The state of the container
+ * @param at Pointer to the opening bracket (or brace) of the container
+ * @return The result of the scan if the container is skipped, or nothing
+ *         if jsonsl must parse it (or the container is malformed, in which
+ *         case the parser is stopped)
+ */
+static std::optional<ArrayScanResult> skip_container(jsonsl_t jsn,
+                                                     ParseContext* ctx,
+                                                     const jsonsl_state_st* st,
+                                                     const jsonsl_char_t* at) {
+    const auto result =
+            scan_container({at, static_cast<size_t>(ctx->buffer_end - at)},
+                           jsonsl_depth_limit(jsn, st));
+    if (result.status == ArrayScanResult::Status::Success) {
+        jsn->skip_bytes = result.length - 1;
+        return result;
+    }
+    if (result.status == ArrayScanResult::Status::Malformed) {
+        ctx->match->status = JSONSL_ERROR_GENERIC;
+        jsonsl_stop(jsn);
+    }
+    return {};
+}
+
 static void push_callback(jsonsl_t jsn,
                           jsonsl_action_t action,
                           jsonsl_state_st* st,
@@ -340,10 +396,6 @@ static void push_callback(jsonsl_t jsn,
                     return;
                 }
                 scan_matched_container(jsn, ctx, st, at);
-            } else if (m->skip_container_contents && !m->get_last &&
-                       m->extra_options != Match::GET_FOLLOWING_SIBLINGS &&
-                       JSONSL_STATE_IS_CONTAINER(st)) {
-                scan_matched_container(jsn, ctx, st, at);
             } else if (m->match_value.at) {
                 if (st->type != JSONSL_T_LIST) {
                     // Can't remove-by-value from anything but an array!
@@ -352,25 +404,28 @@ static void push_callback(jsonsl_t jsn,
                     return;
                 }
                 scan_matched_container(jsn, ctx, st, at);
+            } else if (ctx->buffer_contiguous && !m->get_last &&
+                       JSONSL_STATE_IS_CONTAINER(st)) {
+                // Only the end of the matched container is needed, so skip
+                // its contents. jsonsl doesn't pop a skipped container, so
+                // record the match here as pop_callback() would have.
+                if (const auto result = skip_container(jsn, ctx, st, at)) {
+                    m->loc_deepest.length = result->length;
+                    m->immediate_parent_found = 1;
+                    // jsonsl counts both the keys and the values in an
+                    // object
+                    m->num_children = st->type == JSONSL_T_OBJECT
+                                              ? result->num_elements * 2
+                                              : result->num_elements;
+                    end_of_match(jsn, m);
+                }
             }
 
         } else if (st->mres == JSONSL_MATCH_NOMATCH) {
             // Can't have a match on this tree. Ignore subsequent callbacks here.
             st->ignore_callback = 1;
             if (ctx->buffer_contiguous && JSONSL_STATE_IS_CONTAINER(st)) {
-                // A container which exceeds jsonsl's depth limit isn't
-                // skipped, but parsed by jsonsl which reports the error
-                const auto result = scan_container(
-                        {at, static_cast<size_t>(ctx->buffer_end - at)},
-                        jsonsl_depth_limit(jsn, st));
-                if (result.status == ArrayScanResult::Status::Success) {
-                    jsn->skip_bytes = result.length - 1;
-                } else if (result.status ==
-                           ArrayScanResult::Status::Malformed) {
-                    m->status = JSONSL_ERROR_GENERIC;
-                    jsonsl_stop(jsn);
-                    return;
-                }
+                skip_container(jsn, ctx, st, at);
             }
 
         } else if (st->mres == JSONSL_MATCH_POSSIBLE) {
@@ -466,18 +521,7 @@ static void pop_callback(jsonsl_t jsn,
             jsonsl_stop(jsn);
 
         } else {
-            // Maybe we need another round to check for siblings?
-            if (m->extra_options == Match::GET_FOLLOWING_SIBLINGS) {
-                jsn->action_callback_POP = nullptr;
-                jsn->action_callback_PUSH = nullptr;
-
-                // We only care for this on push, but in the off chance where
-                // this is the final element in the parent *anyway*, the parsing
-                // itself should just stop.
-                jsn->action_callback = next_sibling_push_callback;
-            } else {
-                jsonsl_stop(jsn);
-            }
+            end_of_match(jsn, m);
         }
 
         return;
@@ -555,11 +599,28 @@ int Match::exec_match_simple(const char* value,
 /**
  * Fill in the type, flags and number of children of the element located
  * by scan_matched_last_element() or scan_matched_index() (in
- * #loc_deepest) by letting jsonsl parse just that element. It is wrapped in an
- * array (without copying it) so that jsonsl can tell where a primitive ends.
+ * #loc_deepest). The children of a container are counted with
+ * scan_container() (its depth was checked when it was located). A
+ * primitive is parsed by jsonsl, wrapped in an array (without copying it)
+ * so that jsonsl can tell where it ends.
  */
 void Match::describe_scanned_element(jsonsl_t jsn) {
     element_scanned = false;
+
+    if (*loc_deepest.at == '[' || *loc_deepest.at == '{') {
+        const auto result =
+                scan_container({loc_deepest.at, loc_deepest.length});
+        if (result.status != ArrayScanResult::Status::Success) {
+            status = JSONSL_ERROR_GENERIC;
+            return;
+        }
+        const bool object = *loc_deepest.at == '{';
+        type = object ? JSONSL_T_OBJECT : JSONSL_T_LIST;
+        sflags = 0;
+        // jsonsl counts both the keys and the values in an object
+        num_children = object ? result.num_elements * 2 : result.num_elements;
+        return;
+    }
 
     std::array<Path::Component, 2> components{};
     components[0].ptype = JSONSL_PATH_ROOT;
@@ -569,8 +630,6 @@ void Match::describe_scanned_element(jsonsl_t jsn) {
     Path::CompInfo path(components.data(), components.size());
 
     Match element;
-    // No need to tokenize the contents if the element is a container
-    element.skip_container_contents = true;
     ParseContext ctx(&element, &path, loc_deepest.at + loc_deepest.length);
     // The wrapping array isn't contiguous with the element in memory
     ctx.buffer_contiguous = false;
@@ -624,7 +683,6 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
     const Loc remove_value = match_value;
     const bool remove_all = remove_all_matches;
     std::string* const filtered = filtered_buf;
-    const bool skip_container = skip_container_contents;
 
     while (cur_start < orig.size()) {
         size_t ii;
@@ -675,7 +733,6 @@ Match::exec_match_negix(const char *value, size_t nvalue, const Path *pth,
             match_value = remove_value;
             remove_all_matches = remove_all;
             filtered_buf = filtered;
-            skip_container_contents = skip_container;
         }
 
         rv = exec_match_simple(last_start, last_len, &tmp, jsn);

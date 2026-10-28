@@ -141,18 +141,6 @@ public:
     Loc ensure_unique;
 
     /**
-     * Request flag; if the match is an array or an object, locate its end
-     * with the (non-validating) scan_container() rather than parsing all of
-     * its contents with jsonsl. The match result is the same as without the
-     * flag, except that the contents of the container are not validated.
-     * This is always used for arrays when #ensure_unique is set.
-     * The flag is ignored with GET_FOLLOWING_SIBLINGS, as jsonsl is
-     * stopped once the container is scanned, so the siblings following
-     * the match wouldn't be counted.
-     */
-    bool skip_container_contents = false;
-
-    /**
      * If set (non-null `at`), scan the matched array's children for
      * element(s) whose raw JSON text equals this value, removing the
      * first (or all, if #remove_all_matches) such element(s) from the

@@ -237,10 +237,11 @@ void randomScanValue(std::mt19937& gen, std::string& out, int depth) {
 } // namespace
 
 /**
- * Verify that matching an array with skip_container_contents (using
- * scan_array()) gives the same result as letting jsonsl parse it.
+ * Verify that matching a container (which is located with the scanner)
+ * gives the container and the number of children in the generated
+ * document, with random values before, in and after it.
  */
-TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
+TEST(ArrayScanTest, RandomDocumentsMatchContainer) {
     std::mt19937 gen(0xc0ffee);
     auto* jsn = Match::jsn_alloc();
     Path path;
@@ -250,7 +251,9 @@ TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
         const bool object = iteration % 2;
         std::string doc = R"({"before":)";
         randomScanValue(gen, doc, 0);
-        doc.append(object ? R"(,"container":{)" : R"(,"container":[)");
+        doc.append(R"(,"container":)");
+        const size_t begin = doc.size();
+        doc.push_back(object ? '{' : '[');
         const int elements = int(gen() % 40);
         for (int ii = 0; ii < elements; ++ii) {
             if (ii) {
@@ -261,27 +264,22 @@ TEST(ArrayScanTest, RandomDocumentsMatchJsonsl) {
             }
             randomScanValue(gen, doc, 1);
         }
-        doc.append(object ? R"(},"after":)" : R"(],"after":)");
+        doc.push_back(object ? '}' : ']');
+        const std::string container = doc.substr(begin);
+        doc.append(R"(,"after":)");
         randomScanValue(gen, doc, 0);
         doc.push_back('}');
 
-        Match parsed;
-        parsed.exec_match(doc, path, jsn);
-        Match scanned;
-        scanned.skip_container_contents = true;
-        scanned.exec_match(doc, path, jsn);
-
-        ASSERT_EQ(JSONSL_ERROR_SUCCESS, parsed.status) << doc;
-        ASSERT_EQ(JSONSL_MATCH_COMPLETE, parsed.matchres) << doc;
-        ASSERT_EQ(parsed.status, scanned.status) << doc;
-        ASSERT_EQ(parsed.matchres, scanned.matchres) << doc;
-        ASSERT_EQ(parsed.type, scanned.type) << doc;
-        ASSERT_EQ(parsed.loc_deepest.to_string(),
-                  scanned.loc_deepest.to_string())
+        Match match;
+        match.exec_match(doc, path, jsn);
+        ASSERT_EQ(JSONSL_ERROR_SUCCESS, match.status) << doc;
+        ASSERT_EQ(JSONSL_MATCH_COMPLETE, match.matchres) << doc;
+        ASSERT_EQ(object ? JSONSL_T_OBJECT : JSONSL_T_LIST, match.type) << doc;
+        ASSERT_EQ(container, match.loc_deepest.to_string()) << doc;
+        // jsonsl counts both the keys and the values in an object
+        ASSERT_EQ(object ? 2 * elements : elements, int(match.num_children))
                 << doc;
-        ASSERT_EQ(parsed.num_children, scanned.num_children) << doc;
-        ASSERT_EQ(parsed.immediate_parent_found, scanned.immediate_parent_found)
-                << doc;
+        ASSERT_TRUE(match.immediate_parent_found) << doc;
     }
     Match::jsn_free(jsn);
 }

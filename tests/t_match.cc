@@ -175,23 +175,24 @@ TEST_F(MatchTests, testGetNumSiblings) {
     ASSERT_TRUE(m.is_first());
 }
 
-TEST_F(MatchTests, testSkipContentsWithFollowingSiblings) {
-    // The siblings following the match must be counted the same way
-    // whether or not the contents of the matched array are skipped
+TEST_F(MatchTests, testFollowingSiblingsOfContainer) {
+    // The siblings following a matched container are counted after its
+    // contents are skipped (the expected values are those reported when
+    // jsonsl parsed the container)
     pth.parse("sublist");
     m.extra_options = Match::GET_FOLLOWING_SIBLINGS;
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
-    const auto num_siblings = m.num_siblings;
-    ASSERT_GT(num_siblings, 0U);
+    EXPECT_EQ(R"(["elem1","elem2","elem3"])", Util::match_match(m));
+    EXPECT_EQ(3U, m.num_siblings);
 
     m.clear();
+    pth.parse("subdict");
     m.extra_options = Match::GET_FOLLOWING_SIBLINGS;
-    m.skip_container_contents = true;
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
-    EXPECT_EQ(R"(["elem1","elem2","elem3"])", Util::match_match(m));
-    EXPECT_EQ(num_siblings, m.num_siblings);
+    EXPECT_EQ(R"({"subkey1":"subval1"})", Util::match_match(m));
+    EXPECT_EQ(2U, m.num_siblings);
 }
 
 TEST_F(MatchTests, testGetPosition) {
