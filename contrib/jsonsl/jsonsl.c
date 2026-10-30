@@ -224,6 +224,46 @@ static const jsonsl_uchar_t* jsonsl__skip_whitespace(
     return bytes;
 }
 
+/*
+ * Skip the literal (true, false or null) which was just pushed if all of it
+ * is in the buffer, rather than verifying it one character at a time in the
+ * main loop. If it isn't all in the buffer (or doesn't match) the main loop
+ * verifies it (and reports the error) as before.
+ *
+ * @param state The state of the literal
+ * @param bytes The position of the first character of the literal
+ * @param end The end of the buffer
+ * @return The position of the last character of the literal if it was
+ *         skipped, otherwise the position of the first character
+ */
+static const jsonsl_uchar_t* jsonsl__skip_literal(struct jsonsl_state_st* state,
+                                                  const jsonsl_uchar_t* bytes,
+                                                  const jsonsl_uchar_t* end) {
+    const char* literal;
+    size_t length;
+    size_t ii;
+    if (state->special_flags == JSONSL_SPECIALf_TRUE) {
+        literal = "true";
+        length = 4;
+    } else if (state->special_flags == JSONSL_SPECIALf_FALSE) {
+        literal = "false";
+        length = 5;
+    } else {
+        literal = "null";
+        length = 4;
+    }
+    if ((size_t)(end - bytes) < length) {
+        return bytes;
+    }
+    for (ii = 1; ii < length; ii++) {
+        if (bytes[ii] != (jsonsl_uchar_t)literal[ii]) {
+            return bytes;
+        }
+    }
+    state->nescapes = (unsigned int)length; /* STATE_SPECIAL_LENGTH */
+    return bytes + length - 1;
+}
+
 JSONSL_API
 void
 jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
@@ -765,6 +805,11 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     state->nelem = 0;
                 }
                 DO_CALLBACK(SPECIAL, PUSH);
+                if (special_flags &
+                    (JSONSL_SPECIALf_TRUE | JSONSL_SPECIALf_FALSE |
+                     JSONSL_SPECIALf_NULL)) {
+                    c = jsonsl__skip_literal(state, c, end);
+                }
             }
             CONTINUE_NEXT_CHAR();
         }
