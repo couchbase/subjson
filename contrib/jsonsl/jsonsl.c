@@ -6,6 +6,21 @@
 #include "jsonsl.h"
 #include <assert.h>
 #include <limits.h>
+
+/* SIMD for locating the end of the simple characters in a string (see
+ * jsonsl__str_fastparse()) */
+#if !defined(JSONSL_USE_WCHAR) && !defined(JSONSL_USE_METRICS)
+#if defined(__aarch64__) || defined(_M_ARM64)
+#include <arm_neon.h>
+#define JSONSL_STR_NEON 1
+#elif defined(__SSE2__) || defined(_M_X64)
+#include <emmintrin.h>
+#define JSONSL_STR_SSE2 1
+#endif
+#endif
+#if defined(_MSC_VER) && (defined(JSONSL_STR_NEON) || defined(JSONSL_STR_SSE2))
+#include <intrin.h>
+#endif
 #include <ctype.h>
 
 #ifdef JSONSL_USE_METRICS
@@ -159,6 +174,53 @@ void jsonsl_destroy(jsonsl_t jsn)
 static int jsonsl__str_fastparse(const jsonsl_uchar_t** bytes_p,
                                  const jsonsl_uchar_t* end) {
     const jsonsl_uchar_t *bytes = *bytes_p;
+#if defined(JSONSL_STR_NEON) || defined(JSONSL_STR_SSE2)
+    /* Look at 16 characters at a time for a character which isn't simple
+     * (see String_No_Passthrough): a control character below 0x14, a quote
+     * or a backslash. The rest is handled by the loop below. */
+    while (end - bytes >= 16) {
+#if defined(JSONSL_STR_NEON)
+        const uint8x16_t chars = vld1q_u8(bytes);
+        const uint8x16_t stop =
+                vorrq_u8(vcltq_u8(chars, vdupq_n_u8(0x14)),
+                         vorrq_u8(vceqq_u8(chars, vdupq_n_u8('"')),
+                                  vceqq_u8(chars, vdupq_n_u8('\\'))));
+        /* 4 bits per character */
+        const uint64_t mask = vget_lane_u64(
+                vreinterpret_u64_u8(vshrn_n_u16(vreinterpretq_u16_u8(stop), 4)),
+                0);
+        if (mask) {
+#if defined(_MSC_VER)
+            unsigned long idx;
+            _BitScanForward64(&idx, mask);
+#else
+            const int idx = __builtin_ctzll(mask);
+#endif
+            *bytes_p = bytes + (idx >> 2);
+            return FASTPARSE_BREAK;
+        }
+#else
+        const __m128i chars = _mm_loadu_si128((const __m128i*)bytes);
+        /* Unsigned chars < 0x14: min(chars, 0x13) == chars */
+        const __m128i stop = _mm_or_si128(
+                _mm_cmpeq_epi8(_mm_min_epu8(chars, _mm_set1_epi8(0x13)), chars),
+                _mm_or_si128(_mm_cmpeq_epi8(chars, _mm_set1_epi8('"')),
+                             _mm_cmpeq_epi8(chars, _mm_set1_epi8('\\'))));
+        const int mask = _mm_movemask_epi8(stop);
+        if (mask) {
+#if defined(_MSC_VER)
+            unsigned long idx;
+            _BitScanForward(&idx, (unsigned long)mask);
+#else
+            const int idx = __builtin_ctz((unsigned)mask);
+#endif
+            *bytes_p = bytes + idx;
+            return FASTPARSE_BREAK;
+        }
+#endif
+        bytes += 16;
+    }
+#endif
     for (; bytes != end; bytes++) {
         if (
 #ifdef JSONSL_USE_WCHAR
