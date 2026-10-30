@@ -455,6 +455,11 @@ struct jsonsl_st {
     /**
      * This is the current position, relative to the beginning
      * of the stream.
+     *
+     * jsonsl_feed() derives the position from its position in the buffer
+     * and only stores it here before invoking a callback and when it
+     * returns. Callbacks must treat it as read-only: a change made to it
+     * is overwritten rather than carried forward.
      */
     size_t pos;
 

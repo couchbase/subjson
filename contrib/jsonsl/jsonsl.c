@@ -149,20 +149,17 @@ void jsonsl_destroy(jsonsl_t jsn)
  * This function is meant to accelerate string parsing, reducing the main loop's
  * check if we are indeed a string.
  *
- * @param jsn the parser
- * @param[in,out] bytes_p A pointer to the current buffer (i.e. current position)
- * @param[in,out] nbytes_p A pointer to the current size of the buffer
+ * @param[in,out] bytes_p A pointer to the current buffer (i.e. current
+ * position)
+ * @param end The end of the buffer
  * @return true if all bytes have been exhausted (and thus the main loop can
  * return), false if a special character was examined which requires greater
  * examination.
  */
-static int
-jsonsl__str_fastparse(jsonsl_t jsn,
-                      const jsonsl_uchar_t **bytes_p, size_t *nbytes_p)
-{
+static int jsonsl__str_fastparse(const jsonsl_uchar_t** bytes_p,
+                                 const jsonsl_uchar_t* end) {
     const jsonsl_uchar_t *bytes = *bytes_p;
-    const jsonsl_uchar_t *end;
-    for (end = bytes + *nbytes_p; bytes != end; bytes++) {
+    for (; bytes != end; bytes++) {
         if (
 #ifdef JSONSL_USE_WCHAR
                 *bytes >= 0x100 ||
@@ -171,102 +168,93 @@ jsonsl__str_fastparse(jsonsl_t jsn,
             INCR_METRIC(TOTAL);
             INCR_METRIC(STRINGY_INSIGNIFICANT);
         } else {
-            /* Once we're done here, re-calculate the position variables */
-            jsn->pos += (bytes - *bytes_p);
-            *nbytes_p -= (bytes - *bytes_p);
             *bytes_p = bytes;
             return FASTPARSE_BREAK;
         }
     }
-
-    /* Once we're done here, re-calculate the position variables */
-    jsn->pos += (bytes - *bytes_p);
     return FASTPARSE_EXHAUSTED;
 }
 
 /* Functions exactly like str_fastparse, except it also accepts a 'state'
  * argument, since the number's value is updated in the state. */
-static int
-jsonsl__num_fastparse(jsonsl_t jsn,
-                      const jsonsl_uchar_t **bytes_p, size_t *nbytes_p,
-                      struct jsonsl_state_st *state)
-{
-    int exhausted = 1;
-    size_t nbytes = *nbytes_p;
+static int jsonsl__num_fastparse(const jsonsl_uchar_t** bytes_p,
+                                 const jsonsl_uchar_t* end,
+                                 struct jsonsl_state_st* state) {
     const jsonsl_uchar_t *bytes = *bytes_p;
 
-    for (; nbytes; nbytes--, bytes++) {
+    for (; bytes != end; bytes++) {
         jsonsl_uchar_t c = *bytes;
         if (isdigit(c)) {
             INCR_METRIC(TOTAL);
             INCR_METRIC(NUMBER_FASTPATH);
             state->nelem = (state->nelem * 10) + (c - 0x30);
         } else {
-            exhausted = 0;
-            break;
+            *bytes_p = bytes;
+            return FASTPARSE_BREAK;
         }
     }
-    jsn->pos += (*nbytes_p - nbytes);
-    if (exhausted) {
-        return FASTPARSE_EXHAUSTED;
-    }
-    *nbytes_p = nbytes;
-    *bytes_p = bytes;
-    return FASTPARSE_BREAK;
+    return FASTPARSE_EXHAUSTED;
 }
 
 JSONSL_API
 void
 jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
 {
+/* The position of the current character. It is derived from the pointer
+ * rather than kept up to date in jsn->pos for every character; jsn->pos is
+ * only updated (SYNC_POS) before invoking a callback and when returning,
+ * so a change made to jsn->pos by a callback is not carried forward (see
+ * jsonsl_st::pos). */
+#define CUR_POS (pos_begin_feed + (size_t)(c - (const jsonsl_uchar_t*)bytes))
+#define SYNC_POS jsn->pos = CUR_POS
 
-#define INVOKE_ERROR(eb) \
+#define INVOKE_ERROR(eb)                                                \
+    SYNC_POS;                                                           \
     if (jsn->error_callback(jsn, JSONSL_ERROR_##eb, state, (char*)c)) { \
-        goto GT_AGAIN; \
-    } \
+        goto GT_AGAIN;                                                  \
+    }                                                                   \
     return;
 
-#define STACK_PUSH \
-    if (jsn->level >= (levels_max-1)) { \
-        jsn->error_callback(jsn, JSONSL_ERROR_LEVELS_EXCEEDED, state, (char*)c); \
-        return; \
-    } \
-    state = jsn->stack + (++jsn->level); \
-    state->ignore_callback = jsn->stack[jsn->level-1].ignore_callback; \
-    state->pos_begin = jsn->pos;
+#define STACK_PUSH                                                       \
+    if (jsn->level >= (levels_max - 1)) {                                \
+        SYNC_POS;                                                        \
+        jsn->error_callback(                                             \
+                jsn, JSONSL_ERROR_LEVELS_EXCEEDED, state, (char*)c);     \
+        return;                                                          \
+    }                                                                    \
+    state = jsn->stack + (++jsn->level);                                 \
+    state->ignore_callback = jsn->stack[jsn->level - 1].ignore_callback; \
+    state->pos_begin = CUR_POS;
 
 /* Skip to the closing quote of the string just pushed, if requested by
  * the PUSH callback (see jsonsl_st::skip_bytes). The closing quote is
  * processed as normal (popping the string). */
-#define SKIP_STRING_CONTENTS           \
-    if (jsn->skip_bytes) {             \
-        size_t skip = jsn->skip_bytes; \
-        jsn->skip_bytes = 0;           \
-        if (skip < nbytes) {           \
-            c += skip - 1;             \
-            jsn->pos += skip - 1;      \
-            nbytes -= skip - 1;        \
-        }                              \
+#define SKIP_STRING_CONTENTS            \
+    if (jsn->skip_bytes) {              \
+        size_t skip = jsn->skip_bytes;  \
+        jsn->skip_bytes = 0;            \
+        if (skip < (size_t)(end - c)) { \
+            c += skip - 1;              \
+        }                               \
     }
 
-#define STACK_POP_NOPOS \
-    state->pos_cur = jsn->pos; \
+#define STACK_POP_NOPOS       \
+    state->pos_cur = CUR_POS; \
     state = jsn->stack + (--jsn->level);
 
-
-#define STACK_POP \
+#define STACK_POP    \
     STACK_POP_NOPOS; \
-    state->pos_cur = jsn->pos;
+    state->pos_cur = CUR_POS;
 
 #define CALLBACK_AND_POP_NOPOS(T) \
-        state->pos_cur = jsn->pos; \
-        DO_CALLBACK(T, POP); \
-        state->nescapes = 0; \
-        state = jsn->stack + (--jsn->level);
+    state->pos_cur = CUR_POS;     \
+    DO_CALLBACK(T, POP);          \
+    state->nescapes = 0;          \
+    state = jsn->stack + (--jsn->level);
 
-#define CALLBACK_AND_POP(T) \
-        CALLBACK_AND_POP_NOPOS(T); \
-        state->pos_cur = jsn->pos;
+#define CALLBACK_AND_POP(T)    \
+    CALLBACK_AND_POP_NOPOS(T); \
+    state->pos_cur = CUR_POS;
 
 #define SPECIAL_POP \
     CALLBACK_AND_POP(SPECIAL); \
@@ -275,17 +263,20 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
 
 #define CUR_CHAR (*(jsonsl_uchar_t*)c)
 
-#define DO_CALLBACK(T, action) \
-    if (jsn->call_##T && \
-            jsn->max_callback_level > state->level && \
-            state->ignore_callback == 0) { \
-        \
-        if (jsn->action_callback_##action) { \
-            jsn->action_callback_##action(jsn, JSONSL_ACTION_##action, state, (jsonsl_char_t*)c); \
-        } else if (jsn->action_callback) { \
-            jsn->action_callback(jsn, JSONSL_ACTION_##action, state, (jsonsl_char_t*)c); \
-        } \
-        if (jsn->stopfl) { return; } \
+#define DO_CALLBACK(T, action)                                              \
+    if (jsn->call_##T && jsn->max_callback_level > state->level &&          \
+        state->ignore_callback == 0) {                                      \
+        SYNC_POS;                                                           \
+        if (jsn->action_callback_##action) {                                \
+            jsn->action_callback_##action(                                  \
+                    jsn, JSONSL_ACTION_##action, state, (jsonsl_char_t*)c); \
+        } else if (jsn->action_callback) {                                  \
+            jsn->action_callback(                                           \
+                    jsn, JSONSL_ACTION_##action, state, (jsonsl_char_t*)c); \
+        }                                                                   \
+        if (jsn->stopfl) {                                                  \
+            return;                                                         \
+        }                                                                   \
     }
 
     /**
@@ -296,10 +287,10 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
         INVOKE_ERROR(HKEY_EXPECTED); \
     }
 
-#define VERIFY_SPECIAL(lit) \
-        if (CUR_CHAR != (lit)[jsn->pos - state->pos_begin]) { \
-            INVOKE_ERROR(SPECIAL_EXPECTED); \
-        }
+#define VERIFY_SPECIAL(lit)                              \
+    if (CUR_CHAR != (lit)[CUR_POS - state->pos_begin]) { \
+        INVOKE_ERROR(SPECIAL_EXPECTED);                  \
+    }
 
 #define STATE_SPECIAL_LENGTH \
     (state)->nescapes
@@ -313,11 +304,13 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
 #define CONTINUE_NEXT_CHAR() continue
 
     const jsonsl_uchar_t *c = (jsonsl_uchar_t*)bytes;
+    const jsonsl_uchar_t* const end = c + nbytes;
+    const size_t pos_begin_feed = jsn->pos;
     size_t levels_max = jsn->levels_max;
     struct jsonsl_state_st *state = jsn->stack + jsn->level;
     jsn->base = bytes;
 
-    for (; nbytes; nbytes--, jsn->pos++, c++) {
+    for (; c != end; c++) {
         unsigned state_type;
         INCR_METRIC(TOTAL);
 
@@ -333,15 +326,15 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 } else if (CUR_CHAR == 'u') {
                     DO_CALLBACK(UESCAPE, UESCAPE);
                     if (jsn->return_UESCAPE) {
+                        SYNC_POS;
                         return;
                     }
                 }
                 CONTINUE_NEXT_CHAR();
             }
 
-            if (jsonsl__str_fastparse(jsn, &c, &nbytes) ==
-                    FASTPARSE_EXHAUSTED) {
-                /* No need to readjust variables as we've exhausted the iterator */
+            if (jsonsl__str_fastparse(&c, end) == FASTPARSE_EXHAUSTED) {
+                jsn->pos = pos_begin_feed + nbytes;
                 return;
             } else {
                 if (CUR_CHAR == '"') {
@@ -357,8 +350,9 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
         } else if (state_type == JSONSL_T_SPECIAL) {
             /* Fast track for signed/unsigned */
             if (IS_NORMAL_NUMBER) {
-                if (jsonsl__num_fastparse(jsn, &c, &nbytes, state) ==
-                        FASTPARSE_EXHAUSTED) {
+                if (jsonsl__num_fastparse(&c, end, state) ==
+                    FASTPARSE_EXHAUSTED) {
+                    jsn->pos = pos_begin_feed + nbytes;
                     return;
                 } else {
                     goto GT_SPECIAL_NUMERIC;
@@ -646,12 +640,10 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 jsn->skip_members = 0;
                 /* The closing bracket must be within this buffer, otherwise
                  * ignore the request and parse the container as normal */
-                if (skip < nbytes && members) {
+                if (skip < (size_t)(end - c) && members) {
                     /* Continue at the comma (or closing bracket) following
                      * the skipped elements, as if they had been parsed */
                     c += skip - 1;
-                    jsn->pos += skip - 1;
-                    nbytes -= skip - 1;
                     state->nelem = state->type == JSONSL_T_OBJECT ? members * 2
                                                                   : members;
                     jsn->can_insert = 0;
@@ -659,16 +651,14 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                     jsn->tok_last = 0;
                     CONTINUE_NEXT_CHAR();
                 }
-                if (skip < nbytes) {
+                if (skip < (size_t)(end - c)) {
                     c += skip;
-                    jsn->pos += skip;
-                    nbytes -= skip;
                     jsn->can_insert = 0;
                     jsn->level--;
                     jsn->expecting = ',';
                     jsn->tok_last = 0;
                     state = jsn->stack + jsn->level;
-                    state->pos_cur = jsn->pos;
+                    state->pos_cur = CUR_POS;
                     CONTINUE_NEXT_CHAR();
                 }
             }
@@ -701,7 +691,7 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 DO_CALLBACK(OBJECT, POP);
             }
             state = jsn->stack + jsn->level;
-            state->pos_cur = jsn->pos;
+            state->pos_cur = CUR_POS;
             CONTINUE_NEXT_CHAR();
 
         default:
@@ -748,8 +738,13 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
             }
             CONTINUE_NEXT_CHAR();
         }
+        /* clang-format off */
     }
+    jsn->pos = pos_begin_feed + nbytes;
 }
+/* clang-format on */
+#undef CUR_POS
+#undef SYNC_POS
 
 JSONSL_API
 const char* jsonsl_strerror(jsonsl_error_t err)
