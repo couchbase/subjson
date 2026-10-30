@@ -196,6 +196,34 @@ static int jsonsl__num_fastparse(const jsonsl_uchar_t** bytes_p,
     return FASTPARSE_EXHAUSTED;
 }
 
+/*
+ * Skip the run of whitespace following the (whitespace) character at the
+ * current position. It isn't inlined, as that slows down the main loop of
+ * jsonsl_feed() for documents without whitespace.
+ *
+ * @param bytes The current position
+ * @param end The end of the buffer
+ * @return The position of the last whitespace character in the run
+ */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#elif defined(_MSC_VER)
+__declspec(noinline)
+#endif
+static const jsonsl_uchar_t* jsonsl__skip_whitespace(
+        const jsonsl_uchar_t* bytes, const jsonsl_uchar_t* end) {
+    /* Space, <TAB>, <LF> and <CR> (see Allowed_Whitespace) */
+    const uint64_t whitespace =
+            (1ULL << ' ') | (1ULL << '\t') | (1ULL << '\n') | (1ULL << '\r');
+    while (bytes + 1 != end && bytes[1] <= ' ' &&
+           ((whitespace >> bytes[1]) & 1)) {
+        INCR_METRIC(TOTAL);
+        INCR_METRIC(ALLOWED_WHITESPACE);
+        bytes++;
+    }
+    return bytes;
+}
+
 JSONSL_API
 void
 jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
@@ -487,8 +515,10 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
         } else if (is_allowed_whitespace(CUR_CHAR)) {
             INCR_METRIC(ALLOWED_WHITESPACE);
             /* So we're not special. Harmless insignificant whitespace
-             * passthrough
+             * passthrough. Skip the whole run of it here rather than going
+             * through the checks above for every character.
              */
+            c = jsonsl__skip_whitespace(c, end);
             CONTINUE_NEXT_CHAR();
         } else if (extract_special(CUR_CHAR)) {
             /* not a string, whitespace, or structural token. must be special */
