@@ -4,5 +4,5 @@ cb_enable_unity_build(subjson-test)
 add_sanitizers(subjson-test)
 add_test(NAME subjson-all-tests COMMAND subjson-test)
 
-cb_add_test_executable(subjson-bench subjson_bench.cc)
+cb_add_test_executable(subjson-bench subjson_bench.cc jsonsl_bench.cc)
 target_link_libraries(subjson-bench subjson benchmark::benchmark)
