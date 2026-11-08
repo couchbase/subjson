@@ -210,8 +210,16 @@ TEST_F(PathTests, testGetRootType) {
 TEST_F(PathTests, testEdgeCasesAndErrors) {
     Path path;
 
-    // Empty components at start, middle, or inside backticks
+    // Empty components at start, middle, end, or inside backticks
     EXPECT_NE(0, path.parse(".foo"));
+    path.clear();
+    EXPECT_NE(0, path.parse("foo."));
+    path.clear();
+    EXPECT_NE(0, path.parse("foo.bar."));
+    path.clear();
+    EXPECT_NE(0, path.parse("[0]."));
+    path.clear();
+    EXPECT_NE(0, path.parse("foo[0]."));
     path.clear();
     EXPECT_NE(0, path.parse("foo..bar"));
     path.clear();

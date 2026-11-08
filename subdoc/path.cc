@@ -216,6 +216,9 @@ Path::parse_string(const char *path, size_t len, size_t *n_consumed)
         if (cur_c == '[' || cur_c == '.') {
             *n_consumed = ii;
             if (cur_c == '.') {
+                if (ii + 1 == len) {
+                    return JSONSL_ERROR_JPR_BADPATH;
+                }
                 *n_consumed += 1;
             }
 
@@ -262,6 +265,9 @@ Path::parse(const char *path, size_t len)
                 } else if (path[ii] == '.') {
                     // Skip another character. Ignore the '.'
                     ii++;
+                    if (ii == len) {
+                        return JSONSL_ERROR_JPR_BADPATH;
+                    }
                 } else {
                     return JSONSL_ERROR_JPR_BADPATH;
                 }
