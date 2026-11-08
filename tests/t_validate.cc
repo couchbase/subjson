@@ -88,3 +88,40 @@ TEST_F(ValidateTest, testDepth) {
     rv = Validator::validate(txt, nullptr, 2, Validator::PARENT_DICT);
     ASSERT_EQ(Validator::ETOODEEP, rv);
 }
+
+TEST_F(ValidateTest, testErrorsAndErrstr) {
+    // Multiple elements in PARENT_DICT | VALUE_SINGLE mode
+    EXPECT_EQ(Validator::EMULTIELEM,
+              Validator::validate(
+                      R"(1,"k":2)",
+                      nullptr,
+                      -1,
+                      Validator::PARENT_DICT | Validator::VALUE_SINGLE));
+
+    // Non-primitive in PARENT_ARRAY | VALUE_PRIMITIVE mode
+    EXPECT_EQ(Validator::ENOTPRIMITIVE,
+              Validator::validate(
+                      "[1]",
+                      nullptr,
+                      -1,
+                      Validator::PARENT_ARRAY | Validator::VALUE_PRIMITIVE));
+
+    // Invalid parent mode bits
+    EXPECT_EQ(JSONSL_ERROR_GENERIC,
+              Validator::validate("1", nullptr, -1, 0x04));
+
+    // Reusing an explicit jsonsl_t parser instance
+    auto* parser = Subdoc::Match::jsn_alloc();
+    EXPECT_EQ(JSONSL_ERROR_SUCCESS, Validator::validate(R"({"a":1})", parser));
+    Subdoc::Match::jsn_free(parser);
+
+    // Error string descriptions for jsonsl and Validator-specific error codes
+    EXPECT_NE(nullptr, Validator::errstr(JSONSL_ERROR_SUCCESS));
+    EXPECT_NE(nullptr, Validator::errstr(JSONSL_ERROR_GENERIC));
+    EXPECT_STREQ("Found multiple elements (single expected)",
+                 Validator::errstr(Validator::EMULTIELEM));
+    EXPECT_STREQ("Found incomplete JSON",
+                 Validator::errstr(Validator::EPARTIAL));
+    EXPECT_STREQ("UNKNOWN", Validator::errstr(Validator::ENOTPRIMITIVE));
+    EXPECT_STREQ("UNKNOWN", Validator::errstr(999));
+}

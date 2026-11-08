@@ -810,3 +810,117 @@ TEST(ArrayScanTest, FindElementDepthLimit) {
     ASSERT_EQ(ScanStatus::Found, result.status);
     EXPECT_EQ(array.rfind('3'), result.element_offset);
 }
+
+TEST(ArrayScanTest, AllByteValuesAcrossLanes) {
+    // Verify that every byte value (0x00..0xFF) at every lane offset (0..63)
+    // is classified identically to the structural/string characters it
+    // represents, without false positives from SIMD bit-folding.
+    for (int byteVal = 0; byteVal < 256; ++byteVal) {
+        const char ch = static_cast<char>(byteVal);
+        for (size_t lane = 0; lane < 64; ++lane) {
+            if (ch != '"' && ch != '\\') {
+                // Inside a string, any byte other than '"' and '\\' must not
+                // terminate or escape the string.
+                std::string str = "\"" + std::string(lane, 'a') +
+                                  std::string(1, ch) +
+                                  std::string(64 - lane, 'b') + "\"";
+                EXPECT_EQ(str.size() - 1, Subdoc::find_string_end(str))
+                        << "byte=" << byteVal << " lane=" << lane;
+
+                std::string arr = "[" + str + ",1]";
+                const auto scanRes = scan_array(arr, "1");
+                EXPECT_EQ(ScanStatus::Found, scanRes.status)
+                        << "byte=" << byteVal << " lane=" << lane;
+            }
+
+            if (ch != '"' && ch != '\\' && ch != '[' && ch != ']' &&
+                ch != '{' && ch != '}' && ch != ',') {
+                // Outside a string, non-structural bytes must not be
+                // classified as brackets, braces, quotes, or commas.
+                std::string arr = "[" + std::string(lane, ' ') + "1" +
+                                  std::string(1, ch) + ",2]";
+                const auto elemRes = Subdoc::find_array_element(arr, 1);
+                ASSERT_EQ(ScanStatus::Found, elemRes.status)
+                        << "byte=" << byteVal << " lane=" << lane;
+                EXPECT_EQ("2",
+                          arr.substr(elemRes.element_offset,
+                                     elemRes.element_length))
+                        << "byte=" << byteVal << " lane=" << lane;
+            }
+        }
+    }
+}
+
+TEST(ArrayScanTest, PrevEscapedIntoFindUnescapedQuote) {
+    // Exercise the path where a long string spans across a 64-byte block
+    // (block 1, bytes 64..127) that contains no quotes and has a backslash
+    // at the very last byte (index 127), carrying prev_escaped = 1 into
+    // find_unescaped_quote() at byte 128.
+    for (size_t pad = 0; pad < 8; ++pad) {
+        // "[" + pad spaces + "\"" places the opening quote at index (1 + pad).
+        // Fill with 'x' up to byte 126, put '\\' at byte 127, and '"' at byte
+        // 128.
+        const size_t prefixLen = 2 + pad;
+        const size_t xCount = 127 - prefixLen;
+        const std::string doc = "[" + std::string(pad, ' ') + "\"" +
+                                std::string(xCount, 'x') + "\\\"still_in_str" +
+                                std::string(70, 'y') + "\",42]";
+        const auto res = scan_array(doc, "42");
+        EXPECT_EQ(ScanStatus::Found, res.status) << "pad=" << pad;
+        expectArray(doc, 2);
+    }
+}
+
+TEST(ArrayScanTest, ZeroDepthAndUnclosedWhitespaceContainers) {
+    std::string survivors;
+    EXPECT_EQ(ScanStatus::TooDeep, Subdoc::scan_container("{}", 0).status);
+    EXPECT_EQ(ScanStatus::TooDeep,
+              Subdoc::find_array_element("[]", 0, 0).status);
+    EXPECT_EQ(ScanStatus::TooDeep,
+              Subdoc::find_object_member("{}", "a", 0).status);
+    EXPECT_EQ(ScanStatus::TooDeep,
+              Subdoc::filter_array("[]", "1", false, survivors, 0).status);
+
+    // Containers with only an opening bracket/brace and whitespace
+    EXPECT_EQ(ScanStatus::Malformed, scan_array("[   ", {}).status);
+    EXPECT_EQ(ScanStatus::Malformed, Subdoc::scan_container("{   ").status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::find_array_element("[   ", 0).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::find_object_member("{   ", "a", 10).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              Subdoc::filter_array("[   ", "1", false, survivors).status);
+}
+
+TEST(ArrayScanTest, FindObjectMemberEdgeCases) {
+    using Subdoc::find_object_member;
+    constexpr size_t depth = 100;
+
+    // Non-string member in object (visitor skips non-quote start), unclosed
+    // key, unclosed object, or mismatched bracket
+    EXPECT_EQ(ScanStatus::Success,
+              find_object_member("{1:2}", "a", depth).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member("{1:2", "a", depth).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member("{\"a", "a", depth).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member(R"({"a":1,  )", "b", depth).status);
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member(R"({"a":1])", "b", depth).status);
+
+    // Key that shares prefix with `key` and has a non-backslash character at
+    // raw[key.size()] cannot unescape to `key`, so scanning continues and
+    // finds the exact match at index 1
+    const auto nonMatchingPrefix =
+            find_object_member(R"({"ab\u0063":1,"a":2})", "a", depth);
+    EXPECT_EQ(ScanStatus::Found, nonMatchingPrefix.status);
+    EXPECT_EQ(1U, nonMatchingPrefix.found_index);
+
+    // Malformed large container value (> 512 bytes, depth > 1) inside an object
+    // member triggers the large-value sub-scan and propagates Malformed
+    const std::string malformedLarge =
+            R"({"a":[)" + std::string(600, '1') + R"(,"b":1})";
+    EXPECT_EQ(ScanStatus::Malformed,
+              find_object_member(malformedLarge, "b", depth).status);
+}

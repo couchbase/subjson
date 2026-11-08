@@ -195,4 +195,127 @@ TEST_F(PathTests, testGetRootType) {
     ASSERT_EQ(JSONSL_T_LIST, Util::get_root_type(Command::ARRAY_APPEND, "[1]"));
     ASSERT_EQ(JSONSL_T_LIST,
               Util::get_root_type(Command::ARRAY_PREPEND, "[-1]"));
+    ASSERT_EQ(JSONSL_T_LIST,
+              Util::get_root_type(Command::ARRAY_ADD_UNIQUE, ""));
+    ASSERT_EQ(JSONSL_T_LIST,
+              Util::get_root_type(Command::ARRAY_ADD_UNIQUE_P, ""));
+    ASSERT_EQ(JSONSL_T_LIST,
+              Util::get_root_type(Command::DICT_UPSERT, "   [0]"));
+    ASSERT_EQ(JSONSL_T_OBJECT,
+              Util::get_root_type(Command::DICT_UPSERT, "   foo"));
+    ASSERT_EQ(JSONSL_T_UNKNOWN,
+              Util::get_root_type(Command::DICT_UPSERT, "   "));
+}
+
+TEST_F(PathTests, testEdgeCasesAndErrors) {
+    Path path;
+
+    // Empty components at start, middle, or inside backticks
+    EXPECT_NE(0, path.parse(".foo"));
+    path.clear();
+    EXPECT_NE(0, path.parse("foo..bar"));
+    path.clear();
+    EXPECT_NE(0, path.parse("``"));
+    path.clear();
+    EXPECT_NE(0, path.parse("foo.``.bar"));
+
+    // Unclosed backtick
+    path.clear();
+    EXPECT_NE(0, path.parse("`unclosed"));
+    path.clear();
+    EXPECT_NE(0, path.parse("foo.`unclosed"));
+
+    // Multiple backtick-escaped components in a single path, plus cache reuse
+    path.clear();
+    ASSERT_EQ(0, path.parse("`a``1`.`b``2`.`c``3`"));
+    ASSERT_EQ(4UL, path.size());
+    EXPECT_EQ("a`1", getComponentString(path, 1));
+    EXPECT_EQ("b`2", getComponentString(path, 2));
+    EXPECT_EQ("c`3", getComponentString(path, 3));
+
+    path.clear();
+    ASSERT_EQ(0, path.parse("`d``4`.`e``5`"));
+    ASSERT_EQ(3UL, path.size());
+    EXPECT_EQ("d`4", getComponentString(path, 1));
+    EXPECT_EQ("e`5", getComponentString(path, 2));
+
+    // All valid JSON escapes in a path component
+    path.clear();
+    ASSERT_EQ(0, path.parse(R"(a\"\\\/\b\f\n\r\t.b)"));
+    ASSERT_EQ(3UL, path.size());
+    EXPECT_EQ(R"(a\"\\\/\b\f\n\r\t)", getComponentString(path, 1));
+    EXPECT_EQ("b", getComponentString(path, 2));
+
+    // Disallowed \uXXXX escape and invalid escape in path
+    path.clear();
+    EXPECT_NE(0, path.parse(R"(a\u0041)"));
+    path.clear();
+    EXPECT_NE(0, path.parse(R"(a\x)"));
+
+    // Incomplete escape at end of path or before delimiter
+    path.clear();
+    EXPECT_NE(0, path.parse("a\\"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a\\.b"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a\\[0]"));
+    path.clear();
+    EXPECT_NE(0, path.parse("`a\\`"));
+
+    // Control characters (< 0x1f) are rejected
+    path.clear();
+    EXPECT_NE(0,
+              path.parse(std::string("a\x01"
+                                     "b")));
+    path.clear();
+    EXPECT_NE(0, path.parse(std::string("a\nb")));
+
+    // Stray closing bracket, unclosed bracket, invalid negative/non-digit index
+    path.clear();
+    EXPECT_NE(0, path.parse("a]b"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a[0"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a[-]"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a[-10]"));
+
+    // Multiplication overflow in numeric component parsing
+    path.clear();
+    EXPECT_NE(0, path.parse("arr[999999999999999999999999999999]"));
+
+    // Exceeding Limits::MAX_COMPONENTS with string or numeric components
+    std::string deepStrPath;
+    std::string deepArrPath;
+    for (size_t idx = 0; idx <= Limits::MAX_COMPONENTS; ++idx) {
+        if (idx > 0) {
+            deepStrPath += ".";
+        }
+        deepStrPath += "a";
+        deepArrPath += "[0]";
+    }
+    path.clear();
+    EXPECT_EQ(JSONSL_ERROR_LEVELS_EXCEEDED, path.parse(deepStrPath));
+    path.clear();
+    EXPECT_EQ(JSONSL_ERROR_LEVELS_EXCEEDED, path.parse(deepArrPath));
+}
+
+TEST_F(PathTests, testLocHelpers) {
+    Loc loc;
+    EXPECT_TRUE(loc.empty());
+    EXPECT_EQ("", loc.to_string());
+
+    const std::string text = "  \t\r\nhello world \n\t ";
+    loc.assign(text.data(), text.size());
+    EXPECT_FALSE(loc.empty());
+
+    loc.ltrim(5);
+    EXPECT_EQ("hello world \n\t ", loc.to_string());
+
+    loc.rtrim(4);
+    EXPECT_EQ("hello world", loc.to_string());
+
+    loc.clear();
+    EXPECT_TRUE(loc.empty());
+    EXPECT_EQ(0U, loc.length);
 }

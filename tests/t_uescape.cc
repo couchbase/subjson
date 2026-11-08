@@ -85,3 +85,54 @@ TEST_F(UescapeTests, testInvalidHex) {
         ASSERT_EQ(Status::INVALID_HEXCHARS, rv.code());
     }
 }
+
+TEST_F(UescapeTests, testMultiByteUtf8AndEdgeCases) {
+    std::string out;
+
+    // 2-byte UTF-8 sequence (0x80 <= codepoint < 0x800): U+00E9 ('é')
+    auto rv = UescapeConverter::convert("caf\\u00e9", out);
+    ASSERT_TRUE(rv);
+    EXPECT_EQ("caf\xc3\xa9", out);
+
+    // Boundary 2-byte UTF-8 sequences: U+0080 and U+07FF
+    out.clear();
+    rv = UescapeConverter::convert("\\u0080\\u07FF", out);
+    ASSERT_TRUE(rv);
+    EXPECT_EQ("\xc2\x80\xdf\xbf", out);
+
+    // 3-byte UTF-8 sequence (0x800 <= codepoint < 0x10000): U+20AC ('€')
+    out.clear();
+    rv = UescapeConverter::convert("price:\\u20AC", out);
+    ASSERT_TRUE(rv);
+    EXPECT_EQ("price:\xe2\x82\xac", out);
+
+    // Boundary 3-byte UTF-8 sequences: U+0800 and U+FFFF
+    out.clear();
+    rv = UescapeConverter::convert("\\u0800\\uFFFF", out);
+    ASSERT_TRUE(rv);
+    EXPECT_EQ("\xe0\xa0\x80\xef\xbf\xbf", out);
+
+    // Lone low surrogate (0xDC00..0xDFFF without a preceding high surrogate)
+    out.clear();
+    rv = UescapeConverter::convert("\\uDC00", out);
+    ASSERT_FALSE(rv);
+    EXPECT_EQ(Status::INVALID_CODEPOINT, rv.code());
+
+    // High surrogate followed by a codepoint > 0xDFFF
+    out.clear();
+    rv = UescapeConverter::convert("\\uD800\\uE000", out);
+    ASSERT_FALSE(rv);
+    EXPECT_EQ(Status::INVALID_SURROGATE, rv.code());
+
+    // High surrogate followed by a non-\u escape
+    out.clear();
+    rv = UescapeConverter::convert("\\uD800\\n", out);
+    ASSERT_FALSE(rv);
+    EXPECT_EQ(Status::INVALID_SURROGATE, rv.code());
+
+    // Non-\u escapes and trailing backslash are preserved verbatim
+    out.clear();
+    rv = UescapeConverter::convert(R"(a\nb\u0041c\)", out);
+    ASSERT_TRUE(rv);
+    EXPECT_EQ("a\\nbAc\\", out);
+}

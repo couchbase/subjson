@@ -2623,3 +2623,86 @@ TEST_F(OpTests, WholeContainerDepthLimit) {
         }
     }
 }
+
+TEST_F(OpTests, testErrorDescriptionsAndMiscApis) {
+    // Exercise Error::description() and operator<< for all error codes
+    const std::array<Error::Code, 15> codes = {Error::SUCCESS,
+                                               Error::PATH_ENOENT,
+                                               Error::PATH_MISMATCH,
+                                               Error::PATH_EINVAL,
+                                               Error::DOC_NOTJSON,
+                                               Error::DOC_EEXISTS,
+                                               Error::PATH_E2BIG,
+                                               Error::NUM_E2BIG,
+                                               Error::DELTA_OVERFLOW,
+                                               Error::DELTA_EINVAL,
+                                               Error::VALUE_CANTINSERT,
+                                               Error::DOC_ETOODEEP,
+                                               Error::VALUE_EMPTY,
+                                               Error::VALUE_ETOODEEP,
+                                               Error::VALUE_ENOENT};
+    for (const auto code : codes) {
+        Error err(code);
+        EXPECT_NE(nullptr, err.description());
+        EXPECT_STRNE("Unknown error code", err.description());
+        std::ostringstream oss;
+        oss << err;
+        EXPECT_FALSE(oss.str().empty());
+    }
+    Error globalErr(Error::GLOBAL_ENOSUPPORT);
+    EXPECT_NE(nullptr, globalErr.description());
+
+    // Unsupported command returns GLOBAL_ENOSUPPORT
+    op.set_doc("{}");
+    EXPECT_EQ(Error::GLOBAL_ENOSUPPORT, runOp(Command::INVALID, "a"));
+
+    // String literal template overloads for set_doc and set_value, plus
+    // Result::set_matchloc and Util helpers
+    op.clear();
+    res.clear();
+    op.set_doc("{\"k\":1}");
+    op.set_value("2");
+    op.set_result_buf(&res);
+    op.set_code(Command::REPLACE);
+    ASSERT_EQ(Error::SUCCESS, op.op_exec("k"));
+    EXPECT_EQ("{\"k\":2}", getNewDoc());
+
+    Util::dump_newdoc(res);
+    EXPECT_NE(nullptr, Util::jsonerr(JSONSL_ERROR_SUCCESS));
+
+    Loc customLoc("hello", 5);
+    res.set_matchloc(customLoc);
+    EXPECT_EQ("hello", res.matchloc().to_string());
+}
+
+TEST_F(OpTests, testEmptyAppendAndMkdirPEdgeCases) {
+    // Root-level ARRAY_APPEND (do_empty_append) with trailing whitespace,
+    // whitespace inside empty brackets, single ']', and whitespace before ']'
+    std::string doc = "[1]   \n\t ";
+    op.set_doc(doc);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "", "2"));
+    EXPECT_EQ("[1,2]", getNewDoc());
+
+    doc = "  [   ]  ";
+    op.set_doc(doc);
+    ASSERT_EQ(Error::SUCCESS, runOp(Command::ARRAY_APPEND, "", "1"));
+    EXPECT_EQ("  [1]", getNewDoc());
+
+    doc = "]";
+    op.set_doc(doc);
+    EXPECT_EQ(Error::PATH_MISMATCH, runOp(Command::ARRAY_APPEND, "", "1"));
+
+    doc = "   ]";
+    op.set_doc(doc);
+    EXPECT_EQ(Error::DOC_NOTJSON, runOp(Command::ARRAY_APPEND, "", "1"));
+
+    // do_mkdir_p cannot synthesize intermediate array elements when a numeric
+    // path component follows a missing dictionary key
+    doc = "{}";
+    op.set_doc(doc);
+    EXPECT_EQ(
+            Error::PATH_ENOENT,
+            runOp(Command::DICT_ADD_P, "missing_obj.missing_arr[0].key", "1"));
+    EXPECT_EQ(Error::PATH_ENOENT,
+              runOp(Command::DICT_UPSERT_P, "a.b[0].c", "1"));
+}

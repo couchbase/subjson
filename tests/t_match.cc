@@ -368,3 +368,119 @@ TEST_F(MatchTests, testMatchRemoveValue) {
     m.exec_match(json, pth, jsn);
     ASSERT_EQ(JSONSL_MATCH_TYPE_MISMATCH, m.matchres);
 }
+
+TEST_F(MatchTests, testDescribeScannedElementErrors) {
+    // Invalid primitive token at a scanned array index (e.g. "tru")
+    const std::string badPrimitive = R"({"a":[1,tru]})";
+    m.clear();
+    pth.parse("a[1]");
+    m.exec_match(badPrimitive, pth, jsn);
+    EXPECT_NE(JSONSL_ERROR_SUCCESS, m.status);
+
+    // Invalid primitive token at the last element via get_last
+    m.clear();
+    pth.parse("a");
+    m.get_last = 1;
+    m.exec_match(badPrimitive, pth, jsn);
+    EXPECT_NE(JSONSL_ERROR_SUCCESS, m.status);
+
+    // Empty element slot due to trailing comma in array: "[1,]"
+    const std::string trailingComma = R"({"a":[1,]})";
+    m.clear();
+    pth.parse("a[1]");
+    m.exec_match(trailingComma, pth, jsn);
+    EXPECT_NE(JSONSL_ERROR_SUCCESS, m.status);
+}
+
+TEST_F(MatchTests, testSkipToMemberWithEscapedKeys) {
+    // Escaped key at index 0 that shares a prefix with the target key
+    // ("target") but unescapes to a different key ("tx"), followed by the
+    // actual match.
+    const std::string docIndex0 = R"({"t\u0078":[1,2],"target":42})";
+    m.clear();
+    pth.parse("target");
+    m.exec_match(docIndex0, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ("42", Util::match_match(m));
+
+    // Escaped key at index > 0 where the scanner skips prior members and hands
+    // off to jsonsl at the escaped key, which does not match, and then finds
+    // the target member later in the object.
+    const std::string docIndexGt0 =
+            R"({"first":[1,2,3],"t\u0078":{"nested":"val"},"target":99})";
+    m.clear();
+    pth.parse("target");
+    m.exec_match(docIndexGt0, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ("99", Util::match_match(m));
+
+    // Same, but the target key is not present in the object at all, so jsonsl
+    // finishes the object and invokes pop_callback on the parent object.
+    m.clear();
+    pth.parse("t_missing");
+    m.exec_match(docIndexGt0, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    EXPECT_NE(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_NE(0, m.immediate_parent_found);
+    EXPECT_EQ(docIndexGt0, Util::match_parent(m));
+
+    // Multi-byte UTF-8 \uXXXX escapes in keys (2-byte U+00E9 and 3-byte U+20AC)
+    const std::string docUtf8 = R"({"caf\u00e9":1,"euro\u20ac":2})";
+    m.clear();
+    pth.parse("caf\xc3\xa9");
+    m.exec_match(docUtf8, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ("1", Util::match_match(m));
+
+    m.clear();
+    pth.parse("euro\xe2\x82\xac");
+    m.exec_match(docUtf8, pth, jsn);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ("2", Util::match_match(m));
+}
+
+TEST_F(MatchTests, testSkipToElementEdgeCases) {
+    // Intermediate array is empty when resolving a deeper path (a[0].b)
+    const std::string emptyArrDoc = R"({"a":[],"b":1})";
+    m.clear();
+    pth.parse("a[0].b");
+    m.exec_match(emptyArrDoc, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    EXPECT_NE(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ(0, m.immediate_parent_found);
+
+    // Intermediate array has fewer elements than the requested index (a[2].b)
+    const std::string shortArrDoc = R"({"a":[{"b":1},{"b":2}]})";
+    m.clear();
+    pth.parse("a[2].b");
+    m.exec_match(shortArrDoc, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    EXPECT_NE(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_EQ(0, m.immediate_parent_found);
+
+    // Final component is an array index with ensure_unique set (so
+    // can_scan_to_index is false and skip_to_element locates the sub-array)
+    const std::string nestedArrays = R"({"a":[[1,2],[3,4],[5,6]]})";
+    m.clear();
+    pth.parse("a[1]");
+    m.ensure_unique.assign("4", 1);
+    m.exec_match(nestedArrays, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_TRUE(m.unique_item_found);
+    EXPECT_EQ(1U, m.unique_item_position);
+
+    // Final component is an array index with match_value set
+    std::string kept;
+    m.clear();
+    pth.parse("a[2]");
+    m.match_value.assign("5", 1);
+    m.filtered_buf = &kept;
+    m.exec_match(nestedArrays, pth, jsn);
+    ASSERT_EQ(JSONSL_ERROR_SUCCESS, m.status);
+    ASSERT_EQ(JSONSL_MATCH_COMPLETE, m.matchres);
+    EXPECT_TRUE(m.value_removed);
+    EXPECT_EQ("6", kept);
+}
