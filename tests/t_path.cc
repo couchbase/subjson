@@ -270,11 +270,17 @@ TEST_F(PathTests, testEdgeCasesAndErrors) {
     path.clear();
     EXPECT_NE(0, path.parse(std::string("a\nb")));
 
-    // Stray closing bracket, unclosed bracket, invalid negative/non-digit index
+    // Stray closing bracket, unclosed bracket, empty bracket, invalid index
     path.clear();
     EXPECT_NE(0, path.parse("a]b"));
     path.clear();
     EXPECT_NE(0, path.parse("a[0"));
+    path.clear();
+    EXPECT_NE(0, path.parse("[]"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a[]"));
+    path.clear();
+    EXPECT_NE(0, path.parse("a[0][]"));
     path.clear();
     EXPECT_NE(0, path.parse("a[-]"));
     path.clear();

@@ -44,6 +44,10 @@ Path::add_num_component(const char *component, size_t len)
     unsigned ii;
     size_t numval = 0;
 
+    if (len == 0) {
+        return JSONSL_ERROR_INVALID_NUMBER;
+    }
+
     if (component[0] == '-') {
         if (len != 2 || component[1] != '1') {
             return JSONSL_ERROR_INVALID_NUMBER;
