@@ -1147,6 +1147,8 @@ Validator::errstr(int rv)
         return "Found multiple elements (single expected)";
     case EPARTIAL:
         return "Found incomplete JSON";
+    case ENOTPRIMITIVE:
+        return "Single primitive expected";
     default:
         return "UNKNOWN";
     }

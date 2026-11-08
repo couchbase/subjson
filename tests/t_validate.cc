@@ -122,6 +122,7 @@ TEST_F(ValidateTest, testErrorsAndErrstr) {
                  Validator::errstr(Validator::EMULTIELEM));
     EXPECT_STREQ("Found incomplete JSON",
                  Validator::errstr(Validator::EPARTIAL));
-    EXPECT_STREQ("UNKNOWN", Validator::errstr(Validator::ENOTPRIMITIVE));
+    EXPECT_STREQ("Single primitive expected",
+                 Validator::errstr(Validator::ENOTPRIMITIVE));
     EXPECT_STREQ("UNKNOWN", Validator::errstr(999));
 }
