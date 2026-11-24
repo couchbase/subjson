@@ -6,3 +6,6 @@ add_test(NAME subjson-all-tests COMMAND subjson-test)
 
 cb_add_test_executable(subjson-bench subjson_bench.cc jsonsl_bench.cc)
 target_link_libraries(subjson-bench subjson benchmark::benchmark)
+
+cb_add_test_executable(subjson-file-bench subjson_file_bench.cc)
+target_link_libraries(subjson-file-bench subjson benchmark::benchmark)
